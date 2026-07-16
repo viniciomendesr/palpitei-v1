@@ -1,0 +1,32 @@
+node_modules/
+.next/
+dist/
+out/
+build/
+
+# Segredos — NUNCA versione
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Certificado do dev HTTPS: localhost-key.pem é CHAVE PRIVADA. É gerado por
+# `npm run dev:https` (scripts/dev-cert.mjs) e é específico desta máquina — o SAN
+# carrega os IPs da rede de quem gerou. Não serve para mais ninguém e não pode
+# ser versionado.
+apps/web/certificates/
+
+# Dados da TxLINE: o T&C §7 licencia o dado só para o hackathon e PROÍBE redistribuição.
+# Nada de payload no repo público. O cache de partida vive no Postgres.
+.cache/
+*.txline-state.json
+supabase/.temp/
+
+.DS_Store
+*.log
+npm-debug.log*
+.turbo/
+coverage/
+
+# Artefato de build do tsc — nao versione.
+*.tsbuildinfo

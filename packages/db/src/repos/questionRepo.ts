@@ -1,0 +1,121 @@
+// questionRepo — as perguntas geradas pelo motor sobre o dado real.
+//
+// ATENÇÃO À ORDEM (é um acoplamento de verdade, não teoria): `predictions`
+// referencia `questions` por chave estrangeira. Uma pergunta que nunca foi
+// gravada faz o primeiro palpite dela estourar 23503. Quem escuta o `emit` dos
+// motores TEM de gravar a pergunta no `question_open` — antes de qualquer
+// palpite. Ver enginePorts.ts, que já faz isso.
+
+import type { Db, Row } from '../pool.js';
+import type { Question, QuestionOption, QuestionType } from '../types.js';
+
+function mapQuestion(r: Row): Question {
+  const q: Question = {
+    id: String(r.id),
+    fixtureId: Number(r.fixture_id),
+    type: r.type as QuestionType,
+    prompt: String(r.prompt),
+    options: (r.options as QuestionOption[]) ?? [],
+    opensAt: Number(r.opens_at),
+    closesAt: Number(r.closes_at),
+    state: r.state as Question['state'],
+  };
+  if (r.correct != null) q.correct = String(r.correct);
+  if (r.void_reason != null) q.voidReason = String(r.void_reason);
+  if (r.resolved_at != null) q.resolvedAt = Number(r.resolved_at);
+  if (r.resolved_by_seq != null) q.resolvedBySeq = Number(r.resolved_by_seq);
+  return q;
+}
+
+const COLS = `id, fixture_id, type, prompt, options, opens_at, closes_at, state,
+              correct, void_reason, resolved_at, resolved_by_seq`;
+
+export function createQuestionRepo(db: Db) {
+  const repo = {
+    /**
+     * Grava/atualiza a pergunta inteira. Idempotente por id: reemitir o mesmo
+     * `question_open` num replay não cria pergunta nova.
+     *
+     * A máquina de estados só ANDA PARA A FRENTE: uma pergunta já resolvida ou
+     * anulada não volta para 'open'. Sem essa trava, um evento reprocessado
+     * reabriria a janela de um desafio já pago — e o fã veria o desafio que
+     * acabou de acertar aberto de novo, valendo XP de novo.
+     */
+    async save(q: Question): Promise<void> {
+      await db.query(
+        `
+        insert into questions (id, fixture_id, type, prompt, options, opens_at, closes_at,
+                               state, correct, void_reason, resolved_at, resolved_by_seq)
+        values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
+        on conflict (id) do update set
+          state           = case
+                              when questions.state in ('resolved', 'void') then questions.state
+                              else excluded.state
+                            end,
+          correct         = coalesce(questions.correct, excluded.correct),
+          void_reason     = coalesce(questions.void_reason, excluded.void_reason),
+          resolved_at     = coalesce(questions.resolved_at, excluded.resolved_at),
+          resolved_by_seq = coalesce(questions.resolved_by_seq, excluded.resolved_by_seq),
+          closes_at       = excluded.closes_at
+        `,
+        [
+          q.id,
+          q.fixtureId,
+          q.type,
+          q.prompt,
+          JSON.stringify(q.options ?? []),
+          q.opensAt,
+          q.closesAt,
+          q.state,
+          q.correct ?? null,
+          q.voidReason ?? null,
+          q.resolvedAt ?? null,
+          q.resolvedBySeq ?? null,
+        ]
+      );
+    },
+
+    async findById(id: string): Promise<Question | null> {
+      const rows = await db.query(`select ${COLS} from questions where id = $1`, [id]);
+      return rows[0] ? mapQuestion(rows[0]) : null;
+    },
+
+    async listByFixture(fixtureId: number): Promise<Question[]> {
+      const rows = await db.query(
+        `select ${COLS} from questions where fixture_id = $1 order by opens_at`,
+        [fixtureId]
+      );
+      return rows.map(mapQuestion);
+    },
+
+    async listOpen(fixtureId: number): Promise<Question[]> {
+      const rows = await db.query(
+        `select ${COLS} from questions where fixture_id = $1 and state = 'open' order by opens_at`,
+        [fixtureId]
+      );
+      return rows.map(mapQuestion);
+    },
+
+    /**
+     * Quantas foram anuladas por partida, com o motivo.
+     *
+     * Anulação não é erro — é a regra de justiça funcionando (o evento
+     * resolvedor chegou com a janela aberta). Mas anulação DEMAIS quer dizer
+     * que as janelas estão mal dimensionadas e o fã está palpitando à toa.
+     * Número que sobe demais é sintoma, não troféu.
+     */
+    async contagemPorEstado(fixtureId: number): Promise<Record<string, number>> {
+      const rows = await db.query(
+        `select state, count(*)::int as n from questions where fixture_id = $1 group by state`,
+        [fixtureId]
+      );
+      const out: Record<string, number> = {};
+      for (const r of rows) out[String(r.state)] = Number(r.n);
+      return out;
+    },
+  };
+
+  return repo;
+}
+
+export type QuestionRepo = ReturnType<typeof createQuestionRepo>;

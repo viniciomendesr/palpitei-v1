@@ -1,0 +1,59 @@
+:root{
+  /* surfaces */
+  --bg-page:#0A0C0B;
+  --bg-app:#0B0E0D;
+  --surface-1:#141A17;      /* card */
+  --surface-2:#182019;      /* elevated chip / sheet */
+  --surface-row:#151B17;    /* list row */
+  --surface-sunken:#0F1512;
+  --surface-disabled:#10150F;
+  --surface-header:#121814;
+
+  /* primary */
+  --lime:#C8F13F;
+  --lime-strong:#9FD415;
+  --lime-deep:#7FB800;
+  --on-lime:#0B0E0D;
+
+  /* accents */
+  --gold:#FFD23F;
+  --orange:#FF9D3F;
+  --blue:#5AB8FF;
+  --blue-soft:#7CC4FF;
+  --red:#FF5A5A;
+  --red-deep:#E0301E;
+  --red-soft:#FF7A7A;
+  --mint:#8FE8B0;
+  --cyan:#7EE7FF;
+  --pink:#E88FD8;
+
+  /* text ramp */
+  --text-hi:#F1F5EF;
+  --text-1:#E4EAE4;
+  --text-2:#B9C4BC;
+  --text-muted:#8FA096;
+  --text-faint:#66756C;
+  --text-fainter:#4E5B54;
+
+  /* tiers */
+  --tier-bronze:#C77B4F;
+  --tier-silver:#C9D4CE;
+  --tier-gold:#FFD23F;
+  --tier-diamond:#7EE7FF;
+
+  /* lines & tints */
+  --border-1:rgba(255,255,255,.07);
+  --border-2:rgba(255,255,255,.12);
+  --lime-line:rgba(200,241,63,.35);
+  --lime-a06:rgba(200,241,63,.06);
+  --lime-a10:rgba(200,241,63,.10);
+  --lime-a14:rgba(200,241,63,.14);
+  --lime-a30:rgba(200,241,63,.30);
+
+  /* semantic aliases */
+  --text-body:var(--text-2);
+  --text-heading:var(--text-hi);
+  --surface-card:var(--surface-1);
+  --accent:var(--lime);
+  --accent-on:var(--on-lime);
+}

@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/palpitei-design-system-986a22f1-4e46-485d-9863-e7523249b4f6/fonts/fonts.css">
+<link rel="stylesheet" href="_ds/palpitei-design-system-986a22f1-4e46-485d-9863-e7523249b4f6/_ds_bundle.css">
+<link rel="stylesheet" href="_ds/palpitei-design-system-986a22f1-4e46-485d-9863-e7523249b4f6/styles.css">
+<script src="_ds/palpitei-design-system-986a22f1-4e46-485d-9863-e7523249b4f6/_ds_bundle.js"></script>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  .pp-scroll{scrollbar-width:none}
+  .pp-scroll::-webkit-scrollbar{display:none}
+  @keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(200,241,63,.28)}50%{box-shadow:0 0 0 7px rgba(200,241,63,0)}}
+  a{color:var(--lime)}a:hover{color:var(--lime-strong)}
+</style>
+</helmet>
+<div style="display:inline-flex;align-items:center;justify-content:center;padding:30px;background:radial-gradient(120% 90% at 50% 0%, #14211a 0%, #0a0f0c 45%, #050706 100%);font-family:var(--font-sans)">
+
+  <div style="position:relative;width:390px;height:812px;background:#0a0e0c;border-radius:52px;padding:11px;box-shadow:0 0 0 2px #1c2620, 0 40px 90px -20px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.03)">
+    <div style="position:relative;width:100%;height:100%;background:var(--bg-app);color:var(--text-hi);border-radius:42px;overflow:hidden;display:flex;flex-direction:column">
+
+      <!-- status bar -->
+      <div style="flex:none;height:50px;padding:0 32px;display:flex;align-items:center;justify-content:space-between;z-index:5">
+        <span style="font-size:15px;font-weight:700;color:var(--text-hi);letter-spacing:.3px">9:41</span>
+        <div style="display:flex;align-items:center;gap:7px">
+          <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="7" width="3" height="5" rx="1" fill="var(--text-hi)"/><rect x="5" y="4.5" width="3" height="7.5" rx="1" fill="var(--text-hi)"/><rect x="10" y="2" width="3" height="10" rx="1" fill="var(--text-hi)"/><rect x="15" y="0" width="3" height="12" rx="1" fill="var(--text-hi)" opacity=".4"/></svg>
+          <svg width="16" height="12" viewBox="0 0 17 12"><path d="M8.5 2.4c2.5 0 4.8 1 6.5 2.6l1.4-1.5C14.3 1.5 11.5.3 8.5.3S2.7 1.5.6 3.5L2 5C3.7 3.4 6 2.4 8.5 2.4Z" fill="var(--text-hi)"/><path d="M8.5 6.1c1.4 0 2.7.5 3.7 1.5l1.4-1.5C12.2 4.8 10.4 4 8.5 4S4.8 4.8 3.4 6.1l1.4 1.5c1-1 2.3-1.5 3.7-1.5Z" fill="var(--text-hi)"/><path d="M8.5 9.7 10.4 8c-.5-.5-1.2-.8-1.9-.8s-1.4.3-1.9.8l1.9 1.7Z" fill="var(--text-hi)"/></svg>
+          <div style="display:flex;align-items:center;gap:2px"><div style="width:23px;height:12px;border:1.5px solid rgba(244,247,243,.55);border-radius:3.5px;padding:1.5px"><div style="width:72%;height:100%;background:var(--text-hi);border-radius:1.5px"></div></div><div style="width:1.5px;height:4px;background:rgba(244,247,243,.55);border-radius:0 1px 1px 0"></div></div>
+        </div>
+      </div>
+
+      <!-- ============================ LOGIN ============================ -->
+      <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:0 26px 30px">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
+          <div style="animation:fadeUp .6s cubic-bezier(.2,.7,.3,1) both;width:80px;height:80px;border-radius:24px;background:var(--lime);display:flex;align-items:center;justify-content:center;transform:rotate(-6deg);box-shadow:var(--shadow-logo)">
+            <span style="font-size:42px;font-weight:900;font-style:italic;color:var(--on-lime);letter-spacing:-2px;line-height:1">P!</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:9px;justify-content:center;margin-top:24px;animation:fadeUp .6s cubic-bezier(.2,.7,.3,1) .08s both">
+            <span style="font-size:34px;font-weight:900;font-style:italic;color:var(--text-hi);letter-spacing:-1px">PALPITEI</span>
+            <span style="font-size:10px;font-weight:800;letter-spacing:1.2px;color:var(--on-lime);background:var(--lime);padding:3px 7px;border-radius:6px;position:relative;top:-3px">BETA</span>
+          </div>
+          <div style="display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:6px 12px;border:1px solid var(--lime-line);border-radius:var(--r-pill);animation:fadeUp .6s cubic-bezier(.2,.7,.3,1) .14s both">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" stroke-width="1.6" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M12 7.1l4.05 2.94-1.55 4.76H9.5L7.95 10.04 12 7.1z" fill="var(--lime)" stroke="none"/><path d="M12 2.8v4.3M4.2 9.1l3.75 0.94M6.6 18.3l2.9-3.5M17.4 18.3l-2.9-3.5M19.8 9.1l-3.75 0.94"/></svg>
+            <span style="font-size:12px;font-weight:800;letter-spacing:.6px;color:var(--lime)">{{ t.worldcup }}</span>
+          </div>
+          <p style="margin:22px auto 0;max-width:255px;font-size:15px;line-height:1.5;font-weight:500;color:var(--text-2);animation:fadeUp .6s cubic-bezier(.2,.7,.3,1) .2s both">
+            {{ t.tagline }}
+          </p>
+        </div>
+
+        <div style="flex:none;display:flex;flex-direction:column;gap:12px;animation:fadeUp .6s cubic-bezier(.2,.7,.3,1) .28s both">
+          <button onClick="{{ onGoogle }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:10px;height:56px;border-radius:var(--r-xl);background:var(--text-hi);color:#141a16;font-family:var(--font-sans);font-size:15.5px;font-weight:700" style-hover="filter:brightness(1.04)">
+            <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38z"/></svg>
+            <span>{{ t.google }}</span>
+            <span style="width:1px;height:20px;background:rgba(20,26,22,.16)"></span>
+            <span style="display:inline-flex;align-items:center;gap:6px">
+              <svg width="18" height="18" viewBox="0 0 32 32" aria-label="Privy"><rect width="32" height="32" rx="8" fill="#100E0C"/><path d="M11 9h6.4c2.9 0 4.9 1.9 4.9 4.7 0 2.8-2 4.7-4.9 4.7H14v4.6h-3V9zm3 2.7v4h3.1c1.3 0 2.2-.8 2.2-2s-.9-2-2.2-2H14z" fill="#fff"/></svg>
+              <span style="font-weight:800;letter-spacing:-.2px">Privy</span>
+            </span>
+          </button>
+          <button onClick="{{ onWallet }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:12px;height:56px;border-radius:var(--r-xl);background:var(--surface-1);border:1px solid var(--border-2);color:var(--text-hi);font-family:var(--font-sans);font-size:16px;font-weight:700" style-hover="background:var(--surface-2)">
+            <svg width="20" height="20" viewBox="0 0 24 20"><defs><linearGradient id="solg" x1="2" y1="18" x2="22" y2="2" gradientUnits="userSpaceOnUse"><stop stop-color="#9945FF"/><stop offset="1" stop-color="#19FB9B"/></linearGradient></defs><path fill="url(#solg)" d="M5.2 14.4a.8.8 0 0 1 .57-.24H23a.4.4 0 0 1 .29.68l-3.5 3.52a.8.8 0 0 1-.57.24H1.98a.4.4 0 0 1-.29-.68l3.5-3.52zM5.2 1.4a.83.83 0 0 1 .57-.24H23a.4.4 0 0 1 .29.68l-3.5 3.52a.8.8 0 0 1-.57.24H1.98a.4.4 0 0 1-.29-.68L5.2 1.4zM19.79 7.86a.8.8 0 0 0-.57-.24H1.98a.4.4 0 0 0-.29.68l3.5 3.52a.8.8 0 0 0 .57.24H23a.4.4 0 0 0 .29-.68l-3.5-3.52z"/></svg>
+            <span>{{ t.wallet }}</span>
+          </button>
+          <button onClick="{{ onDemo }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:11px;height:56px;border-radius:var(--r-xl);background:var(--lime-a06);border:1.5px solid var(--lime-a30);color:var(--lime);font-family:var(--font-sans);font-size:16px;font-weight:800;animation:glowPulse 2.6s ease-in-out infinite" style-hover="background:var(--lime-a14)">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="var(--lime)" stroke-width="1.7"/><path d="M10 8.5v7l6-3.5-6-3.5z" fill="var(--lime)"/></svg>
+            <span>{{ t.demo }}</span>
+          </button>
+          <p style="margin:10px auto 0;max-width:300px;text-align:center;font-size:12px;line-height:1.5;font-weight:500;color:var(--text-muted)">
+            {{ t.demoNote }}
+          </p>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============================ ONBOARDING (novo usuário) ============================ -->
+      <sc-if value="{{ isOnboarding }}">
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:8px 26px 30px">
+        <div style="flex:none;display:flex;align-items:center;gap:12px;padding:6px 0 18px">
+          <button onClick="{{ obBack }}" style="all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;background:var(--surface-1);border:1px solid var(--border-1);display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <div style="flex:1;height:6px;border-radius:99px;background:var(--surface-sunken);overflow:hidden"><div style="height:100%;border-radius:99px;background:var(--lime);width:{{ obPct }}%;transition:width .35s cubic-bezier(.2,.8,.3,1)"></div></div>
+          <span style="font-size:10px;font-weight:900;letter-spacing:.6px;color:var(--text-muted);min-width:64px;text-align:right">{{ obStepLabel }}</span>
+        </div>
+
+        <!-- Step 0 — welcome / auth confirm -->
+        <sc-if value="{{ obStep0 }}">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;animation:fadeUp .5s cubic-bezier(.2,.7,.3,1) both">
+          <div style="display:inline-flex;align-self:flex-start;align-items:center;gap:8px;padding:7px 13px;border-radius:var(--r-pill);background:var(--lime-a10);border:1px solid var(--lime-line)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></svg>
+            <span style="font-size:12px;font-weight:800;color:var(--lime)">{{ obWelcomeHdr }} · {{ obWelcomeVia }}</span>
+          </div>
+          <div style="width:72px;height:72px;border-radius:22px;background:var(--lime);display:flex;align-items:center;justify-content:center;transform:rotate(-6deg);box-shadow:var(--shadow-logo);margin:26px 0 0"><span style="font-size:36px;font-weight:900;font-style:italic;color:var(--on-lime);letter-spacing:-2px">P!</span></div>
+          <div style="font-weight:900;font-style:italic;font-size:30px;letter-spacing:-1px;margin-top:22px;line-height:1.05;text-wrap:pretty">{{ t.obWelcomeTitle }}</div>
+          <p style="font-size:15px;line-height:1.5;font-weight:500;color:var(--text-2);margin-top:12px;max-width:290px;text-wrap:pretty">{{ t.obWelcomeBody }}</p>
+        </div>
+        <div style="flex:none"><x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ obNext }}" hint-size="100%,52px">{{ t.obStart }}</x-import></div>
+        </sc-if>
+
+        <!-- Step 1 — nickname -->
+        <sc-if value="{{ obStep1 }}">
+        <div style="flex:1;display:flex;flex-direction:column;animation:fadeUp .45s cubic-bezier(.2,.7,.3,1) both">
+          <div style="font-weight:900;font-style:italic;font-size:26px;letter-spacing:-.6px;margin-top:8px;text-wrap:pretty">{{ t.obNameTitle }}</div>
+          <p style="font-size:14px;line-height:1.5;font-weight:500;color:var(--text-2);margin-top:10px;text-wrap:pretty">{{ t.obNameBody }}</p>
+          <input value="{{ nameDraft }}" onInput="{{ onNameInput }}" maxlength="20" placeholder="{{ t.namePlaceholder }}" style="{{ nameInputStyle }}"/>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <span style="{{ nameHintStyle }}">{{ nameHint }}</span>
+            <span style="font-size:11px;font-weight:700;color:var(--text-muted)">{{ nameCount }}/20</span>
+          </div>
+        </div>
+        <div style="flex:none"><x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" disabled="{{ nameInvalid }}" on-click="{{ obNext }}" hint-size="100%,52px">{{ t.obContinue }}</x-import></div>
+        </sc-if>
+
+        <!-- Step 2 — favorite team -->
+        <sc-if value="{{ obStep2 }}">
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;animation:fadeUp .45s cubic-bezier(.2,.7,.3,1) both">
+          <div style="font-weight:900;font-style:italic;font-size:26px;letter-spacing:-.6px;margin-top:8px;text-wrap:pretty">{{ t.obTeamTitle }}</div>
+          <p style="font-size:14px;line-height:1.5;font-weight:500;color:var(--text-2);margin-top:10px;text-wrap:pretty">{{ t.obTeamBody }}</p>
+          <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;margin-top:16px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <sc-for list="{{ teamOpts }}" as="tm" hint-placeholder-count="8">
+                <button onClick="{{ tm.onClick }}" style="{{ tm.style }}">{{ tm.name }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="flex:none;display:flex;flex-direction:column;gap:8px;margin-top:14px">
+          <x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ obNext }}" hint-size="100%,52px">{{ t.obContinue }}</x-import>
+          <x-import component-from-global-scope="Palpitei.Button" variant="ghost" full="{{ true }}" on-click="{{ obSkipTeam }}" hint-size="100%,42px">{{ t.obSkip }}</x-import>
+        </div>
+        </sc-if>
+
+        <!-- Step 3 — ready -->
+        <sc-if value="{{ obStep3 }}">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;animation:popIn .5s cubic-bezier(.2,.9,.3,1.2) both">
+          <div style="width:88px;height:88px;border-radius:50%;background:var(--lime-a14);border:1.5px solid var(--lime-line);display:flex;align-items:center;justify-content:center"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></svg></div>
+          <div style="font-weight:900;font-style:italic;font-size:28px;letter-spacing:-.8px;margin-top:22px;text-wrap:pretty">{{ t.obReadyTitle }} {{ obReadyName }}!</div>
+          <p style="font-size:15px;line-height:1.5;font-weight:500;color:var(--text-2);margin-top:12px;max-width:280px;text-wrap:pretty">{{ t.obReadyBody }}</p>
+          <div style="display:inline-flex;align-items:center;gap:8px;margin-top:18px;padding:8px 14px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border-2)">
+            <span style="display:inline-flex;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold)"></span>
+            <span style="font-size:12px;font-weight:800;color:var(--text-1)">{{ t.newUserBadge }} · 0 XP</span>
+          </div>
+        </div>
+        <div style="flex:none"><x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ finishOnboarding }}" hint-size="100%,52px">{{ t.obFinish }}</x-import></div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- ============================ APP ============================ -->
+      <sc-if value="{{ isApp }}">
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+
+        <!-- ---------- HOME ---------- -->
+        <sc-if value="{{ isHome }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:6px 18px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0 14px">
+            <div style="display:flex;align-items:center;gap:9px">
+              <div style="width:34px;height:34px;border-radius:10px;background:var(--lime);display:flex;align-items:center;justify-content:center;transform:rotate(-6deg)"><span style="font-weight:900;font-style:italic;color:var(--on-lime);font-size:17px">P!</span></div>
+              <span style="font-weight:900;font-style:italic;font-size:19px;letter-spacing:-.5px">PALPITEI</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <x-import component-from-global-scope="Palpitei.Chip" hint-size="auto,32px"><span style="display:inline-flex;width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 8px var(--orange)"></span><span style="font-weight:800">{{ streak }}</span></x-import>
+              <x-import component-from-global-scope="Palpitei.Chip" hint-size="auto,32px"><x-import component-from-global-scope="Palpitei.Badge" tone="solid" hint-size="auto,20px">{{ t.lv }} {{ level }}</x-import><span style="font-weight:800">{{ xpFmt }}</span></x-import>
+            </div>
+          </div>
+
+          <x-import component-from-global-scope="Palpitei.SegTabs" tabs="{{ tabsArr }}" value="{{ tab }}" on-change="{{ setTab }}" hint-size="100%,40px"></x-import>
+
+          <!-- LIVE tab -->
+          <sc-if value="{{ isTabLive }}">
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+            <x-import component-from-global-scope="Palpitei.MatchCard" live="{{ true }}" status="{{ t.statusLive64 }}" group="{{ t.groupJ }}" team-a="{{ t.tArgentina }}" team-b="{{ t.tCaboVerde }}" score-a="{{ 2 }}" score-b="{{ 1 }}" cta="{{ t.ctaEnter }}" on-click="{{ openSala }}" hint-size="100%,120px"></x-import>
+            <x-import component-from-global-scope="Palpitei.MatchCard" live="{{ true }}" status="{{ t.statusLive31 }}" group="{{ t.groupF }}" team-a="{{ t.tEspanha }}" team-b="{{ t.tCoreia }}" score-a="{{ 0 }}" score-b="{{ 0 }}" cta="{{ t.ctaEnter }}" on-click="{{ openSala }}" hint-size="100%,120px"></x-import>
+          </div>
+
+          <x-import component-from-global-scope="Palpitei.Card" elevated="{{ true }}" hint-size="100%,120px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+              <span style="font-weight:900;font-size:10.5px;letter-spacing:1px;color:var(--lime)">{{ t.missionToday }}</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--orange)"><span style="display:inline-flex;width:6px;height:6px;border-radius:50%;background:var(--orange)"></span>{{ streakChipText }}</span>
+            </div>
+            <div style="font-weight:800;font-size:17px;margin-top:8px">{{ t.mission1 }}</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+              <div style="flex:1"><x-import component-from-global-scope="Palpitei.ProgressBar" value="{{ missionPct }}" hint-size="100%,8px"></x-import></div>
+              <span style="font-size:12px;font-weight:800;color:var(--text-2)">{{ missionLabel }}</span>
+            </div>
+          </x-import>
+
+          <sc-if value="{{ isNewUser }}">
+          <div style="margin-top:16px">
+            <div style="font-size:10.5px;font-weight:900;letter-spacing:1px;color:var(--text-faint);display:flex;justify-content:space-between;align-items:center">
+              <span>{{ t.leaguesTitle }}</span><span style="color:var(--text-muted);font-weight:700">{{ leaguesCountLabel }}</span>
+            </div>
+            <sc-for list="{{ myLeagues }}" as="lg" hint-placeholder-count="1">
+              <div style="margin-top:10px;display:flex;align-items:center;gap:13px;padding:14px;background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl)">
+                <div style="width:42px;height:42px;border-radius:12px;background:var(--lime-a14);border:1px solid var(--lime-line);display:flex;align-items:center;justify-content:center;font-weight:900;font-style:italic;color:var(--lime);font-size:15px">{{ lg.initials }}</div>
+                <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:15px">{{ lg.name }}</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600">{{ lg.sub }}</div></div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+              </div>
+            </sc-for>
+            <sc-if value="{{ showEmptyLeague }}">
+            <div style="margin-top:10px;padding:18px;background:linear-gradient(160deg,var(--lime-a10),var(--surface-1));border:1.5px dashed var(--lime-line);border-radius:var(--r-2xl);text-align:center">
+              <div style="font-weight:800;font-size:15.5px">{{ t.newLeagueLead }}</div>
+              <div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-top:3px">{{ t.newLeagueSub }}</div>
+              <div style="margin-top:13px"><x-import component-from-global-scope="Palpitei.Button" on-click="{{ tryCreateLeague }}" hint-size="auto,40px">{{ t.createLeague }}</x-import></div>
+            </div>
+            </sc-if>
+            <sc-if value="{{ showLeagueGate }}">
+            <button onClick="{{ tryCreateLeague }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;gap:13px;width:100%;margin-top:10px;padding:15px 16px;background:linear-gradient(135deg,var(--lime-a14),var(--surface-1));border:1.5px solid var(--lime-line);border-radius:var(--r-2xl)" style-hover="filter:brightness(1.05)">
+              <div style="flex:none;width:40px;height:40px;border-radius:12px;background:var(--lime);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--on-lime)"><path d="M5 16l-2-9 6 4 3-7 3 7 6-4-2 9H5zm0 3h14v2H5v-2z"/></svg></div>
+              <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px">{{ t.createAnother }}</div><div style="font-size:12px;color:var(--text-muted);font-weight:600">{{ leagueGateSub }}</div></div>
+              <span style="flex:none;font-size:10px;font-weight:900;letter-spacing:.5px;color:var(--on-lime);background:var(--lime);padding:4px 9px;border-radius:var(--r-pill)">{{ t.pxPremium }}</span>
+            </button>
+            </sc-if>
+          </div>
+          </sc-if>
+          <sc-if value="{{ isExistingUser }}">
+          <div style="margin-top:16px">
+            <div style="font-size:10.5px;font-weight:900;letter-spacing:1px;color:var(--text-faint);display:flex;justify-content:space-between;align-items:center">
+              <span>{{ t.leaguesTitle }}</span><span style="color:var(--text-muted);font-weight:700">{{ leaguesCountLabel }}</span>
+            </div>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:13px;padding:14px;background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl)">
+              <div style="width:42px;height:42px;border-radius:12px;background:var(--lime-a14);border:1px solid var(--lime-line);display:flex;align-items:center;justify-content:center;font-weight:900;font-style:italic;color:var(--lime);font-size:15px">RF</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:800;font-size:15px">Resenha FC</div>
+                <div style="font-size:12.5px;color:var(--text-muted);font-weight:600">{{ t.ligaSub }}</div>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+            </div>
+            <sc-if value="{{ showLeagueGate }}">
+            <button onClick="{{ tryCreateLeague }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;gap:13px;width:100%;margin-top:10px;padding:15px 16px;background:linear-gradient(135deg,var(--lime-a14),var(--surface-1));border:1.5px solid var(--lime-line);border-radius:var(--r-2xl)" style-hover="filter:brightness(1.05)">
+              <div style="flex:none;width:40px;height:40px;border-radius:12px;background:var(--lime);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--on-lime)"><path d="M5 16l-2-9 6 4 3-7 3 7 6-4-2 9H5zm0 3h14v2H5v-2z"/></svg></div>
+              <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px">{{ t.createAnother }}</div><div style="font-size:12px;color:var(--text-muted);font-weight:600">{{ leagueGateSub }}</div></div>
+              <span style="flex:none;font-size:10px;font-weight:900;letter-spacing:.5px;color:var(--on-lime);background:var(--lime);padding:4px 9px;border-radius:var(--r-pill)">{{ t.pxPremium }}</span>
+            </button>
+            </sc-if>
+          </div>
+          </sc-if>
+          </sc-if>
+
+          <!-- NEXT tab -->
+          <sc-if value="{{ isTabNext }}">
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+            <x-import component-from-global-scope="Palpitei.MatchCard" status="{{ t.statusToday18 }}" group="{{ t.groupC }}" team-a="{{ t.tBrasil }}" team-b="{{ t.tMarrocos }}" score-a="–" score-b="–" cta="{{ t.ctaRemind }}" on-click="{{ openSala }}" hint-size="100%,120px"></x-import>
+            <x-import component-from-global-scope="Palpitei.MatchCard" status="{{ t.statusToday21 }}" group="{{ t.groupH }}" team-a="{{ t.tFranca }}" team-b="{{ t.tCroacia }}" score-a="–" score-b="–" cta="{{ t.ctaRemind }}" on-click="{{ openSala }}" hint-size="100%,120px"></x-import>
+            <x-import component-from-global-scope="Palpitei.MatchCard" status="{{ t.statusTomorrow16 }}" group="{{ t.groupB }}" team-a="{{ t.tInglaterra }}" team-b="{{ t.tEUA }}" score-a="–" score-b="–" cta="{{ t.ctaRemind }}" on-click="{{ openSala }}" hint-size="100%,120px"></x-import>
+          </div>
+          </sc-if>
+
+          <!-- REPLAYS tab -->
+          <sc-if value="{{ isTabReplays }}">
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+            <x-import component-from-global-scope="Palpitei.MatchCard" status="{{ t.statusEndYesterday }}" group="{{ t.groupA }}" team-a="{{ t.tItalia }}" team-b="{{ t.tMexico }}" score-a="{{ 2 }}" score-b="{{ 1 }}" cta="{{ t.ctaReplay }}" on-click="{{ openSala }}" hint-size="100%,120px"></x-import>
+            <x-import component-from-global-scope="Palpitei.MatchCard" status="{{ t.statusEnd2days }}" group="{{ t.groupE }}" team-a="{{ t.tAlemanha }}" team-b="{{ t.tPortugal }}" score-a="{{ 0 }}" score-b="{{ 0 }}" cta="{{ t.ctaReplay }}" on-click="{{ openSala }}" hint-size="100%,120px"></x-import>
+            <div style="text-align:center;font-size:12.5px;color:var(--text-muted);font-weight:600;padding:12px">{{ t.replaysNote }}</div>
+          </div>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <!-- ---------- SALA AO VIVO ---------- -->
+        <sc-if value="{{ isSala }}">
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden">
+          <!-- match header -->
+          <div style="flex:none;padding:12px 18px 14px;background:linear-gradient(180deg,var(--surface-header),var(--bg-app));border-bottom:1px solid var(--border-1)">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <button onClick="{{ leaveSala }}" style="all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;background:var(--surface-1);display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface-2)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+              <x-import component-from-global-scope="Palpitei.Badge" tone="live" dot="{{ true }}" hint-size="auto,22px">{{ liveBadge }}</x-import>
+              <div style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--gold)"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--gold)"><path d="M12 2l2.4 3.9 4.5 1-3 3.5.5 4.6L12 17l-4.4 2 .5-4.6-3-3.5 4.5-1L12 2z"/></svg>{{ xpFmt }} XP</div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding:0 6px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:96px">
+                <div style="width:38px;height:26px;border-radius:5px;overflow:hidden;display:flex;flex-direction:column"><div style="flex:1;background:#75AADB"></div><div style="flex:1;background:#fff"></div><div style="flex:1;background:#75AADB"></div></div>
+                <span style="font-weight:800;font-size:13.5px;text-align:center">{{ t.tArgentina }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center">
+                <span style="font-weight:900;font-size:40px;font-style:italic;letter-spacing:-2px;line-height:1">{{ matchScoreA }} – {{ matchScoreB }}</span>
+                <span style="font-size:10px;font-weight:800;letter-spacing:.8px;color:var(--text-muted);margin-top:4px">{{ t.groupJ }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:96px">
+                <div style="width:38px;height:26px;border-radius:5px;overflow:hidden;display:flex;background:#0b3d2e"><div style="width:33%;background:#0b3d2e"></div><div style="width:34%;background:#fff;display:flex;align-items:center;justify-content:center"><span style="font-size:9px;color:#c8102e">★</span></div><div style="width:33%;background:#c8102e"></div></div>
+                <span style="font-weight:800;font-size:13.5px;text-align:center">{{ t.tCaboVerde }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- view tabs -->
+          <div style="flex:none;padding:12px 18px 0">
+            <x-import component-from-global-scope="Palpitei.SegTabs" tabs="{{ salaTabsArr }}" value="{{ salaTab }}" on-change="{{ setSalaTab }}" hint-size="100%,40px"></x-import>
+          </div>
+
+          <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:14px 18px 380px">
+            <!-- LANCES -->
+            <sc-if value="{{ isSalaPlays }}">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <sc-for list="{{ feed }}" as="ev" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--border-1)">
+                  <span style="font-size:11px;font-weight:900;color:var(--lime);min-width:34px">{{ ev.t }}</span>
+                  <span style="font-size:13.5px;font-weight:600;color:var(--text-1)">{{ ev.txt }}</span>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+
+            <!-- ESTATÍSTICAS -->
+            <sc-if value="{{ isSalaStats }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <span style="font-weight:800;font-size:13px;color:var(--text-1)">{{ t.tArgentina }}</span>
+              <span style="font-size:10px;font-weight:900;letter-spacing:1px;color:var(--text-faint)">{{ t.statsHdr }}</span>
+              <span style="font-weight:800;font-size:13px;color:var(--text-1)">{{ t.tCaboVerde }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <sc-for list="{{ stats }}" as="st" hint-placeholder-count="6">
+                <div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                    <span style="font-weight:900;font-size:14px;color:var(--lime)">{{ st.a }}</span>
+                    <span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text-muted)">{{ st.label }}</span>
+                    <span style="font-weight:900;font-size:14px;color:var(--text-1)">{{ st.b }}</span>
+                  </div>
+                  <div style="display:flex;gap:6px;height:8px">
+                    <div style="flex:{{ st.aFlex }};background:var(--lime);border-radius:99px 4px 4px 99px"></div>
+                    <div style="flex:{{ st.bFlex }};background:var(--surface-2);border-radius:4px 99px 99px 4px"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+
+            <!-- RANKING DA SALA -->
+            <sc-if value="{{ isSalaRanking }}">
+            <div style="font-size:10px;font-weight:900;letter-spacing:1px;color:var(--text-faint);margin-bottom:10px">{{ roomRankingLine }}</div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <sc-for list="{{ salaRanking }}" as="r" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);background:{{ r.bg }};border:1px solid {{ r.border }}">
+                  <span style="font-weight:900;font-size:13px;color:{{ r.posColor }};min-width:20px">{{ r.pos }}</span>
+                  <span style="flex:1;font-weight:700;font-size:14px;color:{{ r.nameColor }}">{{ r.name }}</span>
+                  <span style="font-weight:800;font-size:13px;color:var(--gold)">{{ r.xp }} XP</span>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+          </div>
+
+          <!-- CHALLENGE QUESTION (bottom sheet) -->
+          <sc-if value="{{ isQuestion }}">
+          <div style="position:absolute;left:0;right:0;bottom:0;z-index:20">
+            <div style="height:72px;margin-bottom:-1px;pointer-events:none;background:linear-gradient(180deg,rgba(8,11,9,0),var(--bg-app))"></div>
+            <div class="pp-scroll" style="max-height:520px;overflow-y:auto;background:var(--surface-1);border-top:1.5px solid var(--lime-line);border-radius:var(--r-4xl) var(--r-4xl) 0 0;padding:12px 20px 24px;box-shadow:0 -22px 55px -14px rgba(0,0,0,.75);animation:sheetUp .38s cubic-bezier(.2,.85,.25,1) both">
+              <div style="width:40px;height:5px;border-radius:99px;background:var(--border-2);margin:0 auto 14px"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-weight:900;font-size:10px;letter-spacing:1px;color:var(--lime)">{{ sheetHeader }}</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:900;color:var(--gold)"><svg width="12" height="12" viewBox="0 0 24 24" fill="var(--gold)"><path d="M12 2l2.4 3.9 4.5 1-3 3.5.5 4.6L12 17l-4.4 2 .5-4.6-3-3.5 4.5-1L12 2z"/></svg>{{ sheetWorth }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;margin-top:12px">
+                <div style="flex:1;height:7px;border-radius:99px;background:var(--surface-sunken);overflow:hidden"><div style="height:100%;border-radius:99px;background:{{ timerColor }};width:{{ timerPct }}%;transition:width 1s linear"></div></div>
+                <span style="font-size:13px;font-weight:900;color:{{ timerColor }};min-width:30px;text-align:right">{{ secs }}s</span>
+              </div>
+              <div style="font-weight:900;font-style:italic;font-size:21px;line-height:1.2;letter-spacing:-.3px;margin-top:14px;text-wrap:pretty">{{ chPrompt }}</div>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+                <sc-for list="{{ opts }}" as="opt" hint-placeholder-count="3">
+                  <button onClick="{{ opt.onClick }}" style="{{ opt.style }}">
+                    <span style="display:flex;align-items:center;gap:10px">{{ opt.label }}</span>
+                    <span style="font-size:12.5px;font-weight:800;color:{{ opt.metaColor }}">{{ opt.meta }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="text-align:center;font-size:11.5px;font-weight:600;color:var(--text-muted);margin-top:14px;text-wrap:pretty">{{ t.fairNote }}</div>
+            </div>
+          </div>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <!-- ---------- CONCLUSÃO DO DESAFIO (tela cheia) ---------- -->
+        <sc-if value="{{ isChallengeResult }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:8px 24px 26px;display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;justify-content:flex-end;padding:4px 0 6px">
+            <x-import component-from-global-scope="Palpitei.Chip" hint-size="auto,32px"><x-import component-from-global-scope="Palpitei.Badge" tone="solid" hint-size="auto,20px">{{ t.lv }} {{ level }}</x-import><span style="font-weight:800">{{ xpFmt }} XP</span></x-import>
+          </div>
+
+          <div style="text-align:center;margin-top:8px;animation:popIn .45s cubic-bezier(.2,.9,.3,1.2) both">
+            <div style="width:128px;height:128px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;background:{{ resBg }};border:2.5px solid {{ resBorder }}">{{ resBigIcon }}</div>
+            <div style="font-weight:900;font-style:italic;font-size:38px;letter-spacing:-1.5px;text-transform:uppercase;margin-top:20px;line-height:1;color:{{ resColor }}">{{ resTitle }}</div>
+            <p style="font-size:15px;line-height:1.5;font-weight:500;color:var(--text-2);margin:14px auto 0;max-width:300px;text-wrap:pretty">{{ resNarr }}</p>
+            <div style="display:inline-flex;align-items:center;gap:7px;margin-top:16px;padding:7px 15px;border-radius:var(--r-pill);background:{{ resBg }};border:1px solid {{ resBorder }}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="{{ resColor }}"><path d="M12 2l2.4 3.9 4.5 1-3 3.5.5 4.6L12 17l-4.4 2 .5-4.6-3-3.5 4.5-1L12 2z"/></svg>
+              <span style="font-weight:900;font-style:italic;font-size:15px;color:{{ resColor }}">{{ resXp }}</span>
+            </div>
+          </div>
+
+          <div style="margin-top:26px;background:var(--surface-1);border:1px solid var(--border-2);border-radius:var(--r-3xl);padding:18px">
+            <div style="font-weight:900;font-size:10.5px;letter-spacing:1px;color:var(--lime)">{{ t.resReadingHdr }}</div>
+            <div style="font-weight:700;font-size:15.5px;line-height:1.4;margin-top:8px;text-wrap:pretty">{{ resReading }}</div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:16px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="font-size:11.5px;font-weight:700;color:var(--text-muted);min-width:44px">{{ t.resBefore }}</span>
+                <div style="flex:1;height:9px;border-radius:99px;background:var(--surface-sunken);overflow:hidden"><div style="height:100%;border-radius:99px;background:var(--text-faint);width:{{ resBeforePct }}%"></div></div>
+                <span style="font-size:13px;font-weight:900;color:var(--text-2);min-width:38px;text-align:right">{{ resBeforePct }}%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="font-size:11.5px;font-weight:700;color:var(--text-muted);min-width:44px">{{ t.resAfter }}</span>
+                <div style="flex:1;height:9px;border-radius:99px;background:var(--surface-sunken);overflow:hidden"><div style="height:100%;border-radius:99px;background:var(--lime);width:{{ resAfterPct }}%;transition:width .6s cubic-bezier(.2,.8,.3,1)"></div></div>
+                <span style="font-size:13px;font-weight:900;color:var(--lime);min-width:38px;text-align:right">{{ resAfterPct }}%</span>
+              </div>
+            </div>
+            <div style="font-size:11.5px;font-weight:500;color:var(--text-faint);margin-top:14px">{{ resProbLabel }}</div>
+          </div>
+
+          <div style="display:flex;align-items:flex-start;gap:11px;margin-top:12px;padding:14px 16px;border-radius:var(--r-2xl);background:var(--lime-a06);border:1px solid var(--lime-line)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--lime)" style="flex:none;margin-top:1px"><path d="M12 3l10 18H2L12 3z"/></svg>
+            <span style="font-size:13px;font-weight:700;color:var(--text-1);line-height:1.4;text-wrap:pretty">{{ resRankNote }}</span>
+          </div>
+
+          <div style="flex:1;min-height:16px"></div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:20px">
+            <x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ next }}" hint-size="100%,52px">{{ resPrimaryLabel }}</x-import>
+            <x-import component-from-global-scope="Palpitei.Button" variant="ghost" full="{{ true }}" on-click="{{ goProgress }}" hint-size="100%,44px">{{ t.resSeeProgress }}</x-import>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---------- FIM DE JOGO ---------- -->
+        <sc-if value="{{ isFim }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:20px 22px 26px;display:flex;flex-direction:column;position:relative">
+          <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none">
+            <span style="position:absolute;left:22%;top:20%;width:9px;height:14px;background:var(--lime);border-radius:2px;transform:rotate(24deg);animation:fadeUp 1.6s ease-in-out .1s infinite alternate"></span>
+            <span style="position:absolute;left:74%;top:24%;width:8px;height:13px;background:var(--gold);border-radius:2px;transform:rotate(-18deg);animation:fadeUp 1.9s ease-in-out .3s infinite alternate"></span>
+            <span style="position:absolute;left:60%;top:44%;width:9px;height:14px;background:var(--lime);border-radius:2px;transform:rotate(40deg);animation:fadeUp 2.1s ease-in-out .2s infinite alternate"></span>
+            <span style="position:absolute;left:16%;top:52%;width:8px;height:12px;background:var(--orange);border-radius:2px;transform:rotate(-30deg);animation:fadeUp 1.7s ease-in-out .5s infinite alternate"></span>
+            <span style="position:absolute;left:38%;top:58%;width:8px;height:13px;background:var(--blue);border-radius:2px;transform:rotate(14deg);animation:fadeUp 2s ease-in-out .4s infinite alternate"></span>
+          </div>
+
+          <div style="text-align:center;position:relative;animation:fadeUp .5s ease both">
+            <div style="font-size:11px;font-weight:900;letter-spacing:1.2px;color:var(--text-muted)">{{ t.groupJ }}</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:6px">
+              <span style="display:inline-flex;flex-direction:column;gap:3px"><span style="width:10px;height:5px;background:var(--lime);border-radius:2px;transform:rotate(-18deg)"></span><span style="width:8px;height:5px;background:var(--gold);border-radius:2px;transform:rotate(20deg)"></span></span>
+              <span style="font-weight:900;font-size:38px;font-style:italic;letter-spacing:-1.5px;line-height:1">{{ t.fimTitle }}</span>
+              <span style="display:inline-flex;flex-direction:column;gap:3px"><span style="width:10px;height:5px;background:var(--orange);border-radius:2px;transform:rotate(18deg)"></span><span style="width:8px;height:5px;background:var(--lime);border-radius:2px;transform:rotate(-20deg)"></span></span>
+            </div>
+          </div>
+
+          <div style="position:relative;margin-top:22px;background:var(--surface-1);border:1px solid var(--border-2);border-radius:var(--r-3xl);padding:20px 18px;animation:popIn .5s cubic-bezier(.2,.9,.3,1.2) both">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px;width:88px">
+                <div style="width:42px;height:28px;border-radius:5px;overflow:hidden;display:flex;flex-direction:column"><div style="flex:1;background:#75AADB"></div><div style="flex:1;background:#fff"></div><div style="flex:1;background:#75AADB"></div></div>
+                <span style="font-weight:800;font-size:13px;text-align:center">{{ t.tArgentina }}</span>
+              </div>
+              <span style="font-weight:900;font-size:38px;font-style:italic;letter-spacing:-2px;line-height:1">{{ matchScoreA }} – {{ matchScoreB }}</span>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px;width:88px">
+                <div style="width:42px;height:28px;border-radius:5px;overflow:hidden;display:flex;background:#0b3d2e"><div style="width:33%;background:#0b3d2e"></div><div style="width:34%;background:#fff;display:flex;align-items:center;justify-content:center"><span style="font-size:10px;color:#c8102e">★</span></div><div style="width:33%;background:#c8102e"></div></div>
+                <span style="font-weight:800;font-size:13px;text-align:center">{{ t.tCaboVerde }}</span>
+              </div>
+            </div>
+            <div style="text-align:center;font-size:11.5px;font-weight:600;color:var(--text-muted);margin-top:14px;border-top:1px solid var(--border-1);padding-top:12px">{{ t.fimScorers }}</div>
+          </div>
+
+          <div style="position:relative;display:flex;gap:10px;margin-top:12px">
+            <div style="flex:1;background:var(--surface-1);border:1px solid var(--lime-line);border-radius:var(--r-2xl);padding:15px 8px;text-align:center">
+              <div style="font-weight:900;font-style:italic;font-size:22px;color:var(--lime)">+{{ salaXpFmt }}</div>
+              <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--text-muted);margin-top:3px">{{ t.fimXpLabel }}</div>
+            </div>
+            <div style="flex:1;background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl);padding:15px 8px;text-align:center">
+              <div style="font-weight:900;font-style:italic;font-size:22px">{{ correctCount }}/{{ chTotal }}</div>
+              <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--text-muted);margin-top:3px">{{ t.fimPicksLabel }}</div>
+            </div>
+            <div style="flex:1;background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl);padding:15px 8px;text-align:center">
+              <div style="font-weight:900;font-style:italic;font-size:22px">{{ fimFriendPos }}</div>
+              <div style="font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--text-muted);margin-top:3px">{{ t.fimFriendsLabel }}</div>
+            </div>
+          </div>
+
+          <div style="position:relative;margin-top:16px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:800;color:var(--text-muted);margin-bottom:8px"><span>{{ t.levelWord }} {{ level }}</span><span>{{ t.levelWord }} {{ levelNext }}</span></div>
+            <x-import component-from-global-scope="Palpitei.ProgressBar" value="{{ levelPct }}" hint-size="100%,8px"></x-import>
+            <div style="text-align:center;font-size:12px;font-weight:700;color:var(--text-2);margin-top:8px">{{ toNextLine }}</div>
+          </div>
+
+          <div style="flex:1;min-height:20px"></div>
+          <div style="position:relative;display:flex;flex-direction:column;gap:10px;margin-top:20px">
+            <x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ goRankingFromFim }}" hint-size="100%,52px">{{ t.fimShare }}</x-import>
+            <x-import component-from-global-scope="Palpitei.Button" variant="ghost" full="{{ true }}" on-click="{{ leaveSala }}" hint-size="100%,44px">{{ t.backHome }}</x-import>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---------- RANKING ---------- -->
+        <sc-if value="{{ isRanking }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:12px 18px 20px">
+          <div style="font-weight:900;font-style:italic;font-size:24px;letter-spacing:-.5px;padding:6px 0 4px">{{ t.rankingTitle }}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:14px">{{ t.rankingSub }}</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ globalRanking }}" as="r" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:var(--r-xl);background:{{ r.bg }};border:1px solid {{ r.border }}">
+                <span style="font-weight:900;font-size:15px;color:{{ r.posColor }};min-width:24px">{{ r.pos }}</span>
+                <div style="width:36px;height:36px;border-radius:11px;background:{{ r.avBg }};display:flex;align-items:center;justify-content:center;font-weight:900;font-style:italic;font-size:13px;color:{{ r.avColor }}">{{ r.initials }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:800;font-size:14.5px;color:{{ r.nameColor }}">{{ r.name }}</div>
+                  <div style="font-size:11.5px;font-weight:600;color:var(--text-muted)">{{ r.sub }}</div>
+                </div>
+                <span style="font-weight:900;font-size:14px;color:var(--gold)">{{ r.xp }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---------- PERFIL ---------- -->
+        <sc-if value="{{ isPerfil }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:16px 18px 20px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="width:60px;height:60px;border-radius:18px;background:var(--lime);display:flex;align-items:center;justify-content:center;font-weight:900;font-style:italic;font-size:22px;color:var(--on-lime);transform:rotate(-4deg)">{{ nameInitials }}</div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-weight:900;font-size:20px;font-style:italic;letter-spacing:-.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ nickname }}</div>
+                <button onClick="{{ openNameEdit }}" style="all:unset;cursor:pointer;flex:none;width:28px;height:28px;border-radius:9px;background:var(--surface-1);border:1px solid var(--border-2);display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface-2);border-color:var(--lime-line)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>
+              </div>
+              <div style="display:inline-flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;font-weight:700;color:var(--text-muted)">
+                <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:var(--r-pill);background:var(--lime-a10);color:var(--lime)"><svg width="11" height="9" viewBox="0 0 24 20"><path fill="currentColor" d="M5 14h14l-3 4H2l3-4zM5 1h14l-3 4H2l3-4zM19 7H5l-3 4h14l3-4z"/></svg>{{ authLabel }}</span>
+              </div>
+            </div>
+          </div>
+
+          <sc-if value="{{ editingName }}">
+          <div style="margin-top:16px;background:var(--surface-1);border:1.5px solid var(--lime-line);border-radius:var(--r-2xl);padding:16px;animation:popIn .3s cubic-bezier(.2,.9,.3,1.2) both">
+            <div style="font-size:10px;font-weight:900;letter-spacing:1px;color:var(--lime)">{{ t.editNameHdr }}</div>
+            <input value="{{ nameDraft }}" onInput="{{ onNameInput }}" maxlength="20" placeholder="{{ t.namePlaceholder }}" style="{{ nameInputStyle }}"/>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+              <span style="font-size:11px;font-weight:700;color:var(--text-muted)">{{ nameCount }}/20</span>
+              <span style="{{ nameHintStyle }}">{{ nameHint }}</span>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:14px">
+              <div style="flex:1"><x-import component-from-global-scope="Palpitei.Button" variant="ghost" full="{{ true }}" on-click="{{ cancelNameEdit }}" hint-size="100%,44px">{{ t.cancel }}</x-import></div>
+              <div style="flex:1"><x-import component-from-global-scope="Palpitei.Button" full="{{ true }}" disabled="{{ nameInvalid }}" on-click="{{ saveName }}" hint-size="100%,44px">{{ t.save }}</x-import></div>
+            </div>
+          </div>
+          </sc-if>
+
+          <div style="display:flex;gap:10px;margin-top:20px">
+            <div style="flex:1;background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl);padding:14px;text-align:center"><div style="font-weight:900;font-size:22px;color:var(--gold)">{{ xpFmt }}</div><div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-top:2px">{{ t.xpTotal }}</div></div>
+            <div style="flex:1;background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl);padding:14px;text-align:center"><div style="font-weight:900;font-size:22px">{{ t.lv }} {{ level }}</div><div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-top:2px">{{ t.nivel }}</div></div>
+            <div style="flex:1;background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl);padding:14px;text-align:center"><div style="font-weight:900;font-size:22px;color:var(--orange)">{{ streak }}</div><div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-top:2px">{{ t.sequencia }}</div></div>
+          </div>
+
+          <sc-if value="{{ showPremiumUpsell }}">
+          <button onClick="{{ openPremium }}" style="all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;gap:13px;width:100%;margin-top:16px;padding:16px 18px;background:linear-gradient(135deg,var(--lime-a14),var(--surface-1));border:1.5px solid var(--lime-line);border-radius:var(--r-2xl)" style-hover="filter:brightness(1.05)">
+            <div style="flex:none;width:44px;height:44px;border-radius:13px;background:var(--lime);display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--on-lime)"><path d="M5 16l-2-9 6 4 3-7 3 7 6-4-2 9H5zm0 3h14v2H5v-2z"/></svg></div>
+            <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:15.5px">{{ t.pxBadge }}</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600">{{ premiumUpsellSub }}</div></div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          </sc-if>
+          <sc-if value="{{ isPremium }}">
+          <div style="display:flex;align-items:center;gap:13px;width:100%;margin-top:16px;padding:16px 18px;background:var(--surface-1);border:1.5px solid var(--lime-line);border-radius:var(--r-2xl)">
+            <div style="flex:none;width:44px;height:44px;border-radius:13px;background:var(--lime);display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--on-lime)"><path d="M5 16l-2-9 6 4 3-7 3 7 6-4-2 9H5zm0 3h14v2H5v-2z"/></svg></div>
+            <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:15.5px">{{ t.pxBadge }}</div><div style="font-size:12.5px;color:var(--lime);font-weight:700">{{ premiumActiveSub }}</div></div>
+          </div>
+          </sc-if>
+
+          <div style="font-size:10px;font-weight:900;letter-spacing:1px;color:var(--text-faint);margin:22px 0 10px">{{ t.missionsHdr }}</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ missions }}" as="m" hint-placeholder-count="3">
+              <div style="background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl);padding:14px 16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                  <span style="font-weight:800;font-size:14px">{{ m.title }}</span>
+                  <span style="font-size:11px;font-weight:800;color:var(--text-2)">{{ m.label }}</span>
+                </div>
+                <div style="margin-top:11px"><x-import component-from-global-scope="Palpitei.ProgressBar" value="{{ m.pct }}" hint-size="100%,8px"></x-import></div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="font-size:10px;font-weight:900;letter-spacing:1px;color:var(--text-faint);margin:22px 0 10px">{{ t.settingsHdr }}</div>
+          <div style="background:var(--surface-1);border:1px solid var(--border-1);border-radius:var(--r-2xl);overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-1)">
+              <div><div style="font-weight:700;font-size:14.5px">{{ t.langTitle }}</div><div style="font-size:12px;color:var(--text-muted);font-weight:600">{{ t.langSub }}</div></div>
+              <div style="display:flex;gap:4px;background:var(--surface-sunken);border:1px solid var(--border-1);border-radius:var(--r-pill);padding:3px">
+                <button onClick="{{ setLangPt }}" style="{{ langPtStyle }}">PT</button>
+                <button onClick="{{ setLangEn }}" style="{{ langEnStyle }}">EN</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border-1)">
+              <div><div style="font-weight:700;font-size:14.5px">{{ t.notifTitle }}</div><div style="font-size:12px;color:var(--text-muted);font-weight:600">{{ t.notifSub }}</div></div>
+              <x-import component-from-global-scope="Palpitei.Toggle" checked="{{ notif }}" on-change="{{ toggleNotif }}" hint-size="46px,28px"></x-import>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">
+              <div><div style="font-weight:700;font-size:14.5px">{{ t.liveTitle }}</div><div style="font-size:12px;color:var(--text-muted);font-weight:600">{{ t.liveSub }}</div></div>
+              <x-import component-from-global-scope="Palpitei.Toggle" checked="{{ live }}" on-change="{{ toggleLive }}" hint-size="46px,28px"></x-import>
+            </div>
+          </div>
+
+          <div style="margin-top:14px"><x-import component-from-global-scope="Palpitei.ListRow" title="{{ t.howTitle }}" subtitle="{{ t.howSub }}" trailing="{{ chevron }}" hint-size="100%,60px"></x-import></div>
+          <button onClick="{{ onLogout }}" style="all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;width:100%;margin-top:16px;height:48px;border-radius:var(--r-xl);border:1px solid var(--border-2);color:var(--red);font-weight:800;font-size:14.5px" style-hover="background:rgba(255,90,90,.08)">{{ t.signout }}</button>
+        </div>
+        </sc-if>
+
+        <!-- ---------- PREMIUM: paywall ---------- -->
+        <sc-if value="{{ isPremiumScreen }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:8px 22px 26px;display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 0 10px">
+            <button onClick="{{ backFromPremium }}" style="all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;background:var(--surface-1);border:1px solid var(--border-1);display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <span style="display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border-radius:var(--r-pill);background:var(--lime);color:var(--on-lime);font-size:11px;font-weight:900;letter-spacing:.6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--on-lime)"><path d="M5 16l-2-9 6 4 3-7 3 7 6-4-2 9H5z"/></svg>{{ t.pxBadge }}</span>
+            <span style="width:34px"></span>
+          </div>
+
+          <div style="margin-top:10px">
+            <div style="font-weight:900;font-style:italic;font-size:34px;letter-spacing:-1.5px;line-height:1.02;text-wrap:pretty">{{ t.pxH1 }}<br/>{{ t.pxH2 }} <span style="color:var(--lime)">{{ t.pxH3 }}</span></div>
+            <p style="font-size:14.5px;line-height:1.5;font-weight:500;color:var(--text-2);margin-top:12px;text-wrap:pretty">{{ t.pxSub }}</p>
+          </div>
+
+          <div style="margin-top:22px;border:1px solid var(--border-2);border-radius:var(--r-3xl);overflow:hidden">
+            <div style="display:flex;align-items:center;padding:12px 16px;background:var(--surface-1);border-bottom:1px solid var(--border-1)">
+              <span style="flex:1;font-size:11px;font-weight:900;letter-spacing:.6px;color:var(--text-faint)"></span>
+              <span style="width:64px;text-align:center;font-size:11px;font-weight:900;letter-spacing:.5px;color:var(--text-muted)">{{ t.pxFree }}</span>
+              <span style="width:72px;text-align:center;font-size:11px;font-weight:900;letter-spacing:.5px;color:var(--lime)">{{ t.pxPremium }}</span>
+            </div>
+            <sc-for list="{{ pxRows }}" as="row" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;padding:13px 16px;border-bottom:1px solid var(--border-1)">
+                <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">{{ row.label }}</div><div style="font-size:11.5px;color:var(--text-muted);font-weight:600">{{ row.sub }}</div></div>
+                <span style="width:64px;text-align:center;font-size:12.5px;font-weight:800;color:{{ row.freeColor }}">{{ row.free }}</span>
+                <span style="width:72px;display:flex;justify-content:center">{{ row.premiumMark }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="flex:1;min-height:18px"></div>
+          <div style="position:sticky;bottom:0;padding-top:14px;background:linear-gradient(180deg,rgba(8,11,9,0),var(--bg-app) 32%)">
+            <x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ goPlans }}" hint-size="100%,54px">{{ t.pxSeePlans }}</x-import>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---------- PREMIUM: plans ---------- -->
+        <sc-if value="{{ isPlansScreen }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:8px 22px 26px;display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;align-items:center;gap:12px;padding:4px 0 14px">
+            <button onClick="{{ openPremium }}" style="all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;background:var(--surface-1);border:1px solid var(--border-1);display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+            <span style="font-weight:900;font-style:italic;font-size:20px;letter-spacing:-.5px">{{ t.plTitle }}</span>
+          </div>
+          <p style="font-size:14px;line-height:1.5;font-weight:500;color:var(--text-2);margin:0 0 18px;text-wrap:pretty">{{ t.plSub }}</p>
+
+          <button onClick="{{ selectPlanAnnual }}" style="{{ planAnnualStyle }}">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:10px"><span style="font-weight:800;font-size:16px">{{ t.plAnnual }}</span><span style="font-size:9.5px;font-weight:900;letter-spacing:.5px;color:var(--on-lime);background:var(--lime);padding:3px 8px;border-radius:var(--r-pill)">{{ t.plBest }}</span></div>
+              <span style="font-size:11px;font-weight:900;color:var(--lime)">{{ t.plDiscount }}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:6px;margin-top:12px"><span style="font-weight:900;font-style:italic;font-size:32px;letter-spacing:-1px">{{ t.plAnnualPrice }}</span><span style="font-size:13px;font-weight:700;color:var(--text-muted)">{{ t.plPerMonth }}</span></div>
+            <div style="font-size:12.5px;font-weight:600;color:var(--text-2);margin-top:4px">{{ t.plAnnualDesc }}</div>
+            <div style="font-size:11.5px;font-weight:700;color:var(--lime);margin-top:6px">{{ t.plAnnualNote }}</div>
+          </button>
+
+          <button onClick="{{ selectPlanMonthly }}" style="{{ planMonthlyStyle }}">
+            <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-weight:800;font-size:16px">{{ t.plMonthly }}</span></div>
+            <div style="display:flex;align-items:baseline;gap:6px;margin-top:12px"><span style="font-weight:900;font-style:italic;font-size:32px;letter-spacing:-1px">{{ t.plMonthlyPrice }}</span><span style="font-size:13px;font-weight:700;color:var(--text-muted)">{{ t.plPerMonth }}</span></div>
+            <div style="font-size:12.5px;font-weight:600;color:var(--text-2);margin-top:4px">{{ t.plMonthlyDesc }}</div>
+          </button>
+
+          <div style="flex:1;min-height:18px"></div>
+          <div style="position:sticky;bottom:0;padding-top:14px;background:linear-gradient(180deg,rgba(8,11,9,0),var(--bg-app) 32%)">
+            <x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ goCheckout }}" hint-size="100%,54px">{{ t.plContinue }}</x-import>
+            <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);margin-top:10px">{{ t.plFoot }}</div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---------- PREMIUM: checkout ---------- -->
+        <sc-if value="{{ isCheckoutScreen }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:8px 22px 26px;display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;align-items:center;gap:12px;padding:4px 0 16px">
+            <button onClick="{{ goPlans }}" style="all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;background:var(--surface-1);border:1px solid var(--border-1);display:flex;align-items:center;justify-content:center" style-hover="background:var(--surface-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+            <span style="font-weight:900;font-style:italic;font-size:20px;letter-spacing:-.5px">{{ t.ckTitle }}</span>
+          </div>
+
+          <div style="background:var(--surface-1);border:1px solid var(--border-2);border-radius:var(--r-2xl);padding:16px 18px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text-muted)">{{ t.ckPlan }}</div><div style="font-weight:800;font-size:16px;margin-top:3px">{{ planName }} · {{ pxPremiumWord }}</div></div>
+              <div style="text-align:right"><div style="font-weight:900;font-style:italic;font-size:22px">{{ planPrice }}</div><div style="font-size:11px;font-weight:700;color:var(--text-muted)">{{ t.plPerMonth }}</div></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border-1);margin-top:14px;padding-top:14px">
+              <span style="font-size:13px;font-weight:700;color:var(--text-2)">{{ t.ckToday }}</span>
+              <span style="font-weight:900;font-size:16px;color:var(--lime)">{{ todayCharge }}</span>
+            </div>
+            <div style="font-size:11.5px;font-weight:600;color:var(--text-muted);margin-top:6px">{{ t.ckTrialLine }}</div>
+          </div>
+
+          <div style="font-size:10px;font-weight:900;letter-spacing:1px;color:var(--text-faint);margin:22px 0 10px">{{ t.ckPayHdr }}</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ payMethods }}" as="pm" hint-placeholder-count="3">
+              <button onClick="{{ pm.onClick }}" style="{{ pm.style }}">
+                <span style="flex:none;width:38px;height:38px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center">{{ pm.icon }}</span>
+                <span style="flex:1;text-align:left"><span style="display:block;font-weight:800;font-size:14.5px">{{ pm.title }}</span><span style="display:block;font-size:12px;color:var(--text-muted);font-weight:600">{{ pm.sub }}</span></span>
+                <span style="{{ pm.radioStyle }}">{{ pm.radioDot }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="flex:1;min-height:18px"></div>
+          <div style="position:sticky;bottom:0;padding-top:14px;background:linear-gradient(180deg,rgba(8,11,9,0),var(--bg-app) 32%)">
+            <x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ confirmPurchase }}" hint-size="100%,54px">{{ t.ckPay }} · {{ todayCharge }}</x-import>
+            <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-muted);margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>{{ t.ckFoot }}</div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ---------- PREMIUM: done ---------- -->
+        <sc-if value="{{ isPremiumDone }}">
+        <div class="pp-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:24px 24px 26px;display:flex;flex-direction:column;justify-content:center;text-align:center;align-items:center">
+          <div style="width:96px;height:96px;border-radius:50%;background:var(--lime-a14);border:1.5px solid var(--lime-line);display:flex;align-items:center;justify-content:center;animation:popIn .5s cubic-bezier(.2,.9,.3,1.2) both"><svg width="46" height="46" viewBox="0 0 24 24" fill="var(--lime)"><path d="M5 16l-2-9 6 4 3-7 3 7 6-4-2 9H5zm0 3h14v2H5v-2z"/></svg></div>
+          <div style="font-weight:900;font-style:italic;font-size:28px;letter-spacing:-.8px;margin-top:22px;text-wrap:pretty">{{ t.ckDoneTitle }}</div>
+          <p style="font-size:15px;line-height:1.5;font-weight:500;color:var(--text-2);margin-top:12px;max-width:290px;text-wrap:pretty">{{ t.ckDoneBody }}</p>
+        </div>
+        <div style="flex:none;padding:0 24px 26px"><x-import component-from-global-scope="Palpitei.Button" size="lg" full="{{ true }}" on-click="{{ premiumDoneCreate }}" hint-size="100%,54px">{{ t.ckDoneCta }}</x-import></div>
+        </sc-if>
+
+        <!-- ---------- BOTTOM NAV ---------- -->
+        <sc-if value="{{ showNav }}">
+        <div style="flex:none;display:flex;align-items:center;justify-content:space-around;padding:8px 24px 22px;border-top:1px solid var(--border-1);background:var(--surface-header)">
+          <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;color:{{ navHomeColor }}">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+            <span style="font-size:10.5px;font-weight:800">{{ t.navHome }}</span>
+          </button>
+          <button onClick="{{ goRanking }}" style="all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;color:{{ navRankColor }}">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20V10M12 20V4M18 20v-6"/></svg>
+            <span style="font-size:10.5px;font-weight:800">{{ t.navRanking }}</span>
+          </button>
+          <button onClick="{{ goPerfil }}" style="all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;color:{{ navPerfilColor }}">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
+            <span style="font-size:10.5px;font-weight:800">{{ t.navPerfil }}</span>
+          </button>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;472&quot;,&quot;height&quot;:&quot;896&quot;},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;login&quot;,&quot;home&quot;,&quot;sala&quot;,&quot;ranking&quot;,&quot;perfil&quot;],&quot;default&quot;:&quot;login&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Protótipo&quot;},&quot;countdownSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:12,&quot;min&quot;:5,&quot;max&quot;:30,&quot;step&quot;:1,&quot;unit&quot;:&quot;s&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Protótipo&quot;}}">
+const L = {
+  pt: {
+    worldcup:'COPA DO MUNDO 2026',
+    tagline:'Palpite ao vivo, desafie seus amigos e se divirta.',
+    google:'Entrar com Google', wallet:'Entrar com carteira', demo:'Entrar na versão demo',
+    demoNote:'No modo demo você entra na hora, com uma conta de teste pronta, sem carteira e sem configuração.',
+    lv:'Nv',
+    obStep:'PASSO', obOf:'de',
+    obWelcomeHdrGoogle:'Conta criada com Google', obWelcomeHdrWallet:'Carteira conectada',
+    obWelcomeViaGoogle:'via Privy', obWelcomeViaWallet:'via Solana',
+    obWelcomeTitle:'Bem-vindo ao Palpitei!', obWelcomeBody:'Sua conta é nova, então bora deixar tudo com a sua cara antes do primeiro palpite.',
+    obStart:'Bora começar',
+    obNameTitle:'Como querem te chamar?', obNameBody:'Esse é o apelido que aparece no ranking e nas ligas.',
+    obTeamTitle:'Qual seu time do coração?', obTeamBody:'A gente destaca os jogos dele pra você. Dá pra mudar depois.',
+    obSkip:'Pular por agora', obContinue:'Continuar', obFinish:'Entrar no Palpitei',
+    obReadyTitle:'Tudo pronto,', obReadyBody:'Você começa no Nível 1 com 0 XP. Acerte palpites ao vivo pra subir e provocar a galera.',
+    newLeagueTitle:'NENHUMA LIGA AINDA', newLeagueLead:'Crie sua liga privada', newLeagueSub:'Chame a galera e dispute o ranking', newLeagueCta:'Criar liga',
+    newUserBadge:'novato · Nível 1',
+    tabLive:'Ao Vivo', tabNext:'Próximos', tabReplays:'Replays',
+    missionToday:'MISSÃO DE HOJE', streakLbl:'Sequência', mission1:'Acerte 3 palpites seguidos',
+    leaguesTitle:'SUAS LIGAS PRIVADAS', leaguesFree:'1 de 1 free', ligaSub:'8 amigos · você lidera',
+    replaysNote:'Você fez 4 de 6 palpites nas últimas partidas.',
+    statusLive64:'AO VIVO · 64’', statusLive31:'AO VIVO · 31’',
+    statusToday18:'HOJE · 18:00', statusToday21:'HOJE · 21:00', statusTomorrow16:'AMANHÃ · 16:00',
+    statusEndYesterday:'ENCERRADO · ONTEM', statusEnd2days:'ENCERRADO · 2 DIAS',
+    groupA:'GRUPO A · COPA 2026', groupB:'GRUPO B · COPA 2026', groupC:'GRUPO C · COPA 2026',
+    groupE:'GRUPO E · COPA 2026', groupF:'GRUPO F · COPA 2026', groupH:'GRUPO H · COPA 2026', groupJ:'GRUPO J · COPA 2026',
+    ctaEnter:'Entrar na sala →', ctaRemind:'Me lembra →', ctaReplay:'Rever partida →',
+    tArgentina:'Argentina', tCaboVerde:'Cabo Verde', tEspanha:'Espanha', tCoreia:'Coreia',
+    tBrasil:'Brasil', tMarrocos:'Marrocos', tFranca:'França', tCroacia:'Croácia',
+    tInglaterra:'Inglaterra', tEUA:'Estados Unidos', tItalia:'Itália', tMexico:'México',
+    tAlemanha:'Alemanha', tPortugal:'Portugal',
+    liveShort:'AO VIVO', matchEvents:'LANCES DA PARTIDA',
+    salaTabPlays:'Lances', salaTabStats:'Estatísticas', salaTabRanking:'Ranking',
+    statsHdr:'ESTATÍSTICAS AO VIVO', statPossession:'Posse de bola', statShots:'Finalizações', statOnTarget:'No gol', statCorners:'Escanteios', statFouls:'Faltas', statCards:'Cartões',
+    resReadingHdr:'LEITURA DO JOGO', resBefore:'antes', resAfter:'agora',
+    resBackToGame:'Voltar ao jogo · próximo desafio', resBackToFinal:'Voltar ao jogo · resultado final', resSeeProgress:'Ver minha progressão',
+    roomRanking:'RANKING DA SALA', inRoom:'na sala',
+    challengeLive:'DESAFIO AO VIVO', worth:'vale',
+    fairNote:'A janela fecha antes do lance que resolve o desafio, justo pra todo mundo.',
+    resWin:'Mandou bem!', resWinSub:'Você acertou o palpite',
+    resTimeout:'Tempo esgotado', resMiss:'Quase!', rightAnswer:'Resposta certa:',
+    nextChallenge:'Próximo desafio', seeFinal:'Ver resultado final',
+    fullTime:'FIM DE JOGO · GRUPO J', argBeat:'Argentina venceu Cabo Verde',
+    perf:'SEU DESEMPENHO', picksMid:'de', picksSuffix:'palpites certos',
+    streakLower:'sequência', xpTotalWord:'XP total', levelWord:'Nível',
+    seeRanking:'Ver ranking completo', backHome:'Voltar ao início',
+    rankingTitle:'Ranking', rankingSub:'Temporada Copa 2026 · atualizada ao vivo',
+    leagueGold:'Liga Ouro', leagueSilver:'Liga Prata', leagueBronze:'Liga Bronze', correctToday:'acertos hoje', meSub:'Resenha FC · você',
+    walletDemo:'demo · carteira simulada', xpTotal:'XP TOTAL', nivel:'NÍVEL', sequencia:'SEQUÊNCIA',
+    missionsHdr:'MISSÕES', mission2:'Entre em 5 salas ao vivo', mission3:'Convide um amigo pra liga',
+    settingsHdr:'AJUSTES', langTitle:'Idioma', langSub:'Português / English',
+    notifTitle:'Notificações de gol', notifSub:'Avisa quando abrir desafio',
+    liveTitle:'Dados ao vivo', liveSub:'Feed em tempo real da partida',
+    howTitle:'Como funciona o Palpitei', howSub:'Regras, XP e ligas', signout:'Sair da conta',
+    editNameHdr:'EDITAR APELIDO', namePlaceholder:'seu apelido', cancel:'Cancelar', save:'Salvar',
+    nameHintShort:'Mínimo de 3 caracteres', nameHintOk:'Apelido disponível', meSubYou:'Resenha FC · você',
+    fimTitle:'FIM DE JOGO', fimScorers:'Gols: Messi 23’ · Semedo 58’ · Álvarez 67’', fimXpLabel:'XP NA RODADA', fimPicksLabel:'PALPITES CERTOS', fimFriendsLabel:'ENTRE AMIGOS', fimShare:'Compartilhar resultado',
+    leaguesCountFree:'de 1 grátis', leaguesUnlimited:'ilimitadas', createLeague:'Criar liga', createAnother:'Criar nova liga', myLeague:'Minha Liga', myLeagueSub:'1 membro · você lidera',
+    pxBadge:'PALPITEI PREMIUM', pxH1:'Suas ligas.', pxH2:'Sua galera.', pxH3:'Sem limite.',
+    pxSub:'Crie quantas ligas quiser, chame o grupo todo e dispute o mata-mata até a final.',
+    pxFree:'Free', pxPremium:'Premium', pxSeePlans:'Ver planos',
+    pxUnlimited:'Ilimitadas', pxComplete:'Completo', pxBasic:'Básico', pxIncluded:'Incluso', pxFreeLeagues:'1 liga',
+    pxRowLeagues:'Ligas privadas', pxRowLeaguesSub:'seu grupo, seu escudo', pxRowBracket:'Formato mata-mata', pxRowPicks:'Palpites ilimitados', pxRowRank:'XP e ranking global', pxRowStats:'Estatística e histórico', pxRowRead:'Leitura do jogo completa', pxRowCustom:'Escudo, tema e badges', pxRowReminder:'Lembrete de palpite', pxRowNoAds:'Sem anúncios', pxRowPass:'Passe de torneio',
+    plTitle:'Escolha seu plano', plSub:'Ligas ilimitadas, mata-mata e tudo do Premium. Cancele quando quiser.',
+    plBest:'MELHOR VALOR', plAnnual:'Anual', plAnnualDesc:'7 dias grátis, depois R$ 49,90/ano', plAnnualPrice:'R$ 4,16', plPerMonth:'/mês', plAnnualNote:'menos de R$ 0,96 por semana', plDiscount:'-17%',
+    plMonthly:'Mensal', plMonthlyDesc:'cobrado todo mês', plMonthlyPrice:'R$ 4,99',
+    plContinue:'Continuar', plFoot:'Renovação automática · cancele quando quiser',
+    ckTitle:'Finalizar assinatura', ckPlan:'Plano', ckToday:'Hoje você paga', ckTrialLine:'7 dias grátis, primeira cobrança em 23 jul', ckPayHdr:'FORMA DE PAGAMENTO',
+    ckCard:'Cartão de crédito', ckCardSub:'Visa, Master, Elo', ckPix:'Pix', ckPixSub:'aprovação na hora', ckWallet:'Carteira Solana', ckWalletSub:'7xKq…9fPz · USDC',
+    ckPay:'Assinar agora', ckFoot:'Pagamento seguro · cancele quando quiser',
+    ckDoneTitle:'Bem-vindo ao Premium!', ckDoneBody:'Ligas ilimitadas, mata-mata e leitura completa já liberados na sua conta.', ckDoneCta:'Criar minha liga',
+    premiumChip:'Premium',
+    navHome:'Início', navRanking:'Ranking', navPerfil:'Perfil',
+    you:'Você',
+    ch:[
+      { type:'PRÓXIMO GOL', prompt:'Quem marca o próximo gol?', opts:{arg:'Argentina',cab:'Cabo Verde',none:'Ninguém até o fim'},
+        subWin:'Você cravou: a Argentina balançou a rede aos 71’.', subMiss:'A Argentina marcou aos 71’ e não era essa sua aposta.', subTimeout:'O gol da Argentina saiu aos 71’ e você ficou olhando.',
+        reading:'Com o gol da Argentina, a chance de vitória saltou de 58% para 74%.', probLabel:'Probabilidade de vitória da Argentina · atualizada ao vivo' },
+      { type:'ESCANTEIOS', prompt:'Escanteios até o apito final: acima ou abaixo de 9,5?', opts:{over:'Acima de 9,5',under:'Abaixo de 9,5'},
+        subWin:'Acima de 9,5 confirmado: o 10º escanteio saiu aos 82’.', subMiss:'Deu acima de 9,5: o 10º escanteio saiu aos 82’.', subTimeout:'O 10º escanteio saiu aos 82’ e o tempo já tinha fechado.',
+        reading:'Com o ritmo ofensivo da Argentina, a chance de passar de 9,5 escanteios foi de 46% para 100%.', probLabel:'Chance de mais de 9,5 escanteios · atualizada ao vivo' },
+      { type:'PRÓXIMO LANCE', prompt:'A próxima finalização da Argentina vai...', opts:{goal:'No gol',out:'Pra fora',post:'Na trave'},
+        subWin:'Isso! Chute de Messi por cima do gol aos 88’.', subMiss:'A bola foi pra fora: Messi chutou por cima aos 88’.', subTimeout:'Messi finalizou pra fora aos 88’ antes de você responder.',
+        reading:'A pressão seguiu alta: a chance da finalização ir pra fora estava em 44%.', probLabel:'Chance da bola ir pra fora · atualizada ao vivo' },
+      { type:'RESULTADO FINAL', prompt:'Como termina Argentina × Cabo Verde?', opts:{arg:'Vitória da Argentina',draw:'Empate',cab:'Vitória de Cabo Verde'},
+        subWin:'Fechou! A Argentina venceu por 3 a 1.', subMiss:'A Argentina venceu por 3 a 1 e não era o seu palpite.', subTimeout:'Fim de jogo: Argentina 3 x 1 e o tempo já tinha fechado.',
+        reading:'Apito final: a Argentina confirmou a vitória e fechou em 100%.', probLabel:'Probabilidade de vitória da Argentina · resultado final' },
+    ],
+  },
+  en: {
+    worldcup:'WORLD CUP 2026',
+    tagline:'Predict live, challenge your friends and have fun.',
+    google:'Sign in with Google', wallet:'Sign in with wallet', demo:'Try the demo',
+    demoNote:"In demo mode you're in right away, with a ready test account, no wallet and no setup.",
+    lv:'Lv',
+    obStep:'STEP', obOf:'of',
+    obWelcomeHdrGoogle:'Account created with Google', obWelcomeHdrWallet:'Wallet connected',
+    obWelcomeViaGoogle:'via Privy', obWelcomeViaWallet:'via Solana',
+    obWelcomeTitle:'Welcome to Palpitei!', obWelcomeBody:"Your account is new, so let's make it yours before your first pick.",
+    obStart:"Let's go",
+    obNameTitle:'What should we call you?', obNameBody:'This nickname shows up on the ranking and in leagues.',
+    obTeamTitle:"What's your favorite team?", obTeamBody:'We highlight their matches for you. You can change it later.',
+    obSkip:'Skip for now', obContinue:'Continue', obFinish:'Enter Palpitei',
+    obReadyTitle:'All set,', obReadyBody:'You start at Level 1 with 0 XP. Nail live picks to climb and challenge the crowd.',
+    newLeagueTitle:'NO LEAGUES YET', newLeagueLead:'Create your private league', newLeagueSub:'Bring your crew and battle the ranking', newLeagueCta:'Create league',
+    newUserBadge:'rookie · Level 1',
+    tabLive:'Live', tabNext:'Upcoming', tabReplays:'Replays',
+    missionToday:"TODAY'S MISSION", streakLbl:'Streak', mission1:'Get 3 picks right in a row',
+    leaguesTitle:'YOUR PRIVATE LEAGUES', leaguesFree:'1 of 1 free', ligaSub:'8 friends · you lead',
+    replaysNote:'You made 4 of 6 picks in recent matches.',
+    statusLive64:'LIVE · 64’', statusLive31:'LIVE · 31’',
+    statusToday18:'TODAY · 18:00', statusToday21:'TODAY · 21:00', statusTomorrow16:'TOMORROW · 16:00',
+    statusEndYesterday:'FINISHED · YESTERDAY', statusEnd2days:'FINISHED · 2 DAYS AGO',
+    groupA:'GROUP A · WORLD CUP 2026', groupB:'GROUP B · WORLD CUP 2026', groupC:'GROUP C · WORLD CUP 2026',
+    groupE:'GROUP E · WORLD CUP 2026', groupF:'GROUP F · WORLD CUP 2026', groupH:'GROUP H · WORLD CUP 2026', groupJ:'GROUP J · WORLD CUP 2026',
+    ctaEnter:'Enter the room →', ctaRemind:'Remind me →', ctaReplay:'Watch replay →',
+    tArgentina:'Argentina', tCaboVerde:'Cape Verde', tEspanha:'Spain', tCoreia:'South Korea',
+    tBrasil:'Brazil', tMarrocos:'Morocco', tFranca:'France', tCroacia:'Croatia',
+    tInglaterra:'England', tEUA:'United States', tItalia:'Italy', tMexico:'Mexico',
+    tAlemanha:'Germany', tPortugal:'Portugal',
+    liveShort:'LIVE', matchEvents:'MATCH EVENTS',
+    salaTabPlays:'Plays', salaTabStats:'Stats', salaTabRanking:'Ranking',
+    statsHdr:'LIVE STATS', statPossession:'Possession', statShots:'Shots', statOnTarget:'On target', statCorners:'Corners', statFouls:'Fouls', statCards:'Cards',
+    resReadingHdr:'GAME READ', resBefore:'before', resAfter:'now',
+    resBackToGame:'Back to the game · next challenge', resBackToFinal:'Back to the game · final result', resSeeProgress:'See my progress',
+    roomRanking:'ROOM RANKING', inRoom:'in the room',
+    challengeLive:'LIVE CHALLENGE', worth:'worth',
+    fairNote:'The window closes before the play that settles the challenge, fair for everyone.',
+    resWin:'Nailed it!', resWinSub:'You got the pick right',
+    resTimeout:"Time's up", resMiss:'So close!', rightAnswer:'Right answer:',
+    nextChallenge:'Next challenge', seeFinal:'See final result',
+    fullTime:'FULL TIME · GROUP J', argBeat:'Argentina beat Cape Verde',
+    perf:'YOUR PERFORMANCE', picksMid:'of', picksSuffix:'picks correct',
+    streakLower:'streak', xpTotalWord:'total XP', levelWord:'Level',
+    seeRanking:'See full ranking', backHome:'Back to home',
+    rankingTitle:'Ranking', rankingSub:'World Cup 2026 season · updated live',
+    leagueGold:'Gold League', leagueSilver:'Silver League', leagueBronze:'Bronze League', correctToday:'correct today', meSub:'Resenha FC · you',
+    walletDemo:'demo · simulated wallet', xpTotal:'TOTAL XP', nivel:'LEVEL', sequencia:'STREAK',
+    missionsHdr:'MISSIONS', mission2:'Join 5 live rooms', mission3:'Invite a friend to your league',
+    settingsHdr:'SETTINGS', langTitle:'Language', langSub:'Portuguese / English',
+    notifTitle:'Goal notifications', notifSub:'Alerts you when a challenge opens',
+    liveTitle:'Live data', liveSub:'Real-time match feed',
+    howTitle:'How Palpitei works', howSub:'Rules, XP and leagues', signout:'Sign out',
+    editNameHdr:'EDIT NICKNAME', namePlaceholder:'your nickname', cancel:'Cancel', save:'Save',
+    nameHintShort:'At least 3 characters', nameHintOk:'Nickname available', meSubYou:'Resenha FC · you',
+    fimTitle:'FULL TIME', fimScorers:'Goals: Messi 23’ · Semedo 58’ · Álvarez 67’', fimXpLabel:'XP THIS ROUND', fimPicksLabel:'CORRECT PICKS', fimFriendsLabel:'AMONG FRIENDS', fimShare:'Share result',
+    leaguesCountFree:'of 1 free', leaguesUnlimited:'unlimited', createLeague:'Create league', createAnother:'Create new league', myLeague:'My League', myLeagueSub:'1 member · you lead',
+    pxBadge:'PALPITEI PREMIUM', pxH1:'Your leagues.', pxH2:'Your crew.', pxH3:'No limit.',
+    pxSub:'Create as many leagues as you want, bring the whole group and battle the bracket to the final.',
+    pxFree:'Free', pxPremium:'Premium', pxSeePlans:'See plans',
+    pxUnlimited:'Unlimited', pxComplete:'Full', pxBasic:'Basic', pxIncluded:'Included', pxFreeLeagues:'1 league',
+    pxRowLeagues:'Private leagues', pxRowLeaguesSub:'your group, your crest', pxRowBracket:'Knockout format', pxRowPicks:'Unlimited picks', pxRowRank:'XP and global ranking', pxRowStats:'Stats and history', pxRowRead:'Full game read', pxRowCustom:'Crest, theme and badges', pxRowReminder:'Pick reminder', pxRowNoAds:'No ads', pxRowPass:'Tournament pass',
+    plTitle:'Choose your plan', plSub:'Unlimited leagues, knockout and everything in Premium. Cancel anytime.',
+    plBest:'BEST VALUE', plAnnual:'Annual', plAnnualDesc:'7 days free, then R$ 49.90/year', plAnnualPrice:'R$ 4.16', plPerMonth:'/mo', plAnnualNote:'less than R$ 0.96 per week', plDiscount:'-17%',
+    plMonthly:'Monthly', plMonthlyDesc:'billed every month', plMonthlyPrice:'R$ 4.99',
+    plContinue:'Continue', plFoot:'Auto-renews · cancel anytime',
+    ckTitle:'Finish subscription', ckPlan:'Plan', ckToday:'You pay today', ckTrialLine:'7 days free, first charge on Jul 23', ckPayHdr:'PAYMENT METHOD',
+    ckCard:'Credit card', ckCardSub:'Visa, Master, Elo', ckPix:'Pix', ckPixSub:'instant approval', ckWallet:'Solana wallet', ckWalletSub:'7xKq…9fPz · USDC',
+    ckPay:'Subscribe now', ckFoot:'Secure payment · cancel anytime',
+    ckDoneTitle:'Welcome to Premium!', ckDoneBody:'Unlimited leagues, knockout and the full game read are now unlocked on your account.', ckDoneCta:'Create my league',
+    premiumChip:'Premium',
+    navHome:'Home', navRanking:'Ranking', navPerfil:'Profile',
+    you:'You',
+    ch:[
+      { type:'NEXT GOAL', prompt:'Who scores the next goal?', opts:{arg:'Argentina',cab:'Cape Verde',none:'Nobody till the end'},
+        subWin:'You called it: Argentina found the net at 71’.', subMiss:'Argentina scored at 71’, not the pick you made.', subTimeout:"Argentina's goal came at 71’ and you were left watching.",
+        reading:"With Argentina's goal, their win probability jumped from 58% to 74%.", probLabel:'Argentina win probability · updated live' },
+      { type:'CORNERS', prompt:'Corners by the final whistle: over or under 9.5?', opts:{over:'Over 9.5',under:'Under 9.5'},
+        subWin:'Over 9.5 confirmed: the 10th corner came at 82’.', subMiss:'It went over 9.5: the 10th corner came at 82’.', subTimeout:'The 10th corner came at 82’ after the window had closed.',
+        reading:"With Argentina's attacking tempo, the chance of over 9.5 corners went from 46% to 100%.", probLabel:'Chance of over 9.5 corners · updated live' },
+      { type:'NEXT PLAY', prompt:"Argentina's next shot will be...", opts:{goal:'On target',out:'Off target',post:'Off the post'},
+        subWin:'Yes! Messi blazed it over the bar at 88’.', subMiss:'It went off target: Messi shot over at 88’.', subTimeout:'Messi shot off target at 88’ before you answered.',
+        reading:'The pressure stayed high: the shot had a 44% chance of going off target.', probLabel:'Chance the ball goes off target · updated live' },
+      { type:'FINAL RESULT', prompt:'How does Argentina × Cape Verde end?', opts:{arg:'Argentina win',draw:'Draw',cab:'Cape Verde win'},
+        subWin:'Done! Argentina won it 3-1.', subMiss:'Argentina won 3-1, not the pick you made.', subTimeout:'Full time: Argentina 3-1, and the window had already closed.',
+        reading:'Final whistle: Argentina sealed the win and closed at 100%.', probLabel:'Argentina win probability · final result' },
+    ],
+  },
+};
+
+class Component extends DCLogic {
+  get DUR(){ return this.props.countdownSeconds ?? 12; }
+  componentDidMount(){
+    const s = this.props.startScreen;
+    if (s === 'home') this.enterDemo();
+    else if (s === 'sala') this.openSala();
+    else if (s === 'ranking') this.setState({ screen:'app', route:'ranking' });
+    else if (s === 'perfil') this.setState({ screen:'app', route:'perfil' });
+  }
+
+  challenges = [
+    { xp:40, correct:'arg', optIds:['arg','cab','none'], pct:{arg:58,cab:17,none:25}, before:58, after:74,
+      resolve:{ minute:71, scoreA:3, scoreB:1 }, eventPt:'Gol da Argentina! Julián Álvarez', eventEn:'Argentina goal! Julián Álvarez' },
+    { xp:30, correct:'over', optIds:['over','under'], pct:{over:46,under:54}, before:46, after:100,
+      resolve:{ minute:82 }, eventPt:'Escanteio da Argentina, total chega a 10', eventEn:'Argentina corner, total reaches 10' },
+    { xp:25, correct:'out', optIds:['goal','out','post'], pct:{goal:39,out:44,post:17}, before:44, after:100,
+      resolve:{ minute:88 }, eventPt:'Chute de Messi por cima, 88\'', eventEn:'Messi shoots over the bar, 88\'' },
+    { xp:50, correct:'arg', optIds:['arg','draw','cab'], pct:{arg:71,draw:12,cab:17}, before:71, after:100,
+      resolve:{ minute:90, final:true }, eventPt:'Fim de jogo: Argentina 3 x 1 Cabo Verde', eventEn:'Full time: Argentina 3-1 Cape Verde' },
+  ];
+
+  feedInit(){
+    return [
+      { t:"64'", pt:'Cartão amarelo pra Cabo Verde', en:'Yellow card for Cape Verde' },
+      { t:"61'", pt:'Escanteio da Argentina', en:'Argentina corner' },
+    ];
+  }
+
+  EXISTING = { nickname:'você.craque', level:7, xp:1240, streak:5 };
+
+  teams = ['Argentina','Brasil','França','Espanha','Inglaterra','Portugal','Alemanha','Croácia'];
+
+  state = {
+    screen:'login', route:'home', tab:'live', lang:'pt',
+    authMethod:'demo', accountType:'existing', onboardStep:0, favTeam:null, salaTab:'lances',
+    leaguesCount:1, isPremium:false, selectedPlan:'anual', payMethod:'card', prevRoute:'home',
+    nickname:'você.craque', editingName:false, nameDraft:'você.craque',
+    level:7, xp:1240, streak:5,
+    matchMinute:64, matchScoreA:2, matchScoreB:1,
+    phase:'question', ci:0, selected:null, secs:12,
+    salaXp:0, correctCount:0, lastResult:null,
+    feed:[ { t:"64'", pt:'Cartão amarelo pra Cabo Verde', en:'Yellow card for Cape Verde' }, { t:"61'", pt:'Escanteio da Argentina', en:'Argentina corner' } ],
+    notif:true, live:true,
+  };
+
+  componentWillUnmount(){ clearInterval(this._t); }
+
+  enter = () => this.setState({ screen:'app', route:'home', tab:'live' });
+
+  enterDemo = () => this.setState({
+    screen:'app', route:'home', tab:'live', authMethod:'demo', accountType:'existing',
+    nickname:this.EXISTING.nickname, nameDraft:this.EXISTING.nickname,
+    level:this.EXISTING.level, xp:this.EXISTING.xp, streak:this.EXISTING.streak,
+    leaguesCount:1, isPremium:false,
+  });
+
+  startOnboarding = (method) => this.setState({
+    screen:'onboarding', onboardStep:0, authMethod:method, accountType:'new', favTeam:null,
+    nickname:'', nameDraft:'', level:1, xp:0, streak:0, leaguesCount:0, isPremium:false,
+  });
+
+  obNext = () => this.setState(st => {
+    const patch = { onboardStep: st.onboardStep + 1 };
+    if (st.onboardStep === 1){ const v = st.nameDraft.trim(); if (v.length >= 3) patch.nickname = v; }
+    return patch;
+  });
+  obBack = () => this.setState(st => ({ onboardStep: Math.max(0, st.onboardStep - 1) }));
+  finishOnboarding = () => this.setState({ screen:'app', route:'home', tab:'live', editingName:false });
+
+  tryCreateLeague = () => {
+    const st = this.state;
+    if (st.isPremium || st.leaguesCount < 1) this.setState({ leaguesCount: st.leaguesCount + 1 });
+    else this.setState({ prevRoute:'home', route:'premium' });
+  };
+  openPremium = () => this.setState({ prevRoute:this.state.route, route:'premium' });
+  goPlans = () => this.setState({ route:'plans' });
+  selectPlan = (p) => this.setState({ selectedPlan:p });
+  goCheckout = () => this.setState({ route:'checkout' });
+  setPayMethod = (m) => this.setState({ payMethod:m });
+  confirmPurchase = () => this.setState({ isPremium:true, route:'premiumDone' });
+  premiumDoneCreate = () => this.setState(st => ({ route:'home', leaguesCount: st.leaguesCount + 1 }));
+  backFromPremium = () => this.setState({ route: this.state.prevRoute || 'home' });
+
+  startTimer(){
+    clearInterval(this._t);
+    this.setState({ secs:this.DUR });
+    this._t = setInterval(() => {
+      this.setState(st => {
+        const n = st.secs - 1;
+        if (n <= 0){ clearInterval(this._t); setTimeout(() => this.resolve(null), 0); return { secs:0 }; }
+        return { secs:n };
+      });
+    }, 1000);
+  }
+
+  openSala = () => {
+    this.setState({
+      screen:'app', route:'sala', phase:'question', ci:0, selected:null, salaTab:'lances',
+      salaXp:0, correctCount:0, lastResult:null,
+      matchMinute:64, matchScoreA:2, matchScoreB:1, feed:this.feedInit(),
+    }, () => this.startTimer());
+  };
+
+  leaveSala = () => { clearInterval(this._t); this.setState({ route:'home', phase:'question' }); };
+
+  resolve(optId){
+    if (this.state.phase !== 'question') return;
+    clearInterval(this._t);
+    const ch = this.challenges[this.state.ci];
+    const correct = optId === ch.correct;
+    const gained = correct ? ch.xp : 0;
+    const r = ch.resolve || {};
+    this.setState(st => {
+      const feed = [{ t:(r.minute||st.matchMinute)+"'", pt:ch.eventPt, en:ch.eventEn }, ...st.feed];
+      return {
+        phase:'result', selected:optId,
+        matchMinute: r.minute ?? st.matchMinute,
+        matchScoreA: r.scoreA ?? st.matchScoreA,
+        matchScoreB: r.scoreB ?? st.matchScoreB,
+        xp: st.xp + gained, salaXp: st.salaXp + gained,
+        correctCount: st.correctCount + (correct ? 1 : 0),
+        streak: correct ? st.streak + 1 : 0,
+        lastResult: { correct, timeout: optId==null, gained, correctId: ch.correct, final: !!r.final },
+        feed,
+      };
+    });
+  }
+
+  next = () => {
+    if ((this.state.lastResult && this.state.lastResult.final) || this.state.ci + 1 >= this.challenges.length){
+      this.setState({ phase:'fim' }); return;
+    }
+    this.setState(st => ({ ci: st.ci + 1, phase:'question', selected:null }), () => this.startTimer());
+  };
+
+  nav(route){ if (route !== 'sala') clearInterval(this._t); this.setState({ route }); }
+
+  fmt(n){ return Number(n).toLocaleString(this.state.lang==='en'?'en-US':'pt-BR'); }
+
+  renderVals(){
+    const s = this.state;
+    const t = L[s.lang];
+    const ch = this.challenges[s.ci];
+    const cText = t.ch[s.ci];
+    const answered = s.phase === 'result';
+    const lime = 'var(--lime)', red = 'var(--red)';
+
+    const nameInitials = (s.nickname||'').replace(/[^\p{L}\p{N}]+/gu,' ').trim().split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || (s.accountType==='new'?'P!':'?');
+    const authLabel = s.authMethod==='google' ? (s.lang==='en'?'Google account · Privy':'conta Google · Privy')
+      : s.authMethod==='wallet' ? '7xKq…9fPz · Solana'
+      : t.walletDemo;
+    const draft = s.nameDraft.trim();
+    const nameInvalid = draft.length < 3;
+    const nameHint = nameInvalid ? t.nameHintShort : t.nameHintOk;
+    const nameInputStyle = 'box-sizing:border-box;width:100%;margin-top:12px;height:46px;padding:0 14px;border-radius:var(--r-xl);background:var(--surface-sunken);border:1.5px solid '+(nameInvalid?'var(--border-2)':'var(--lime-line)')+';color:var(--text-hi);font-family:var(--font-sans);font-size:15px;font-weight:700;outline:none';
+    const nameHintStyle = 'font-size:11px;font-weight:800;color:'+(nameInvalid?'var(--text-muted)':'var(--lime)');
+
+    const opts = (ch ? ch.optIds : []).map(id => {
+      let bg = 'var(--surface-2)', border = '1px solid var(--border-2)', color = 'var(--text-hi)', meta = ch.pct[id] + '%', metaColor = 'var(--text-muted)';
+      if (answered){
+        if (id === ch.correct){ bg = 'var(--lime-a14)'; border = '1.5px solid '+lime; color = 'var(--text-hi)'; meta = s.lang==='en'?'✓ right':'✓ certa'; metaColor = lime; }
+        else if (id === s.selected){ bg = 'rgba(255,90,90,.12)'; border = '1.5px solid '+red; color = 'var(--text-hi)'; meta = s.lang==='en'?'✕ you':'✕ você'; metaColor = red; }
+        else { bg = 'var(--surface-1)'; border = '1px solid var(--border-1)'; color = 'var(--text-muted)'; metaColor = 'var(--text-fainter)'; }
+      }
+      const style = 'all:unset;box-sizing:border-box;cursor:'+(answered?'default':'pointer')+';display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 16px;border-radius:var(--r-xl);background:'+bg+';border:'+border+';color:'+color+';font-weight:700;font-size:15px;transition:background .15s,border-color .15s,transform .1s';
+      return { id, label: cText.opts[id], meta, metaColor, style, onClick: answered ? (()=>{}) : (() => this.resolve(id)) };
+    });
+
+    const lr = s.lastResult || {};
+    let resTitle='', resSub='', resXp='', resColor=lime, resBg='var(--lime-a14)', resBorder='var(--lime-line)', resIconBg='var(--lime)', resIcon='';
+    if (answered){
+      const correctLabel = cText.opts[lr.correctId];
+      if (lr.correct){
+        resTitle = t.resWin; resSub = t.resWinSub; resXp = '+'+lr.gained+' XP';
+        resColor = lime; resBg = 'var(--lime-a14)'; resBorder = 'var(--lime-line)'; resIconBg = 'var(--lime)';
+        resIcon = React.createElement('svg',{width:22,height:22,viewBox:'0 0 24 24',fill:'none',stroke:'var(--on-lime)',strokeWidth:3,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d:'M4 12.5l5 5L20 6'}));
+      } else {
+        resTitle = lr.timeout ? t.resTimeout : t.resMiss;
+        resSub = t.rightAnswer+' '+correctLabel; resXp = '+0 XP';
+        resColor = red; resBg = 'rgba(255,90,90,.1)'; resBorder = 'rgba(255,90,90,.4)'; resIconBg = 'var(--red)';
+        resIcon = React.createElement('svg',{width:20,height:20,viewBox:'0 0 24 24',fill:'none',stroke:'#fff',strokeWidth:3,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d:'M6 6l12 12M18 6L6 18'}));
+      }
+    }
+
+    const timerPct = Math.max(0, Math.round(s.secs / this.DUR * 100));
+    const timerColor = s.secs <= 4 ? red : lime;
+
+    const salaRankingRaw = [
+      { id:'a', name:'Dudu_10', xp:640 },
+      { id:'me', name:t.you, xp:180 + s.salaXp },
+      { id:'b', name:'BiaZ', xp:150 },
+    ].sort((a,b)=>b.xp-a.xp).map((r,i)=>({ ...r, pos:i+1 }));
+    const salaRanking = salaRankingRaw.map(r => {
+      const me = r.id==='me';
+      return { ...r, xp:this.fmt(r.xp), bg: me?'var(--lime-a10)':'var(--surface-1)', border: me?'var(--lime-line)':'var(--border-1)',
+        posColor: r.pos<=3?'var(--gold)':'var(--text-muted)', nameColor: me?lime:'var(--text-hi)' };
+    });
+
+    // --- challenge result full-screen derived ---
+    const stats = [
+      { label:t.statPossession, a:'61%', b:'39%', af:61, bf:39 },
+      { label:t.statShots, a:12, b:5, af:12, bf:5 },
+      { label:t.statOnTarget, a:6, b:2, af:6, bf:2 },
+      { label:t.statCorners, a:8, b:3, af:8, bf:3 },
+      { label:t.statFouls, a:9, b:11, af:9, bf:11 },
+      { label:t.statCards, a:1, b:2, af:1, bf:2 },
+    ].map(x => ({ label:x.label, a:x.a, b:x.b, aFlex:Math.max(x.af,0.4), bFlex:Math.max(x.bf,0.4) }));
+
+    let resBigIcon='', resNarr='', resReading='', resBeforePct=0, resAfterPct=0, resProbLabel='', resRankNote='';
+    if (answered && cText){
+      if (lr.correct){
+        resBigIcon = React.createElement('svg',{width:60,height:60,viewBox:'0 0 24 24',fill:'none',stroke:lime,strokeWidth:2.6,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d:'M4 12.5l5 5L20 6'}));
+        resNarr = cText.subWin;
+      } else if (lr.timeout){
+        resBigIcon = React.createElement('span',{style:{fontWeight:900,fontStyle:'italic',fontSize:'44px',color:red,letterSpacing:'-2px'}},'0s');
+        resNarr = cText.subTimeout;
+      } else {
+        resBigIcon = React.createElement('svg',{width:54,height:54,viewBox:'0 0 24 24',fill:'none',stroke:red,strokeWidth:2.8,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d:'M6 6l12 12M18 6L6 18'}));
+        resNarr = cText.subMiss;
+      }
+      resReading = cText.reading; resProbLabel = cText.probLabel;
+      resBeforePct = ch.before; resAfterPct = ch.after;
+      const mePos = (salaRankingRaw.find(r=>r.id==='me')||{}).pos || 2;
+      const ord = s.lang==='en' ? (mePos+(mePos===1?'st':mePos===2?'nd':mePos===3?'rd':'th')) : (mePos+'º');
+      if (s.lang==='en'){
+        resRankNote = lr.correct
+          ? 'Nice, you moved up to '+ord+' among your friends. Keep it going.'
+          : 'You’re still '+ord+' among your friends. Let’s bounce back on the next one.';
+      } else {
+        resRankNote = lr.correct
+          ? 'Boa, você subiu pro '+ord+' entre os amigos. Bora manter.'
+          : 'Você segue em '+ord+' entre os amigos. Bora recuperar no próximo.';
+      }
+    }
+    const resPrimaryLabel = lr.final ? t.resBackToFinal : t.resBackToGame;
+
+    const globalRaw = [
+      { name:'Dudu_10', initials:'DD', sub:t.leagueGold+' · 12 '+t.correctToday, xp:3120, avBg:'var(--gold)', avColor:'#3a2c00' },
+      { name:'MarianaGols', initials:'MG', sub:t.leagueGold+' · 9 '+t.correctToday, xp:2870, avBg:'var(--blue)', avColor:'#052033' },
+      { name:'zé.craque', initials:'ZC', sub:t.leagueSilver+' · 8 '+t.correctToday, xp:2540, avBg:'var(--orange)', avColor:'#3a2100' },
+      { name:'BiaZ', initials:'BZ', sub:t.leagueSilver, xp:1980, avBg:'var(--surface-2)', avColor:'var(--text-1)' },
+      { name:s.nickname, initials:nameInitials, sub:t.meSubYou, xp:s.xp, avBg:'var(--lime)', avColor:'var(--on-lime)', me:true },
+      { name:'PedroH', initials:'PH', sub:t.leagueBronze, xp:1120, avBg:'var(--surface-2)', avColor:'var(--text-1)' },
+      { name:'Rafa_ARG', initials:'RA', sub:t.leagueBronze, xp:980, avBg:'var(--surface-2)', avColor:'var(--text-1)' },
+    ].sort((a,b)=>b.xp-a.xp).map((r,i)=>({ ...r, pos:i+1 }));
+    const globalRanking = globalRaw.map(r => ({
+      ...r, xp:this.fmt(r.xp)+' XP', bg: r.me?'var(--lime-a10)':'var(--surface-1)', border: r.me?'var(--lime-line)':'var(--border-1)',
+      posColor: r.pos<=3?'var(--gold)':'var(--text-muted)', nameColor: r.me?lime:'var(--text-hi)',
+    }));
+
+    const missionPct = Math.min(s.streak, 3) / 3 * 100;
+    const missions = [
+      { title:t.mission1, pct: missionPct, label: Math.min(s.streak,3)+'/3' },
+      { title:t.mission2, pct: 60, label:'3/5' },
+      { title:t.mission3, pct: 0, label:'0/1' },
+    ];
+
+    const levelBase = 1000, levelSpan = 500;
+    const into = (s.xp - levelBase) % levelSpan;
+    const levelPct = Math.max(0, Math.min(100, into / levelSpan * 100));
+    const toNextLevel = levelSpan - into;
+    const toNextLine = s.lang==='en'
+      ? this.fmt(toNextLevel)+' XP to the next level'
+      : 'Faltam '+this.fmt(toNextLevel)+' XP pro próximo nível';
+
+    const chevron = React.createElement('svg',{width:18,height:18,viewBox:'0 0 24 24',fill:'none',stroke:'var(--text-faint)',strokeWidth:2.2,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d:'M9 6l6 6-6 6'}));
+    const navColor = r => s.route === r ? lime : 'var(--text-muted)';
+
+    // --- leagues / premium derived ---
+    const leaguesCountLabel = s.isPremium
+      ? (s.leaguesCount + ' · ' + t.leaguesUnlimited)
+      : (s.leaguesCount + ' ' + t.leaguesCountFree);
+    const myLeagues = [];
+    for (let i=0;i<s.leaguesCount;i++){
+      myLeagues.push(i===0
+        ? { initials:'ML', name:t.myLeague, sub:t.myLeagueSub }
+        : { initials:'L'+(i+1), name:t.myLeague+' '+(i+1), sub:t.myLeagueSub });
+    }
+    const showEmptyLeague = s.accountType==='new' && s.leaguesCount===0;
+    const showLeagueGate = !s.isPremium && s.leaguesCount>=1;
+    const leagueGateSub = s.lang==='en' ? 'Free includes 1 league · unlock unlimited' : 'O free inclui 1 liga · desbloqueie ilimitadas';
+
+    const check = React.createElement('svg',{width:17,height:17,viewBox:'0 0 24 24',fill:'none',stroke:lime,strokeWidth:2.8,strokeLinecap:'round',strokeLinejoin:'round'},React.createElement('path',{d:'M4 12.5l5 5L20 6'}));
+    const dash = React.createElement('span',{style:{color:'var(--text-fainter)',fontWeight:800,fontSize:'15px'}},'–');
+    const yes = s.lang==='en'?'Yes':'Sim';
+    const pxRowsData = [
+      { label:t.pxRowLeagues, sub:t.pxRowLeaguesSub, free:t.pxFreeLeagues, premium:t.pxUnlimited },
+      { label:t.pxRowBracket, free:'–', premium:true },
+      { label:t.pxRowRead, free:'–', premium:true },
+      { label:t.pxRowCustom, free:'–', premium:true },
+      { label:t.pxRowNoAds, free:'–', premium:true },
+      { label:t.pxRowReminder, free:yes, premium:true },
+      { label:t.pxRowPicks, free:yes, premium:true },
+      { label:t.pxRowRank, free:yes, premium:true },
+    ];
+    const pxRows = pxRowsData.map(r => ({
+      label:r.label, sub:r.sub||'',
+      free:r.free,
+      freeColor: r.free==='–' ? 'var(--text-fainter)' : 'var(--text-2)',
+      premiumMark: r.premium===true ? check : React.createElement('span',{style:{fontWeight:800,fontSize:'12.5px',color:lime}},r.premium),
+    }));
+
+    const planName = s.selectedPlan==='anual' ? t.plAnnual : t.plMonthly;
+    const planPrice = s.selectedPlan==='anual' ? t.plAnnualPrice : t.plMonthlyPrice;
+    const todayCharge = s.selectedPlan==='anual' ? 'R$ 0,00' : (s.lang==='en'?'R$ 4.99':'R$ 4,99');
+    const planCardBase = 'all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;margin-bottom:12px;padding:18px;border-radius:var(--r-2xl);transition:border-color .15s,background .15s;';
+    const planSel = 'background:var(--lime-a10);border:2px solid var(--lime);';
+    const planIdle = 'background:var(--surface-1);border:2px solid var(--border-1);';
+    const planAnnualStyle = planCardBase + (s.selectedPlan==='anual'?planSel:planIdle);
+    const planMonthlyStyle = planCardBase + (s.selectedPlan==='mensal'?planSel:planIdle);
+
+    const payIcons = {
+      card: React.createElement('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'none',stroke:'var(--text-1)',strokeWidth:2},React.createElement('rect',{x:2,y:5,width:20,height:14,rx:2}),React.createElement('path',{d:'M2 10h20'})),
+      pix: React.createElement('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'var(--lime)'},React.createElement('path',{d:'M12 2l4 4-4 4-4-4 4-4zm-6 6l4 4-4 4-4-4 4-4zm12 0l4 4-4 4-4-4 4-4zm-6 6l4 4-4 4-4-4 4-4z'})),
+      wallet: React.createElement('svg',{width:19,height:15,viewBox:'0 0 24 20'},React.createElement('path',{fill:'#19FB9B',d:'M5 14h16l-3 4H2l3-4zM5 2h16l-3 4H2l3-4zM19 8H3l3 4h16l-3-4z'})),
+    };
+    const payMethods = [
+      { id:'card', title:t.ckCard, sub:t.ckCardSub },
+      { id:'pix', title:t.ckPix, sub:t.ckPixSub },
+      { id:'wallet', title:t.ckWallet, sub:t.ckWalletSub },
+    ].map(m => {
+      const on = s.payMethod===m.id;
+      return { title:m.title, sub:m.sub, icon:payIcons[m.id],
+        style:'all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:13px;width:100%;padding:14px 16px;border-radius:var(--r-xl);background:'+(on?'var(--lime-a10)':'var(--surface-1)')+';border:1.5px solid '+(on?'var(--lime)':'var(--border-1)'),
+        radioStyle:'flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid '+(on?'var(--lime)':'var(--border-2)'),
+        radioDot: on ? React.createElement('span',{style:{width:'10px',height:'10px',borderRadius:'50%',background:lime}}) : '',
+        onClick:()=>this.setPayMethod(m.id) };
+    });
+
+    const langBtnBase = 'all:unset;cursor:pointer;min-width:30px;text-align:center;padding:6px 11px;border-radius:var(--r-pill);font-weight:800;font-size:12px;transition:background .15s,color .15s;';
+    const langActive = langBtnBase+'background:var(--lime);color:var(--on-lime)';
+    const langIdle = langBtnBase+'color:var(--text-muted)';
+
+    return {
+      t,
+      isLogin: s.screen==='login', isApp: s.screen==='app',
+      isHome: s.route==='home', isSala: s.route==='sala' && s.phase==='question', isChallengeResult: s.route==='sala' && s.phase==='result', isRanking: s.route==='ranking', isPerfil: s.route==='perfil', isFim: s.phase==='fim' && s.route==='sala',
+      isPremiumScreen: s.route==='premium', isPlansScreen: s.route==='plans', isCheckoutScreen: s.route==='checkout', isPremiumDone: s.route==='premiumDone',
+      leaguesCountLabel, myLeagues, showEmptyLeague, showLeagueGate, leagueGateSub,
+      tryCreateLeague:this.tryCreateLeague, openPremium:this.openPremium, goPlans:this.goPlans, goCheckout:this.goCheckout,
+      backFromPremium:this.backFromPremium, confirmPurchase:this.confirmPurchase, premiumDoneCreate:this.premiumDoneCreate,
+      selectPlanAnnual:()=>this.selectPlan('anual'), selectPlanMonthly:()=>this.selectPlan('mensal'),
+      setPayMethod:this.setPayMethod,
+      pxRows, planAnnualStyle, planMonthlyStyle, planName, planPrice, todayCharge, payMethods,
+      pxPremiumWord:t.pxPremium,
+      isPremium:s.isPremium,
+      showPremiumUpsell: !s.isPremium,
+      premiumUpsellSub: s.lang==='en'?'Unlimited leagues, knockout and more':'Ligas ilimitadas, mata-mata e mais',
+      premiumActiveSub: s.lang==='en'?'Active · unlimited leagues':'Ativo · ligas ilimitadas',
+      showNav: s.screen==='app' && ['home','ranking','perfil'].includes(s.route),
+      onGoogle:()=>this.startOnboarding('google'), onWallet:()=>this.startOnboarding('wallet'), onDemo:this.enterDemo,
+      onLogout:()=>this.setState({screen:'login'}),
+      isOnboarding: s.screen==='onboarding',
+      obStep0: s.onboardStep===0, obStep1: s.onboardStep===1, obStep2: s.onboardStep===2, obStep3: s.onboardStep===3,
+      obStepLabel: t.obStep+' '+Math.min(s.onboardStep+1,3)+' '+t.obOf+' 3',
+      obPct: Math.round((Math.min(s.onboardStep,3))/3*100),
+      obWelcomeHdr: s.authMethod==='wallet'? t.obWelcomeHdrWallet : t.obWelcomeHdrGoogle,
+      obWelcomeVia: s.authMethod==='wallet'? t.obWelcomeViaWallet : t.obWelcomeViaGoogle,
+      obIsWallet: s.authMethod==='wallet',
+      obNext:this.obNext, obBack:this.obBack, obSkipTeam:()=>this.setState({favTeam:null},this.obNext), finishOnboarding:this.finishOnboarding,
+      obReadyName: (s.nickname||'').trim() || (s.lang==='en'?'player':'craque'),
+      teamOpts: this.teams.map(tm => ({ name:tm, selected: s.favTeam===tm, style:'all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:14px 8px;border-radius:var(--r-xl);font-weight:800;font-size:14px;background:'+(s.favTeam===tm?'var(--lime-a14)':'var(--surface-1)')+';border:1.5px solid '+(s.favTeam===tm?'var(--lime)':'var(--border-1)')+';color:'+(s.favTeam===tm?'var(--text-hi)':'var(--text-1)'), onClick:()=>this.setState({favTeam:tm}) })),
+      isNewUser: s.accountType==='new', isExistingUser: s.accountType==='existing',
+      authLabel,
+      nickname:s.nickname, nameInitials, editingName:s.editingName, nameDraft:s.nameDraft, nameCount:draft.length,
+      nameInvalid, nameHint, nameInputStyle, nameHintStyle,
+      openNameEdit:()=>this.setState({editingName:true, nameDraft:s.nickname}),
+      cancelNameEdit:()=>this.setState({editingName:false}),
+      onNameInput:(e)=>this.setState({nameDraft:e.target.value}),
+      saveName:()=>{ const v=this.state.nameDraft.trim(); if(v.length>=3) this.setState({nickname:v, editingName:false}); },
+      goHome:()=>this.nav('home'), goRanking:()=>this.nav('ranking'), goPerfil:()=>this.nav('perfil'),
+      goRankingFromFim:()=>{ clearInterval(this._t); this.setState({route:'ranking',phase:'question'}); },
+      goProgress:()=>{ clearInterval(this._t); this.setState({phase:'fim'}); },
+      setSalaTab:(v)=>this.setState({salaTab:v}), salaTab:s.salaTab,
+      salaTabsArr:[{label:t.salaTabPlays,value:'lances'},{label:t.salaTabStats,value:'stats'},{label:t.salaTabRanking,value:'ranking'}],
+      isSalaPlays:s.salaTab==='lances', isSalaStats:s.salaTab==='stats', isSalaRanking:s.salaTab==='ranking', stats,
+      openSala:this.openSala, leaveSala:this.leaveSala, next:this.next,
+      setTab:(v)=>this.setState({tab:v}), tab:s.tab,
+      tabsArr:[{label:t.tabLive,value:'live'},{label:t.tabNext,value:'next'},{label:t.tabReplays,value:'replays'}],
+      isTabLive:s.tab==='live', isTabNext:s.tab==='next', isTabReplays:s.tab==='replays',
+      level:s.level, levelNext:s.level+1, xpFmt:this.fmt(s.xp), streak:s.streak,
+      streakChipText: t.streakLbl+': '+s.streak,
+      missionPct, missionLabel: Math.min(s.streak,3)+'/3',
+      matchMinute:s.matchMinute, matchScoreA:s.matchScoreA, matchScoreB:s.matchScoreB,
+      liveBadge: t.liveShort+' · '+s.matchMinute+'’',
+      roomRankingLine: t.roomRanking+' · '+this.fmt(2418)+' '+t.inRoom,
+      isPlaying: s.phase==='question' || s.phase==='result',
+      isQuestion: s.phase==='question', isResult: s.phase==='result',
+      chPrompt: cText?cText.prompt:'', chNum: s.ci+1, chTotal: this.challenges.length,
+      sheetHeader: t.challengeLive+' · '+(cText?cText.type:''),
+      sheetWorth: t.worth+' '+(ch?ch.xp:0)+' XP',
+      opts, secs:s.secs, timerPct, timerColor,
+      resTitle,resSub,resXp,resColor,resBg,resBorder,resIconBg,resIcon,
+      resBigIcon,resNarr,resReading,resBeforePct,resAfterPct,resProbLabel,resRankNote,resPrimaryLabel,
+      nextLabel: lr.final ? t.seeFinal : t.nextChallenge,
+      feed: s.feed.map(ev => ({ t:ev.t, txt: s.lang==='en'?ev.en:ev.pt })),
+      salaRanking,
+      salaXpFmt:this.fmt(s.salaXp), correctCount:s.correctCount,
+      fimFriendPos: (s.lang==='en'?'2nd':'2º'),
+      picksCorrectLine: s.correctCount+' '+t.picksMid+' '+this.challenges.length+' '+t.picksSuffix,
+      xpTotalLine: this.fmt(s.xp)+' '+t.xpTotalWord,
+      levelPct, toNextLine,
+      globalRanking, missions,
+      notif:s.notif, live:s.live, toggleNotif:(v)=>this.setState({notif:v}), toggleLive:(v)=>this.setState({live:v}), chevron,
+      setLangPt:()=>this.setState({lang:'pt'}), setLangEn:()=>this.setState({lang:'en'}),
+      langPtStyle: s.lang==='pt'?langActive:langIdle, langEnStyle: s.lang==='en'?langActive:langIdle,
+      navHomeColor:navColor('home'), navRankColor:navColor('ranking'), navPerfilColor:navColor('perfil'),
+    };
+  }
+}
+</script>
+</body>
+</html>

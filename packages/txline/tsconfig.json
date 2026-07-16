@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    // Mesmas regras do @palpitei/core (leia o tsconfig de lá): o pacote é
+    // consumido CRU (exports -> ./src/index.ts), então nada faz "import elision".
+    //   - allowImportingTsExtensions: o import relativo carrega ".ts" de verdade,
+    //     porque é o arquivo que existe em disco em runtime;
+    //   - verbatimModuleSyntax: obriga `import type` para tipo — sem isto o
+    //     import compila e QUEBRA EM RUNTIME ("does not provide an export named");
+    //   - erasableSyntaxOnly: proíbe enum/namespace/parameter properties, que o
+    //     type stripping do Node não sabe apagar. Foi por isto que o ReplayRunner
+    //     perdeu os `private` do construtor do v0 e declara os campos na mão.
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
+}

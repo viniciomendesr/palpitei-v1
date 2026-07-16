@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    // O pacote é consumido CRU (exports -> ./src/index.ts): o Next transpila via
+    // transpilePackages e os testes rodam com o type stripping do Node. Nenhum dos
+    // dois faz "import elision", então:
+    //   - allowImportingTsExtensions: os imports relativos carregam ".ts" de verdade,
+    //     porque é o arquivo que existe em disco em tempo de execução;
+    //   - verbatimModuleSyntax: obriga `import type` para tipo. Sem isto, um
+    //     `import { Question }` compila e só QUEBRA EM RUNTIME com "does not provide
+    //     an export named". Aqui o tsc pega antes.
+    //   - erasableSyntaxOnly: proíbe enum/namespace/parameter properties, que o type
+    //     stripping do Node não sabe apagar.
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

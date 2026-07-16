@@ -1,0 +1,38 @@
+/* Reset mínimo do app — o mesmo que o docs/mockup.html declarava no <style> dele.
+ *
+ * O design system NÃO traz reset (ele só define tokens e componentes autoestilados),
+ * e não traz classe nenhuma — nem aqui a gente inventa uma. Isto é chrome do
+ * documento: box-sizing, margens do body e barra de rolagem. Tudo que for estilo de
+ * UI vive inline com var(--*), como manda o CONVENTIONS.md.
+ *
+ * As animações (fadeUp, sheetUp, popIn, pulse, shake, glow) vêm do
+ * tokens/effects.css do ds — não redeclare nenhuma aqui.
+ */
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* App de telefone: a barra de rolagem é ruído. Some em todo lugar. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+a {
+  color: var(--lime);
+}
+
+a:hover {
+  color: var(--lime-strong);
+}

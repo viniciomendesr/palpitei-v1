@@ -1,0 +1,25 @@
+:root{
+  --font-sans:'Archivo',system-ui,-apple-system,sans-serif;
+  --font-display:'Archivo',system-ui,sans-serif; /* used italic + 900 for display */
+
+  --fw-regular:400;
+  --fw-medium:600;
+  --fw-bold:700;
+  --fw-heavy:800;
+  --fw-black:900;
+
+  --display-lg:44px;
+  --display-md:34px;
+  --display-sm:22px;
+  --title:20px;
+  --body-lg:16px;
+  --body:14px;
+  --caption:12px;
+  --micro:10.5px;
+
+  --tracking-tight:-1.5px;
+  --tracking-display:-.5px;
+  --tracking-label:1px;
+  --leading-tight:1;
+  --leading-body:1.5;
+}

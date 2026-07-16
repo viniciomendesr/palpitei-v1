@@ -1,0 +1,8 @@
+@import url('fonts/archivo.css');
+@import url('tokens/colors.css');
+@import url('tokens/typography.css');
+@import url('tokens/spacing.css');
+@import url('tokens/effects.css');
+/* app-frame.css define as 10 vars --app-* que AppFrame.jsx consome. Sem este import o
+   AppFrame perde largura, altura, raio e bezel — silenciosamente, sem erro no console. */
+@import url('tokens/app-frame.css');

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- A marca é tipo, não imagem: P! itálico-900 num quadrado lime, girado -6deg.
+       Cores literais de propósito: um arquivo em /public não enxerga var(--*). -->
+  <rect width="512" height="512" rx="116" fill="#C8F13F"/>
+  <g transform="rotate(-6 256 256)">
+    <text x="256" y="256" fill="#141A16" font-family="Archivo, 'Helvetica Neue', Arial, sans-serif"
+          font-size="268" font-weight="900" font-style="italic" letter-spacing="-14"
+          text-anchor="middle" dominant-baseline="central">P!</text>
+  </g>
+</svg>

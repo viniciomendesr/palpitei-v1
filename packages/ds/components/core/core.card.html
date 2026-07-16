@@ -1,0 +1,32 @@
+<!-- @dsCard group="Components" viewport="700x560" name="Core components" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../styles.css">
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--bg-app);color:var(--text-hi);font-family:var(--font-sans);padding:18px}h4{font-size:10.5px;letter-spacing:1px;color:var(--text-faint);margin:18px 0 8px;font-weight:900}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.Palpitei || Object.values(window).find(v => v && v.Button && v.MatchCard) || {};
+const { Button, Badge, Chip, SegTabs, Card, Toggle, ProgressBar, ListRow, MatchCard } = NS;
+function Demo(){
+  const [tab,setTab]=React.useState('live');
+  const [on,setOn]=React.useState(true);
+  return (<div>
+    <h4>BUTTONS</h4>
+    <div className="row"><Button>Entrar na sala</Button><Button variant="secondary">Voltar</Button><Button variant="ghost">Pular</Button><Button variant="danger">Sair</Button><Button size="sm">Palpitar</Button></div>
+    <h4>BADGES · CHIP</h4>
+    <div className="row"><Badge tone="lime" dot>BETA</Badge><Badge tone="live" dot>AO VIVO</Badge><Badge tone="solid">Nv 7</Badge><Badge tone="neutral">GRUPO J</Badge><Chip><Badge tone="solid">Nv 7</Badge>1.240 XP</Chip></div>
+    <h4>SEGMENTED TABS</h4>
+    <SegTabs value={tab} onChange={setTab} tabs={[{label:'Ao Vivo',value:'live'},{label:'Próximos',value:'next'},{label:'Replays',value:'replays'}]} />
+    <h4>PROGRESS · TOGGLE</h4>
+    <div className="row"><div style={{flex:1}}><ProgressBar value={66} /></div><Toggle checked={on} onChange={setOn} /></div>
+    <h4>LIST ROW</h4>
+    <ListRow title="Redefinir senha" subtitle="Enviamos um link para o seu e-mail" onClick={()=>{}} />
+    <h4>MATCH CARD</h4>
+    <MatchCard live status="AO VIVO · 64’" group="GRUPO J · COPA 2026" teamA="Argentina" teamB="Cabo Verde" scoreA={2} scoreB={1} cta="Entrar na sala →" onClick={()=>{}} />
+  </div>);
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script></body></html>

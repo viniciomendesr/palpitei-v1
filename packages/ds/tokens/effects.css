@@ -1,0 +1,17 @@
+:root{
+  --r-sm:8px; --r-md:12px; --r-lg:14px; --r-xl:16px; --r-2xl:18px; --r-3xl:20px; --r-4xl:24px; --r-pill:99px;
+
+  --shadow-btn:0 12px 30px rgba(200,241,63,.25);
+  --shadow-pop:0 18px 50px rgba(200,241,63,.30);
+  --shadow-toast:0 10px 30px rgba(0,0,0,.40);
+  --shadow-frame:0 24px 70px rgba(0,0,0,.55);   /* app frame on desktop — neutral, never lime */
+  --shadow-logo:0 14px 40px rgba(200,241,63,.28);
+  --glow-dot:0 0 6px #C8F13F;
+  --ring-beta:0 0 0 3px rgba(200,241,63,.06);
+}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(200,241,63,.35)}50%{box-shadow:0 0 0 8px rgba(200,241,63,0)}}
+@keyframes sheetUp{from{transform:translateY(105%)}to{transform:translateY(0)}}
+@keyframes popIn{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+@keyframes fadeUp{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}

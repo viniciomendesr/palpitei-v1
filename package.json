@@ -1,0 +1,27 @@
+{
+  "name": "palpitei",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Palpitei v1 — jogo social de inteligência esportiva sobre a TxLINE. Trilha Consumer and Fan Experiences, Superteam World Cup Hackathon (TxODDS).",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:ds": "npm run build -w @palpitei/ds",
+    "dev": "npm run dev -w @palpitei/web",
+    "dev:https": "npm run dev:https -w @palpitei/web",
+    "dev:local": "npm run dev:local -w @palpitei/web",
+    "lan:url": "node scripts/lan-url.mjs",
+    "privy:doctor": "node scripts/privy-doctor.mjs",
+    "build": "npm run build:ds && npm run build -w @palpitei/web",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "node scripts/migrate.mjs",
+    "cache:match": "npm run cache:match -w @palpitei/txline --",
+    "db:status": "node scripts/migrate.mjs --status"
+  }
+}

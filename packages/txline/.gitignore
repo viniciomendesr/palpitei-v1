@@ -1,0 +1,6 @@
+# Payload da TxLINE. O T&C §7 licencia o dado só para o hackathon e PROÍBE
+# redistribuição — este diretório NUNCA pode ir para o repositório público.
+# Na v1 o cache de verdade é o Postgres (MatchCacheStore); isto aqui é só o
+# fallback de desenvolvimento offline do `npm run cache:match -- --file`.
+.cache/
+.env

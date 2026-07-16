@@ -1,0 +1,29 @@
+{
+  "name": "@palpitei/txline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Palpitei txline — cliente da TxLINE (auth, REST, /updates) e camada de ingestão (SSE ao vivo, replay, gerador sintético dev-only). Fonte primária do jogo.",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "cache:match": "node --experimental-strip-types --env-file-if-exists=.env --env-file-if-exists=../../.env scripts/cache-match.ts"
+  },
+  "dependencies": {
+    "@palpitei/core": "*",
+    "eventsource": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.2"
+  }
+}

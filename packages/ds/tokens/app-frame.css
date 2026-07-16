@@ -1,0 +1,86 @@
+/* App frame — the responsive contract of the whole product.
+ *
+ * Palpitei is mobile-first and ships ONE layout: the phone. These tokens are the
+ * only place that layout reacts to viewport size, so AppFrame stays inline-styled
+ * against var(--*) like every other component and the system keeps shipping zero
+ * CSS classes.
+ *
+ * Mobile-first defaults = the phone, full-bleed and square. The @media block only
+ * adds the desktop treatment once the viewport is wider than the app column plus
+ * breathing room; below that nothing here applies and the app fills the screen.
+ */
+:root{
+  --app-max-w:420px;        /* the SCREEN — the only width the layout targets, bezel excluded */
+  --app-vh:100vh;           /* viewport height; upgraded to dvh below where supported */
+  --app-frame-radius:0px;   /* phones are already the device — no rounding, no shadow, no bezel */
+  --app-frame-shadow:none;
+  --app-frame-border:transparent;
+  --app-frame-gap:0px;      /* backdrop breathing room around the device */
+
+  /* On a phone the device IS the viewport: fill it, top to bottom, and stretch. */
+  --app-frame-max-h:none;
+  --app-frame-align:stretch;
+
+  /* The device body on desktop. Zero here: a phone IS the device, so the bezel
+     would be a picture of a phone drawn inside a phone. */
+  --app-bezel:0px;
+  --app-bezel-bg:transparent;
+  --app-bezel-radius:0px;
+
+  /* The desktop letterbox. One step BELOW --bg-page, extending the surface ramp
+     downward: the system reads depth as lightness (forward = lighter), so the app
+     has to sit lighter than whatever it floats on. --bg-page (#0A0C0B) is only ~2
+     levels off --bg-app and leaves the frame invisible. Never used on a phone,
+     where the app is the whole screen. */
+  --app-backdrop:#050706;
+}
+
+/* dvh tracks the mobile URL bar; vh does not. Kept as a @supports swap so the
+   fallback lives in CSS instead of being unexpressible in an inline style. */
+@supports (height:100dvh){
+  :root{ --app-vh:100dvh; }
+}
+
+/* Desktop: don't stretch the app — centre it and frame it. 480px is the app
+   column (420px) plus a gutter each side; below that the frame would be cropped,
+   so full-bleed stays correct.
+ *
+ * Width alone is not enough to mean "desktop". A phone in landscape is 844px wide
+ * and would sail past 480, so it would get a picture of a phone drawn inside a
+ * phone — bezel, shadow and all. hover/pointer ask the DEVICE instead of guessing
+ * from the window: a mouse means a real pointer and a hover state; a finger means
+ * neither. Both conditions have to hold, so the frame only ever appears where it
+ * is chrome around the app, never on the device the app is pretending to be. */
+@media (min-width:480px) and (hover:hover) and (pointer:fine){
+  :root{
+    /* Device geometry, deliberately NOT var(--r-4xl): a phone's corner is the shape of
+       an object, not a UI radius, and it must not drift when the radius scale is tuned. */
+    --app-frame-radius:28px;
+    --app-bezel:10px;
+    /* The body reads as a physical frame by sitting LIGHTER than both the letterbox it
+       casts onto and the screen it holds — the screen is a hole, not a raised surface.
+       Its own value on purpose: --surface-2 is nearly this colour, but it's an app
+       surface, and retuning it must never reshape the hardware. */
+    --app-bezel-bg:#171C19;
+    /* Concentric corners: outer = inner + thickness, so the two curves stay parallel.
+       Anything else and the bezel visibly pinches or bulges at the corners. */
+    --app-bezel-radius:calc(var(--app-frame-radius) + var(--app-bezel));
+    --app-frame-shadow:var(--shadow-frame);
+    --app-frame-border:var(--border-2);   /* the rim does most of the work — a black shadow can't read on a near-black backdrop */
+    --app-frame-gap:var(--sp-11);
+
+    /* A phone has a SHAPE. Without a cap the body just inherits the viewport height,
+       so the "device" stretched to whatever the window happened to be: measured at a
+       520x1125 viewport it rendered a 420x1057 screen — a 1:2.5 ribbon, and it visibly
+       breathed in and out on browser zoom (zoom changes dvh). 912px keeps the 420px
+       column at 1:2.17, the proportion of the phone this product is designed for
+       (iPhone 14 Pro Max is 430x932; the prototype is 390x812).
+       It is a MAX, not a height: a short window still shrinks the device to fit rather
+       than overflowing the frame — the app column just gets less room, exactly as it
+       would on a smaller phone. */
+    --app-frame-max-h:912px;
+    /* Centre it once it stops growing, or the capped device would sit pinned to the top
+       of the letterbox with all the slack dumped below it. */
+    --app-frame-align:center;
+  }
+}
