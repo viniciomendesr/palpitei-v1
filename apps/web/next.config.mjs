@@ -57,7 +57,10 @@ function localDevHosts() {
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: localDevHosts(),
-  transpilePackages: ['@palpitei/core', '@palpitei/ds'],
+  // @palpitei/txline entra aqui pelo mesmo motivo do core: é publicado como FONTE
+  // (exports: "./src/index.ts"), então quem transpila é o Next. O @palpitei/db NÃO
+  // entra — ele compila para dist/ (por isso `build:db` roda antes no build da raiz).
+  transpilePackages: ['@palpitei/core', '@palpitei/ds', '@palpitei/txline'],
 };
 
 export default nextConfig;

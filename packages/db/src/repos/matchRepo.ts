@@ -14,6 +14,9 @@ function mapFixture(r: Row): Fixture {
   if (r.competition_id != null) out.competitionId = Number(r.competition_id);
   if (r.start_ts != null) out.startTime = Number(r.start_ts);
   if (r.game_state_raw != null) out.gameState = Number(r.game_state_raw);
+  // A proveniência sai do banco junto com a partida: quem renderiza o selo não
+  // pode precisar de uma segunda consulta para não mentir (G6).
+  if (r.cache_source != null) out.cacheSource = r.cache_source as CacheSource;
   return out;
 }
 

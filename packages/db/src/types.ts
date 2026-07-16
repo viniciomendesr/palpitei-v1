@@ -51,6 +51,15 @@ export type Fixture = {
   startTime?: number; // epoch ms — âncora da janela do desafio final (G4)
   gameState?: number;
   state?: MatchState;
+  /**
+   * De onde esta partida veio, quando veio do cache. O banco sempre soube
+   * (coluna `cache_source`, e o COLS do matchRepo já a lia) — mas o mapper
+   * descartava, e por isso a tela não TINHA como dizer a verdade sobre a
+   * origem. A §2 exige selo de fonte em cada sala e o G6 diz que rótulo de
+   * proveniência não pode mentir: sem este campo, só sobrava chutar.
+   * `undefined` = veio do feed ao vivo/snapshot, não do cache.
+   */
+  cacheSource?: CacheSource;
   raw?: unknown;
 };
 

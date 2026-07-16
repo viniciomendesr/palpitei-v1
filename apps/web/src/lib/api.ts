@@ -19,8 +19,23 @@
 /** Como a conta entrou. As duas primeiras cumprem "sign up through Solana". */
 export type WalletSource = 'privy_embedded' | 'external' | 'simulated';
 
-/** De onde o replay saiu. `synthetic` é dev-only e nunca vai pra demo (§7 / regra da trilha). */
-export type ReplaySource = 'txline-cache' | 'txline-historical' | 'txline-snapshot' | 'synthetic';
+/**
+ * De onde o replay saiu. `synthetic` é dev-only e nunca vai pra demo (§7 / regra da trilha).
+ *
+ * Espelha `CacheSource` do @palpitei/db de propósito: o selo tem que poder dizer a
+ * VERDADE. O que o cache grava na prática é `txline-updates` (a linha do tempo de
+ * /scores/updates — a única fonte que vale cachear); sem esse valor aqui, a única
+ * saída era rotular a partida gravada como `txline-cache`, que é rótulo de
+ * proveniência mentindo — o G6 literal. O CONTEXT §8 herdou a lista do v0 sem
+ * `txline-updates`; quem está certo é o código que grava.
+ */
+export type ReplaySource =
+  | 'txline-updates'
+  | 'txline-cache'
+  | 'txline-historical'
+  | 'txline-snapshot'
+  | 'txline-live'
+  | 'synthetic';
 
 export interface ApiUser {
   /** A identidade. Não é a carteira: a carteira muda, o DID não. */

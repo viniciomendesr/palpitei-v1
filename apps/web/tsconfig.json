@@ -14,6 +14,14 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    // @palpitei/core e @palpitei/db são consumidos CRUS (exports: "./src/index.ts"),
+    // e os imports relativos dentro deles carregam ".ts" de verdade. O tsconfig de
+    // cada pacote liga isto; o do web também precisa, porque no primeiro import o
+    // programa do tsc passa a incluir os .ts do pacote — e aí `typecheck` e
+    // `next build` (que typecheca) morrem com TS5097 apontando para dentro do core,
+    // longe da linha que você escreveu. Permitido aqui porque noEmit está ligado:
+    // quem transpila é o Next (transpilePackages), não o tsc.
+    "allowImportingTsExtensions": true,
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"]

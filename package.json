@@ -17,11 +17,12 @@
     "dev:local": "npm run dev:local -w @palpitei/web",
     "lan:url": "node scripts/lan-url.mjs",
     "privy:doctor": "node scripts/privy-doctor.mjs",
-    "build": "npm run build:ds && npm run build -w @palpitei/web",
+    "build": "npm run build:ds && npm run build:db && npm run build -w @palpitei/web",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:migrate": "node scripts/migrate.mjs",
     "cache:match": "npm run cache:match -w @palpitei/txline --",
-    "db:status": "node scripts/migrate.mjs --status"
+    "db:status": "node scripts/migrate.mjs --status",
+    "build:db": "npm run build -w @palpitei/db"
   }
 }
