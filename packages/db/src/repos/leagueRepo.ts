@@ -15,6 +15,7 @@ import {
   LeagueLimitError,
   LeagueNameInvalidError,
   LeagueNotFoundError,
+  LeagueNotOwnerError,
   UserNotFoundError,
   constraintName,
   isUniqueViolation,
@@ -267,6 +268,32 @@ export function createLeagueRepo(db: Db) {
       const liga = await repo.findById(id);
       if (!liga) throw new LeagueNotFoundError();
       return liga;
+    },
+
+    /**
+     * Apaga a liga — só o LÍDER pode.
+     *
+     * A posse é conferida NA PRÓPRIA QUERY (`owner_id = $2`), não num SELECT
+     * antes: entre o SELECT e o DELETE mora a corrida de sempre. Os membros
+     * saem junto pela FK da 0002 (`league_members.league_id on delete
+     * cascade`) — e a cota do free volta sozinha, porque `countOwned` conta
+     * linhas de `leagues` e a linha some.
+     *
+     * Quando nada foi apagado, a resposta não pode vazar existência: quem não
+     * é membro recebe o MESMO 404 de liga inexistente. O 403 é só para quem
+     * está DENTRO da liga e não lidera — esse já vê o nome e o convite, não há
+     * o que esconder, e um 404 para ele mentiria ("a liga sumiu?").
+     */
+    async delete(id: string, userId: string): Promise<void> {
+      const rows = await db.query(`delete from leagues where id = $1 and owner_id = $2 returning id`, [
+        id,
+        userId,
+      ]);
+      if (rows[0]) return;
+      // Nada apagado. A consulta de associação aqui é só para ESCOLHER o erro —
+      // a decisão de apagar já foi tomada, atomicamente, pela query acima.
+      if (await repo.isMember(id, userId)) throw new LeagueNotOwnerError();
+      throw new LeagueNotFoundError();
     },
 
     /** A liga é PRIVADA: quem não é membro não vê nem o nome, nem o convite. */

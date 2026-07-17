@@ -330,6 +330,14 @@ export const api = {
   /** A liga por dentro. 404 se você não é membro — o mesmo 404 de liga inexistente. */
   league: (id: string) => request<ApiLeagueDetail>(`/api/leagues/${encodeURIComponent(id)}`),
 
+  /**
+   * Apaga a liga — só o líder. Membro que não lidera leva 403; quem não é
+   * membro leva o MESMO 404 de liga inexistente (apagar não vaza existência).
+   * Apagar devolve a cota do free: ela conta ligas CRIADAS, e a linha some.
+   */
+  deleteLeague: (id: string) =>
+    request<{ ok: true }>(`/api/leagues/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   fixtures: () => request<{ fixtures: ApiFixture[] }>('/api/fixtures'),
 
   joinRoom: (roomId: string) =>

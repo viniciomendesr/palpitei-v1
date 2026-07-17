@@ -32,6 +32,11 @@ export default function LigaPage() {
   const [dados, setDados] = useState<ApiLeagueDetail | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
+  // Apagar em duas etapas NA TELA (nada de window.confirm: trava a automação e
+  // é feio). O 1º toque abre o painel; só o 2º apaga de verdade.
+  const [confirmando, setConfirmando] = useState(false);
+  const [apagando, setApagando] = useState(false);
+  const [erroApagar, setErroApagar] = useState<string | null>(null);
 
   const id = params?.id;
   // Mesma corrida do resto do app: a sessão local revive na hora, a Privy leva
@@ -65,6 +70,21 @@ export default function LigaPage() {
   };
 
   const membros = (n: number) => (n === 1 ? t.ligaMembroUm : fill(t.ligaMembros, { n }));
+
+  const apagar = async () => {
+    if (!id || apagando) return;
+    setApagando(true);
+    setErroApagar(null);
+    try {
+      await api.deleteLeague(id);
+      // A liga não existe mais; esta tela também não. A home relê as ligas (e o
+      // countOwned) do banco ao montar — a cota do free volta sozinha.
+      router.push('/home');
+    } catch (e) {
+      setErroApagar(e instanceof Error ? e.message : t.ligaApagarErro);
+      setApagando(false);
+    }
+  };
 
   return (
     <Screen padding="18px 18px 20px">
@@ -245,6 +265,69 @@ export default function LigaPage() {
               )}
             </div>
           ))}
+
+          {/* Apagar a liga — SÓ quem lidera vê, e o servidor confere de novo
+              (`owner_id` na query do DELETE): esconder o botão é cortesia, não
+              segurança. Confirmação em duas etapas aqui na tela. */}
+          {dados.league.iLead && (
+            <div style={{ marginTop: 26 }}>
+              {!confirmando ? (
+                <Button variant="danger" size="sm" onClick={() => setConfirmando(true)}>
+                  {t.ligaApagar}
+                </Button>
+              ) : (
+                <div
+                  style={{
+                    padding: 16,
+                    background: 'var(--surface-1)',
+                    border: '1.5px solid var(--red)',
+                    borderRadius: 'var(--r-2xl)',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: fw.medium,
+                      color: 'var(--text-hi)',
+                      lineHeight: 'var(--leading-body)',
+                    }}
+                  >
+                    {t.ligaApagarAviso}
+                  </div>
+                  {erroApagar && (
+                    <div
+                      role="alert"
+                      style={{
+                        marginTop: 10,
+                        fontSize: 12.5,
+                        fontWeight: fw.medium,
+                        color: 'var(--red)',
+                        lineHeight: 'var(--leading-body)',
+                      }}
+                    >
+                      {erroApagar}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
+                    <Button variant="danger" size="sm" disabled={apagando} onClick={apagar}>
+                      {apagando ? t.ligaApagando : t.ligaApagarConfirma}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={apagando}
+                      onClick={() => {
+                        setConfirmando(false);
+                        setErroApagar(null);
+                      }}
+                    >
+                      {t.cancel}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </Screen>

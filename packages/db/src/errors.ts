@@ -53,6 +53,20 @@ export class LeagueLimitError extends Error {
   }
 }
 
+/**
+ * Apagar a liga é do LÍDER. Este 403 só aparece para quem JÁ está dentro da
+ * liga (membro sem liderança) — quem não é membro recebe o mesmo 404 de liga
+ * inexistente, para a tentativa não confirmar que ela existe.
+ */
+export class LeagueNotOwnerError extends Error {
+  readonly code = 'league_not_owner';
+  readonly status = 403;
+  constructor() {
+    super('só quem lidera a liga pode apagá-la');
+    this.name = 'LeagueNotOwnerError';
+  }
+}
+
 export class LeagueNotFoundError extends Error {
   readonly code = 'league_not_found';
   readonly status = 404;
