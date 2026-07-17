@@ -29,6 +29,8 @@ import {
   LeagueLimitError,
   InviteCodeInvalidError,
   LeagueNameInvalidError,
+  LeagueNotFoundError,
+  LeagueNotOwnerError,
 } from '../dist/index.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -851,6 +853,62 @@ test('nome de liga vazio, curto ou gigante não entra', async () => {
   // O espaço repetido é normalizado, não recusado.
   const liga = await p.leagues.create(dono.id, '  Resenha    FC  ');
   assert.equal(liga.name, 'Resenha FC');
+});
+
+test('o LÍDER apaga a liga: os membros saem junto e a cota do free VOLTA', async () => {
+  const dono = await faNovo('apaga-dono');
+  const amigo = await faNovo('apaga-amigo');
+  const liga = await p.leagues.create(dono.id, 'Vai Sumir FC');
+  await p.leagues.joinByCode(amigo.id, liga.inviteCode);
+
+  await p.leagues.delete(liga.id, dono.id);
+
+  assert.equal(await p.leagues.findById(liga.id), null, 'a liga tem que sumir do banco, não da tela');
+  const [m] = await p.db.query(
+    `select count(*)::int as n from league_members where league_id = $1`,
+    [liga.id],
+  );
+  assert.equal(m.n, 0, 'apagar a liga leva os membros junto (FK on delete cascade da 0002)');
+  assert.equal(await p.leagues.listForUser(amigo.id).then((l) => l.length), 0,
+    'o amigo não pode continuar vendo uma liga que não existe');
+
+  // A cota do free conta ligas CRIADAS: a linha sumiu, a cota voltou.
+  assert.equal(await p.leagues.countOwned(dono.id), 0, 'a cota do free tem que voltar');
+  const outra = await p.leagues.create(dono.id, 'A Que Ficou');
+  assert.ok(outra.id, 'o free apagou a dele e pode criar outra no lugar');
+});
+
+test('membro que NÃO lidera não apaga: 403 honesto, e a liga fica', async () => {
+  const dono = await faNovo('naolidera-dono');
+  const amigo = await faNovo('naolidera-amigo');
+  const liga = await p.leagues.create(dono.id, 'Fica FC');
+  await p.leagues.joinByCode(amigo.id, liga.inviteCode);
+
+  await assert.rejects(
+    () => p.leagues.delete(liga.id, amigo.id),
+    (e) => {
+      assert.ok(e instanceof LeagueNotOwnerError);
+      assert.equal(e.status, 403, 'membro sem liderança é 403 — ele JÁ vê a liga, não há o que esconder');
+      return true;
+    },
+  );
+  assert.ok(await p.leagues.findById(liga.id), 'a liga não pode ter sumido');
+  assert.equal((await p.leagues.findById(liga.id)).memberCount, 2, 'e ninguém saiu dela');
+});
+
+test('quem NÃO é membro recebe o MESMO 404 de liga inexistente — apagar não vaza existência', async () => {
+  const dono = await faNovo('estranho-dono');
+  const estranho = await faNovo('estranho-fa');
+  const liga = await p.leagues.create(dono.id, 'Invisível FC');
+
+  // Liga que existe mas não é dele × liga que não existe: o MESMO erro, de
+  // propósito — um 403 aqui contaria a quem só tem o id que a liga existe.
+  await assert.rejects(() => p.leagues.delete(liga.id, estranho.id), LeagueNotFoundError);
+  await assert.rejects(
+    () => p.leagues.delete('00000000-0000-0000-0000-000000000000', estranho.id),
+    LeagueNotFoundError,
+  );
+  assert.ok(await p.leagues.findById(liga.id), 'tentativa de fora não pode apagar nada');
 });
 
 test('uma liga tem UM dono — o banco recusa o segundo', async () => {
