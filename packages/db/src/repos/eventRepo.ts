@@ -200,6 +200,49 @@ export function createEventRepo(db: Db) {
       return { p1: t?.p1?.Goals ?? 0, p2: t?.p2?.Goals ?? 0 };
     },
 
+    /**
+     * Gols E escanteios FINAIS, para liquidar o palpite pré-jogo no apito.
+     *
+     * Não basta ler o último evento (§11): a chave `Goals`/`Corners` NASCE quando
+     * o lance acontece e pode faltar no evento final (um `game_finalised` costuma
+     * vir sem bloco Score). Então percorre os eventos COM Score em ordem e guarda,
+     * por chave, o último valor CONHECIDO — nunca o de um evento que não fala dela
+     * (isso regrediria o placar, A4), e nunca o máximo (um gol anulado por VAR
+     * DIMINUI o contador, e o final é o que vale).
+     *
+     * Chave que nunca apareceu conta 0 (partida sem escanteio nenhum, p.ex.) — é a
+     * leitura honesta para uma partida encerrada.
+     */
+    async totaisFinais(
+      fixtureId: number
+    ): Promise<{ goals: { p1: number; p2: number }; corners: { p1: number; p2: number } } | null> {
+      const rows = await db.query(
+        `select score_totals from match_events
+          where fixture_id = $1 and has_score and score_totals is not null
+          order by seq`,
+        [fixtureId]
+      );
+      if (rows.length === 0) return null;
+
+      const ultimo: { goals: { p1: number | null; p2: number | null }; corners: { p1: number | null; p2: number | null } } = {
+        goals: { p1: null, p2: null },
+        corners: { p1: null, p2: null },
+      };
+      for (const r of rows) {
+        const t = r.score_totals as { p1?: Record<string, number>; p2?: Record<string, number> } | null;
+        for (const lado of ['p1', 'p2'] as const) {
+          const g = t?.[lado]?.Goals;
+          if (g != null) ultimo.goals[lado] = Number(g);
+          const c = t?.[lado]?.Corners;
+          if (c != null) ultimo.corners[lado] = Number(c);
+        }
+      }
+      return {
+        goals: { p1: ultimo.goals.p1 ?? 0, p2: ultimo.goals.p2 ?? 0 },
+        corners: { p1: ultimo.corners.p1 ?? 0, p2: ultimo.corners.p2 ?? 0 },
+      };
+    },
+
     async count(fixtureId: number): Promise<number> {
       const rows = await db.query(`select count(*)::int as n from match_events where fixture_id = $1`, [
         fixtureId,

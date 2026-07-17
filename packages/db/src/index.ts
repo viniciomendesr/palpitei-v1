@@ -40,6 +40,15 @@ export type { QuestionRepo } from './repos/questionRepo.js';
 export { createPredictionRepo } from './repos/predictionRepo.js';
 export type { PredictionRepo, SettleResult, ResultadoPalpite } from './repos/predictionRepo.js';
 
+export { createPregamePickRepo } from './repos/pregamePickRepo.js';
+export type {
+  PregamePickRepo,
+  PregamePick,
+  PregamePickFields,
+  PregameFinalTotals,
+  PregameGradeFn,
+} from './repos/pregamePickRepo.js';
+
 export { createMarketRepo } from './repos/marketRepo.js';
 export type { MarketRepo } from './repos/marketRepo.js';
 
@@ -63,6 +72,7 @@ import { createMarketRepo, type MarketRepo } from './repos/marketRepo.js';
 import { createMatchRepo, type MatchRepo } from './repos/matchRepo.js';
 import { createOddsRepo, type OddsRepo } from './repos/oddsRepo.js';
 import { createPredictionRepo, type PredictionRepo } from './repos/predictionRepo.js';
+import { createPregamePickRepo, type PregamePickRepo } from './repos/pregamePickRepo.js';
 import { createQuestionRepo, type QuestionRepo } from './repos/questionRepo.js';
 import { createUserRepo, type UserRepo } from './repos/userRepo.js';
 
@@ -74,6 +84,7 @@ export type Palpitei = {
   odds: OddsRepo;
   questions: QuestionRepo;
   predictions: PredictionRepo;
+  pregame: PregamePickRepo;
   markets: MarketRepo;
   gamification: GamificationRepo;
   leagues: LeagueRepo;
@@ -101,6 +112,7 @@ export function createPalpitei(opts: CreateDbOptions = {}): Palpitei {
     odds: createOddsRepo(db),
     questions: createQuestionRepo(db),
     predictions: createPredictionRepo(db),
+    pregame: createPregamePickRepo(db),
     markets: createMarketRepo(db),
     gamification: createGamificationRepo(db),
     leagues: createLeagueRepo(db),

@@ -47,6 +47,7 @@ const MIGRATIONS = [
   resolve(AQUI, '../../../supabase/migrations/0002_leagues.sql'),
   resolve(AQUI, '../../../supabase/migrations/0003_lobbies.sql'),
   resolve(AQUI, '../../../supabase/migrations/0004_lobby_presence.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0005_pregame_picks.sql'),
 ];
 const PORTA = 5599;
 
@@ -1018,4 +1019,149 @@ test('o runner consegue encerrar o lobby quando todos fecharam o navegador', asy
   await p.lobbies.markFinishedBySystem(lobby.inviteCode);
   await p.lobbies.markFinishedBySystem(lobby.inviteCode);
   assert.equal((await p.lobbies.findByCode(lobby.inviteCode))?.phase, 'finished');
+});
+
+// ---------------------------------------------------------------------------
+// Palpite pré-jogo — persistência dos quatro mercados e liquidação idempotente
+//
+// O que estes testes protegem é a mesma coisa do predictionRepo: o XP não pode
+// ser pago duas vezes (o GET liquida "lazy" e pode rodar de novo a cada leitura),
+// e o placar/escanteios finais têm de sobreviver às armadilhas do §11 (chave que
+// entra no meio do jogo, evento final sem bloco Score).
+// ---------------------------------------------------------------------------
+
+// A regra de pontuação vive no @palpitei/core (gradePregame). O repositório só a
+// APLICA — recebe a função por injeção para não puxar o core para dentro do db.
+// Aqui restatamos a semântica de propósito: é a expectativa do teste sobre o que
+// uma grade faz; o que se mede é o repo persistir e creditar certo.
+const gradeFake = (pick, final) => {
+  const outcome =
+    final.goalsP1 > final.goalsP2 ? 'home' : final.goalsP2 > final.goalsP1 ? 'away' : 'draw';
+  const resultCorrect = pick.result === null ? null : pick.result === outcome;
+  const scoreCorrect = !pick.scoreSet ? null : pick.scoreA === final.goalsP1 && pick.scoreB === final.goalsP2;
+  const goalsCorrect = pick.goals === null ? null : pick.goals === (final.goalsP1 + final.goalsP2 > 2.5 ? 'over' : 'under');
+  const cornersCorrect = pick.corners === null ? null : pick.corners === (final.cornersTotal > 9.5 ? 'over' : 'under');
+  const awardedXp =
+    (resultCorrect ? 30 : 0) + (scoreCorrect ? 60 : 0) + (goalsCorrect ? 25 : 0) + (cornersCorrect ? 25 : 0);
+  return { resultCorrect, scoreCorrect, goalsCorrect, cornersCorrect, awardedXp };
+};
+
+test('pregame: upsert grava um palpite e reler devolve o que foi salvo', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:pregame1');
+  await p.matches.upsert({ fixtureId: 920001, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
+
+  const salvo = await p.pregame.upsert(u.id, 920001, {
+    result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', corners: null,
+  });
+  assert.equal(salvo.result, 'home');
+  assert.equal(salvo.scoreA, 2);
+  assert.equal(salvo.scoreSet, true);
+  assert.ok(salvo.submittedAt, 'confirmar marca submitted_at');
+
+  const lido = await p.pregame.getByUserFixture(u.id, 920001);
+  assert.equal(lido.result, 'home');
+  assert.equal(lido.goals, 'over');
+  assert.equal(lido.corners, null);
+});
+
+test('pregame: reeditar NÃO duplica a linha e preserva o submitted_at original', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:pregame2');
+  await p.matches.upsert({ fixtureId: 920002, p1: 'A', p2: 'B', startTime: 1_700_000_000_000 });
+
+  const um = await p.pregame.upsert(u.id, 920002, {
+    result: 'home', scoreA: 0, scoreB: 0, scoreSet: false, goals: null, corners: null,
+  });
+  const dois = await p.pregame.upsert(u.id, 920002, {
+    result: 'away', scoreA: 1, scoreB: 3, scoreSet: true, goals: 'under', corners: 'over',
+  });
+
+  assert.equal(dois.result, 'away', 'a edição vale');
+  assert.equal(dois.scoreSet, true);
+  assert.equal(dois.submittedAt, um.submittedAt, 'submitted_at é de quando confirmou a 1ª vez');
+
+  const [linha] = await p.db.query(`select count(*)::int as n from pregame_picks where user_id = $1 and fixture_id = 920002`, [u.id]);
+  assert.equal(linha.n, 1, 'um palpite por fã por partida');
+});
+
+test('pregame: liquidar credita o XP dos acertos, e liquidar de novo paga ZERO', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:pregame-settle');
+  await p.matches.upsert({ fixtureId: 920003, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
+  // Crava tudo certo para o final 2×1, 12 escanteios: 30+60+25+25 = 140.
+  await p.pregame.upsert(u.id, 920003, {
+    result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', corners: 'over',
+  });
+  const xpAntes = (await p.users.findById(u.id)).xp;
+  const final = { goalsP1: 2, goalsP2: 1, cornersTotal: 12 };
+
+  const um = await p.pregame.settleFixture(920003, final, gradeFake);
+  assert.equal(um.liquidados, 1);
+  assert.equal(um.jaEstavam, 0);
+
+  const depois = await p.users.findById(u.id);
+  assert.equal(depois.xp - xpAntes, 140, 'quatro acertos = 140 XP');
+
+  // O GET liquida lazy a cada leitura: rodar de novo NÃO pode pagar de novo. O
+  // filtro `settled_at is null` já exclui a linha liquidada, então a 2ª varredura
+  // não re-seleciona nada (liquidados 0, jaEstavam 0) — a prova de que não pagou
+  // duas vezes é o XP seguir 140.
+  const dois = await p.pregame.settleFixture(920003, final, gradeFake);
+  assert.equal(dois.liquidados, 0, 'a segunda liquidação não paga');
+  assert.equal(dois.jaEstavam, 0, 'o filtro já pulou a linha liquidada');
+  assert.equal((await p.users.findById(u.id)).xp - xpAntes, 140, 'segue 140, não 280');
+
+  const lido = await p.pregame.getByUserFixture(u.id, 920003);
+  assert.ok(lido.settledAt, 'ficou marcado como liquidado');
+  assert.equal(lido.awardedXp, 140);
+  assert.equal(lido.resultCorrect, true);
+});
+
+test('pregame: só os acertos pagam — resultado certo e placar errado credita 30', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:pregame-parcial');
+  await p.matches.upsert({ fixtureId: 920004, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
+  await p.pregame.upsert(u.id, 920004, {
+    result: 'home', scoreA: 3, scoreB: 0, scoreSet: true, goals: 'under', corners: null,
+  });
+  const xpAntes = (await p.users.findById(u.id)).xp;
+
+  // Final 2×1 (3 gols → 'over'): acerta só o resultado. Errou placar (3×0) e gols (under).
+  await p.pregame.settleFixture(920004, { goalsP1: 2, goalsP2: 1, cornersTotal: 3 }, gradeFake);
+
+  const lido = await p.pregame.getByUserFixture(u.id, 920004);
+  assert.equal(lido.resultCorrect, true);
+  assert.equal(lido.scoreCorrect, false);
+  assert.equal(lido.goalsCorrect, false);
+  assert.equal(lido.cornersCorrect, null, 'não preencheu escanteios');
+  assert.equal(lido.awardedXp, 30);
+  assert.equal((await p.users.findById(u.id)).xp - xpAntes, 30);
+});
+
+test('totaisFinais: usa o último valor CONHECIDO de cada chave (§11: a chave entra no meio do jogo)', async () => {
+  await p.matches.upsert({ fixtureId: 920010, p1: 'A', p2: 'B', startTime: 1 });
+  await p.events.upsertMany([
+    // seq 76: 1º evento com Score, Total VAZIO (nenhuma chave ainda)
+    evento(76, { fixtureId: 920010, action: 'corner', hasScore: true, goals: { p1: 0, p2: 0 }, corners: { p1: 0, p2: 0 }, totals: { p1: {}, p2: {} } }),
+    // seq 77: nasce o contador de escanteios
+    evento(77, { fixtureId: 920010, action: 'corner', hasScore: true, corners: { p1: 1, p2: 0 }, totals: { p1: { Corners: 1 }, p2: { Corners: 0 } } }),
+    // seq 539: 1º gol; a chave Goals aparece só agora
+    evento(539, { fixtureId: 920010, action: 'goal', hasScore: true, goals: { p1: 1, p2: 0 }, corners: { p1: 4, p2: 2 }, totals: { p1: { Goals: 1, Corners: 4 }, p2: { Goals: 0, Corners: 2 } } }),
+    // seq 900: apito. Total com placar 2×1 e 6×4 escanteios (10 no total)
+    evento(900, { fixtureId: 920010, action: 'goal', hasScore: true, goals: { p1: 2, p2: 1 }, corners: { p1: 6, p2: 4 }, totals: { p1: { Goals: 2, Corners: 6 }, p2: { Goals: 1, Corners: 4 } } }),
+  ]);
+
+  const t = await p.events.totaisFinais(920010);
+  assert.deepEqual(t.goals, { p1: 2, p2: 1 });
+  assert.deepEqual(t.corners, { p1: 6, p2: 4 }, 'escanteios finais = 10 no total');
+});
+
+test('totaisFinais: evento final SEM bloco Score não zera o que já se sabia (A4)', async () => {
+  await p.matches.upsert({ fixtureId: 920011, p1: 'A', p2: 'B', startTime: 1 });
+  await p.events.upsertMany([
+    evento(10, { fixtureId: 920011, action: 'goal', hasScore: true, goals: { p1: 2, p2: 1 }, corners: { p1: 5, p2: 4 }, totals: { p1: { Goals: 2, Corners: 5 }, p2: { Goals: 1, Corners: 4 } } }),
+    // game_finalised sem Score (acontece no feed): normalize entrega hasScore=false
+    evento(11, { fixtureId: 920011, action: 'game_finalised', hasScore: false, goals: { p1: 0, p2: 0 }, corners: { p1: 0, p2: 0 }, totals: { p1: {}, p2: {} } }),
+  ]);
+  const t = await p.events.totaisFinais(920011);
+  assert.deepEqual(t.goals, { p1: 2, p2: 1 }, 'o evento sem Score não pode regredir o placar');
+  assert.deepEqual(t.corners, { p1: 5, p2: 4 });
+  assert.equal(await p.events.totaisFinais(999999), null, 'partida sem timeline = null');
 });
