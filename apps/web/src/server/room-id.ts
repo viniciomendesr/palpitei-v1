@@ -9,6 +9,16 @@ export function parseRoomId(id: string): { fixtureId: number; treino: boolean } 
   return { fixtureId: Number(match[2]), treino: Boolean(match[1]) };
 }
 
+/**
+ * Regra de produto da execução: só a rota explícita `treino-*` desliga XP e
+ * persistência. Histórico da fixture e código da party não mudam esta decisão.
+ */
+export function politicaDaSala(treino: boolean): { pagaXp: boolean; persiste: boolean } {
+  return treino
+    ? { pagaXp: false, persiste: false }
+    : { pagaXp: true, persiste: true };
+}
+
 /** Código curto e seguro para URL que identifica um grupo dentro da fixture. */
 export function parsePartyId(value: string | null | undefined): string | null {
   if (!value) return null;

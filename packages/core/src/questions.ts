@@ -73,7 +73,7 @@ export class QuestionEngine {
   private tracked = new Map<string, Tracked>();
   private prevGoals: { p1: number; p2: number } | null = null;
   private prevCorners: { p1: number; p2: number } | null = null;
-  private sawFirstEvent = false;
+  private sawMatchStart = false;
 
   // no máximo 1 pergunta pendente (não resolvida) por tipo
   private pendingFinal: Tracked | null = null;
@@ -88,10 +88,9 @@ export class QuestionEngine {
     onResolved?: (q: Question, results: ResolvedResult[]) => void;
     /**
      * Modo treino: `false` para um fã = o veredito dele sai normal (won/lost),
-     * mas o XP pago é SEMPRE 0 — replay rejogado com gabarito decorado não pode
-     * valer ranking. Ausente = todo mundo é pago (o caminho ao vivo não muda).
-     * A decisão de QUEM é treino é da aplicação; o motor só obedece — uma
-     * tabela de pagamento, um pagador.
+     * mas o XP pago é SEMPRE 0. Ausente = todo mundo é pago. A aplicação usa
+     * isto somente na rota explícita `treino-*`; replays valendo repetidos
+     * continuam elegíveis. O motor apenas obedece à política recebida.
      */
     pagaXp?: (userId: string) => boolean;
   }) {
@@ -110,8 +109,14 @@ export class QuestionEngine {
     const isEnd =
       ev.action === "game_finalised" || (ev.statusId === 100 && ev.period === 100);
 
-    if (!this.sawFirstEvent) {
-      this.sawFirstEvent = true;
+    // O snapshot começa com venue, clima, escalação e cotações muito antes da
+    // bola rolar. Abrir a pergunta nesse primeiro metadado fazia o contador
+    // incluir todo o pré-jogo comprimido do replay (265s no caso observado),
+    // embora a tela ainda mostrasse 00:00. A primeira pergunta nasce no começo
+    // real da partida: kickoff explícito ou primeiro evento com relógio rodando.
+    const matchStarted = ev.action === "kickoff" || ev.clockRunning === true;
+    if (!this.sawMatchStart && matchStarted) {
+      this.sawMatchStart = true;
       if (!isEnd) this.openFinal(ev.ts);
     }
 
@@ -150,7 +155,20 @@ export class QuestionEngine {
     }
 
     if (ev.action === "kickoff") this.handleKickoff(ev);
-    else if (ev.action === "halftime_finalised") this.handlePeriodEnd(ev);
+    // `next_goal` pergunta pelo próximo gol da PARTIDA e a opção diz
+    // "Ninguém até o fim". O intervalo não liquida essa pergunta: ela segue
+    // fechada até um gol (inclusive no 2º tempo) ou até `game_finalised`.
+
+    // No replay a final_result aberta no kickoff tem sua própria janela curta.
+    // Assim que ela fechar, o próximo evento passa a oferecer next_goal; nunca
+    // empilhamos as duas perguntas no primeiro frame da partida.
+    if (
+      this.sawMatchStart &&
+      !this.pendingNextGoal &&
+      this.pendingFinal?.question.state !== "open"
+    ) {
+      this.openNextGoal(ev.ts);
+    }
 
     if (ev.hasScore) {
       this.prevGoals = { ...ev.goals };
@@ -250,9 +268,18 @@ export class QuestionEngine {
   private handleKickoff(ev: ScoreEvent): void {
     if (this.kickoffTs === null) this.kickoffTs = ev.ts;
     const f = this.pendingFinal;
-    // A janela do resultado final encerra no apito inicial. Se a pergunta abriu
-    // NESTE mesmo evento (replay começando no kickoff), deixamos a janela padrão.
-    if (f && f.question.state === "open" && f.question.opensAt < ev.ts) {
+    // Uma final_result realmente pré-jogo ainda fecha no apito. No replay ela
+    // normalmente nasce NESTE evento e conserva a janela curta calculada pela
+    // velocidade; next_goal só abre depois dela.
+    const teveTempoMinimoNoReplay =
+      this.clock.speed <= 1 ||
+      ev.ts - (f?.question.opensAt ?? ev.ts) >= MIN_REAL_WINDOW_MS * this.clock.speed;
+    if (
+      f &&
+      f.question.state === "open" &&
+      f.question.opensAt < ev.ts &&
+      teveTempoMinimoNoReplay
+    ) {
       f.question.state = "closed";
       this.emit({
         type: "question_closed",
@@ -260,8 +287,9 @@ export class QuestionEngine {
         questionId: f.question.id,
       });
     }
-    // Abre next_goal em qualquer kickoff sem pendente (cobre também o 2º tempo).
-    if (!this.pendingNextGoal) this.openNextGoal(ev.ts);
+    // Em reinício/2º tempo, abre next_goal se a pergunta inicial já não estiver
+    // aceitando palpites.
+    if (!this.pendingNextGoal && f?.question.state !== "open") this.openNextGoal(ev.ts);
   }
 
   private handleGoal(scorer: "p1" | "p2", ev: ScoreEvent): void {
@@ -274,7 +302,9 @@ export class QuestionEngine {
       }
       this.pendingNextGoal = null;
     }
-    if (!this.finished) this.openNextGoal(ev.ts);
+    if (!this.finished && this.pendingFinal?.question.state !== "open") {
+      this.openNextGoal(ev.ts);
+    }
   }
 
   private handleCorner(ev: ScoreEvent): void {
@@ -290,18 +320,6 @@ export class QuestionEngine {
     if (!this.pendingHilo) this.openHilo(ev.ts);
   }
 
-  private handlePeriodEnd(ev: ScoreEvent): void {
-    const t = this.pendingNextGoal;
-    if (t) {
-      if (t.question.state === "open") {
-        this.voidQuestion(t, FAIRNESS_VOID_REASON, ev.ts);
-      } else if (t.question.state === "closed") {
-        this.resolveQuestion(t, "none", ev.ts, ev.seq);
-      }
-      this.pendingNextGoal = null;
-    }
-  }
-
   private handleGameEnd(ev: ScoreEvent): void {
     // Se o registro final não trouxer Score, usa o último placar conhecido.
     const goals = ev.hasScore ? ev.goals : this.prevGoals ?? ev.goals;
@@ -309,8 +327,8 @@ export class QuestionEngine {
     if (fin) {
       // Mesma regra de justiça que a next_goal e a hilo já seguiam: se o evento
       // que RESOLVE chega com a janela aberta, anula — não resolve. Quem fecha a
-      // final_result normalmente é o apito inicial (handleKickoff), mas o feed
-      // não garante um `kickoff` utilizável (no v0 ele reaparecia como recomeço
+      // final_result normalmente fecha pela própria janela curta. O feed não
+      // garante um `kickoff` utilizável (no v0 ele reaparecia como recomeço
       // pós-gol, F2) e o replay por snapshot é um amostrador de 37 linhas (A1).
       // Sem esta guarda, o fim de jogo pagava XP a quem palpitou com a janela
       // ainda aberta — exatamente o que a regra existe para impedir.
@@ -364,14 +382,9 @@ export class QuestionEngine {
   }
 
   private openFinal(ts: number): void {
-    // "Como termina?" é pergunta de PRÉ-JOGO: abre no 1º evento e quem fecha é
-    // o apito inicial. A janela é ancorada no horário da partida, não no 1º
-    // evento — o feed real começa a publicar (venue, clima, escalação, cotação)
-    // até 44 min antes do kickoff, e ancorar no 1º evento fazia a janela
-    // expirar ANTES de a bola rolar: o desafio nascia fechado e ninguém
-    // palpitava. Só aparecia com dado real; no sintético o 1º evento é colado
-    // no apito. Ver achado G4. O teto continua valendo se o apito nunca vier.
-    const referencia = Math.max(ts, this.fixture.startTime ?? ts);
+    // No replay esta pergunta abre no kickoff/primeiro relógio correndo, não nos
+    // metadados pré-jogo. Portanto o prazo é relativo à abertura. A conversão
+    // de windowMs garante MIN_REAL_WINDOW_MS e usa a mesma speed do runner.
     this.pendingFinal = this.openQuestion(
       "final_result",
       `Como termina ${this.fixture.p1} x ${this.fixture.p2}?`,
@@ -381,7 +394,7 @@ export class QuestionEngine {
         { id: "p2", label: this.fixture.p2 },
       ],
       ts,
-      referencia + this.windowMs(WINDOW_FINAL_MS)
+      ts + this.windowMs(WINDOW_FINAL_MS)
     );
   }
 

@@ -15,11 +15,24 @@ function ev(seq: number, ts: number, over: Partial<ScoreEvent> = {}): ScoreEvent
     seq,
     ts,
     action: "status",
+    clockRunning: true,
     hasScore: true,
     goals: { p1: 0, p2: 0 },
     corners: { p1: 0, p2: 0 },
     raw: {},
     ...over,
+  };
+}
+
+function acceleratedClock(start: number, speed: number) {
+  let current = start;
+  return {
+    now: () => current,
+    speed,
+    toRealMs: (matchMs: number) => matchMs / speed,
+    set(ts: number) {
+      current = ts;
+    },
   };
 }
 
@@ -36,7 +49,7 @@ function makeEngine() {
   return { engine, clock, emitted, createUser: fake.createUser, fake };
 }
 
-test("abre final_result no 1º evento; kickoff fecha a janela e abre next_goal", () => {
+test("abre final_result no primeiro evento em jogo; kickoff fecha e abre next_goal", () => {
   const { engine, clock, emitted } = makeEngine();
 
   engine.onScoreEvent(ev(1, T0));
@@ -60,6 +73,41 @@ test("abre final_result no 1º evento; kickoff fecha a janela e abre next_goal",
   const ng = engine.openQuestions().find((q) => q.type === "next_goal");
   assert.ok(ng, "next_goal deveria abrir no kickoff");
   assert.equal(ng!.closesAt, T0 + 5000 + 60_000);
+});
+
+test("replay ignora pré-jogo e abre a primeira pergunta no kickoff com prazo real curto", () => {
+  const emitted: RoomMessage[] = [];
+  const speed = 60;
+  const kickoffTs = T0 + 15_300_000;
+  const clock = acceleratedClock(T0, speed);
+  const fake = makeFakeStore();
+  const engine = new QuestionEngine({
+    fixture: { ...FX, startTime: kickoffTs },
+    clock,
+    emit: (m) => emitted.push(m),
+    ports: fake.ports,
+  });
+
+  // Este era o caso dos 265s: (kickoff + 10min - primeiro evento) / 60.
+  engine.onScoreEvent(ev(1, T0, { clockRunning: false }));
+  assert.equal(engine.openQuestions().length, 0, "metadado pré-jogo não abre desafio");
+
+  clock.set(kickoffTs);
+  engine.onScoreEvent(ev(2, kickoffTs, { action: "kickoff", clockRunning: true }));
+
+  const opens = emitted.filter((m) => m.type === "question_open");
+  assert.equal(opens.length, 1, "o primeiro frame não empilha final e próximo gol");
+  assert.equal(opens[0].question.type, "final_result");
+  assert.equal(opens[0].question.opensAt, kickoffTs);
+  assert.equal(opens[0].closesInRealMs, 10_000);
+  assert.ok(opens[0].closesInRealMs >= 8_000);
+  assert.ok(opens[0].closesInRealMs < 30_000, "não carrega o hiato pré-jogo");
+
+  clock.set(kickoffTs + 600_001);
+  engine.onScoreEvent(ev(3, kickoffTs + 600_001));
+  const final = engine.allQuestions().find((q) => q.type === "final_result")!;
+  assert.equal(final.state, "closed", "fecha antes do evento que resolverá no fim");
+  assert.ok(engine.openQuestions().some((q) => q.type === "next_goal"));
 });
 
 test("place: ok, opção inválida, duplicado, janela fechada, pergunta inexistente", () => {
@@ -195,18 +243,53 @@ test("hilo_corners: 'yes' dentro do horizonte; 'no' via sweep após o deadline",
   assert.equal(q2.correct, "no");
 });
 
-test("halftime_finalised resolve next_goal fechada como 'none'", () => {
-  const { engine } = makeEngine();
+test("next_goal atravessa o intervalo e acerta p1 quando p1 faz o próximo gol", () => {
+  const { engine, clock, emitted, createUser } = makeEngine();
+  const user = createUser("intervalo_q");
 
-  engine.onScoreEvent(ev(1, T0, { action: "kickoff" }));
+  engine.onScoreEvent(ev(1, T0));
+  clock.set(T0 + 5_000);
+  engine.onScoreEvent(ev(2, T0 + 5_000, { action: "kickoff" }));
   const ng = engine.openQuestions().find((q) => q.type === "next_goal")!;
 
-  engine.onScoreEvent(ev(2, T0 + 70_000)); // fecha a janela
-  engine.onScoreEvent(ev(3, T0 + 80_000, { action: "halftime_finalised" }));
+  clock.set(T0 + 10_000);
+  assert.ok(engine.place(user, ng.id, "p1").ok);
+
+  engine.onScoreEvent(ev(3, T0 + 70_000)); // fecha a janela
+  engine.onScoreEvent(ev(4, T0 + 80_000, { action: "halftime_finalised" }));
+
+  assert.equal(
+    engine.questionById(ng.id)!.state,
+    "closed",
+    "o intervalo não significa 'ninguém até o fim'",
+  );
+
+  engine.onScoreEvent(ev(5, T0 + 100_000, { action: "kickoff", period: 2 }));
+  assert.equal(
+    engine.allQuestions().filter((q) => q.type === "next_goal").length,
+    1,
+    "o segundo tempo continua a mesma pergunta em vez de abrir outra",
+  );
+
+  engine.onScoreEvent(
+    ev(6, T0 + 120_000, {
+      action: "goal",
+      period: 2,
+      goals: { p1: 1, p2: 0 },
+    }),
+  );
 
   const q = engine.questionById(ng.id)!;
   assert.equal(q.state, "resolved");
-  assert.equal(q.correct, "none");
+  assert.equal(q.correct, "p1");
+  assert.equal(q.resolvedBySeq, 6);
+  assert.equal(user.xp, 150);
+
+  const resolved = emitted.find(
+    (m) => m.type === "question_resolved" && m.question.id === ng.id,
+  )!;
+  assert.equal(resolved.results[0].choice, "p1");
+  assert.equal(resolved.results[0].result, "won");
 });
 
 test("game_finalised com a final_result ABERTA anula (regra de justiça), não paga", () => {
@@ -293,50 +376,53 @@ test("game_finalised resolve tudo pelo placar e emite game_end por último", () 
   assert.deepEqual(emitted[emitted.length - 1].goals, { p1: 1, p2: 0 });
 });
 
-test("pagaXp falso vira modo treino: o veredito sai, o XP não", () => {
-  const emitted: RoomMessage[] = [];
-  const clock = manualClock(T0);
+test("duas execuções valendo pagam o mesmo fã; treino explícito dá veredito com XP zero", () => {
   const fake = makeFakeStore();
-  const treino = fake.createUser("rejogando");
-  const novato = fake.createUser("primeira_vez");
-  const engine = new QuestionEngine({
-    fixture: FX,
-    clock,
-    emit: (m) => emitted.push(m),
-    ports: fake.ports,
-    // replay já jogado: este fã não recebe XP — os outros seguem normais
-    pagaXp: (userId) => userId !== treino.id,
-  });
+  const fa = fake.createUser("rejogando");
 
-  engine.onScoreEvent(ev(1, T0));
-  clock.set(T0 + 5000);
-  engine.onScoreEvent(ev(2, T0 + 5000, { action: "kickoff" }));
-  const ng = engine.openQuestions().find((q) => q.type === "next_goal")!;
+  const executar = (treino: boolean, deslocamento: number) => {
+    const emitted: RoomMessage[] = [];
+    const inicio = T0 + deslocamento;
+    const clock = manualClock(inicio);
+    const engine = new QuestionEngine({
+      fixture: FX,
+      clock,
+      emit: (m) => emitted.push(m),
+      ports: fake.ports,
+      ...(treino ? { pagaXp: () => false } : {}),
+    });
 
-  clock.set(T0 + 10_000);
-  assert.ok(engine.place(treino, ng.id, "p2").ok);
-  assert.ok(engine.place(novato, ng.id, "p2").ok);
+    engine.onScoreEvent(ev(1, inicio));
+    clock.set(inicio + 5000);
+    engine.onScoreEvent(ev(2, inicio + 5000, { action: "kickoff" }));
+    const ng = engine.openQuestions().find((q) => q.type === "next_goal")!;
+    clock.set(inicio + 10_000);
+    assert.ok(engine.place(fa, ng.id, "p2").ok);
+    engine.onScoreEvent(ev(3, inicio + 70_000));
+    engine.onScoreEvent(
+      ev(4, inicio + 120_000, { action: "goal", goals: { p1: 0, p2: 1 } }),
+    );
 
-  engine.onScoreEvent(ev(3, T0 + 70_000)); // fecha a janela
-  engine.onScoreEvent(ev(4, T0 + 120_000, { action: "goal", goals: { p1: 0, p2: 1 } }));
+    const resolved = emitted.find(
+      (m) => m.type === "question_resolved" && m.question.id === ng.id,
+    )!;
+    return {
+      questionId: ng.id,
+      result: resolved.results.find((r: { userId: string }) => r.userId === fa.id)!,
+    };
+  };
 
-  // os dois ACERTARAM; só o novato é pago
-  assert.equal(novato.xp, 150, "quem joga pela primeira vez leva o bônus normal");
-  assert.equal(treino.xp, 0, "treino não paga XP");
+  const primeira = executar(false, 0);
+  const segunda = executar(false, 1_000_000);
+  assert.notEqual(primeira.questionId, segunda.questionId, "cada runner cria questionIds novos");
+  assert.equal(primeira.result.awardedXp, 150);
+  assert.equal(segunda.result.awardedXp, 150);
+  assert.equal(fa.xp, 300, "repetir a fixture valendo continua elegível a XP");
 
-  const resolved = emitted.find(
-    (m) => m.type === "question_resolved" && m.question.id === ng.id,
-  )!;
-  const rTreino = resolved.results.find((r: { userId: string }) => r.userId === treino.id)!;
-  const rNovato = resolved.results.find((r: { userId: string }) => r.userId === novato.id)!;
-  assert.equal(rTreino.result, "won", "o veredito continua sendo dele — só o pagamento muda");
-  assert.equal(rTreino.awardedXp, 0);
-  assert.equal(rNovato.awardedXp, 150);
-
-  // e o banco recebe o 0 — recibo honesto, não omissão
-  const predTreino = [...fake.predictions.values()].find((p) => p.userId === treino.id)!;
-  assert.equal(predTreino.result, "won");
-  assert.equal(predTreino.awardedXp, 0);
+  const pratica = executar(true, 2_000_000);
+  assert.equal(pratica.result.result, "won", "treino mantém o veredito correto");
+  assert.equal(pratica.result.awardedXp, 0, "somente treino explícito força XP zero");
+  assert.equal(fa.xp, 300);
 });
 
 test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca as dos outros", () => {

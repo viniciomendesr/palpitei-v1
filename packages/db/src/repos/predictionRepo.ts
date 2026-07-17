@@ -144,8 +144,8 @@ export function createPredictionRepo(db: Db) {
     /**
      * Resolve a pergunta inteira de uma vez, numa transação só — o formato do
      * `question_resolved`/`question_void` que a sala já difunde.
-     * Devolve quantos foram REALMENTE pagos: num replay isso vem 0, e é assim
-     * que se enxerga que a idempotência está viva.
+     * Devolve quantos foram REALMENTE pagos: numa entrega duplicada isso vem 0,
+     * e é assim que se enxerga que a idempotência está viva.
      */
     async settleQuestion(
       questionId: string,
@@ -221,26 +221,6 @@ export function createPredictionRepo(db: Db) {
         if (r.awarded_xp != null) p.awardedXp = Number(r.awarded_xp);
         return p;
       });
-    },
-
-    /**
-     * O fã JÁ palpitou nesta partida (em qualquer rodada anterior)?
-     *
-     * É o detector do MODO TREINO: replay rejogado com gabarito decorado não
-     * pode pagar XP de ranking. "Jogou" = palpitou — quem só assistiu não
-     * queimou a vez. A decisão é tomada no PRIMEIRO contato do fã com a sala
-     * (antes do primeiro palpite da rodada), então não precisa excluir a
-     * rodada corrente: os palpites dela ainda não existem quando se pergunta.
-     */
-    async temPalpiteNaFixture(userId: string, fixtureId: number): Promise<boolean> {
-      const rows = await db.query(
-        `select 1 from predictions p
-           join questions q on q.id = p.question_id
-          where p.user_id = $1 and q.fixture_id = $2
-          limit 1`,
-        [userId, fixtureId]
-      );
-      return rows.length > 0;
     },
 
     /** Aproveitamento do fã — alimenta o perfil. */

@@ -200,7 +200,7 @@ test('nível é FUNÇÃO do xp — a fórmula do v0, calculada pelo banco', asyn
 // O XP não pode ser pago duas vezes — o teste mais importante do arquivo
 // ---------------------------------------------------------------------------
 
-test('resolver o MESMO palpite duas vezes paga UMA vez (o replay não pode pagar em dobro)', async () => {
+test('resolver o MESMO palpite duas vezes paga UMA vez (entrega duplicada é idempotente)', async () => {
   const u = await p.users.findOrCreateByPrivyDid('did:privy:idem');
   await p.matches.upsert({ fixtureId: 900001, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
   await p.questions.save({
@@ -226,7 +226,7 @@ test('resolver o MESMO palpite duas vezes paga UMA vez (o replay não pode pagar
   const um = await p.predictions.settle('pred_idem', 'won', 150);
   assert.equal(um.pagou, true);
 
-  // O replay reemite o gol: a mesma pergunta resolve de novo.
+  // Uma entrega duplicada reemite o gol: a mesma pergunta resolve de novo.
   const dois = await p.predictions.settle('pred_idem', 'won', 150);
   assert.equal(dois.pagou, false, 'a segunda resolução NÃO pode pagar');
 
@@ -241,38 +241,40 @@ test('resolver o MESMO palpite duas vezes paga UMA vez (o replay não pode pagar
   assert.equal(xpDepois - xpAntes, 150, 'três resoluções, um pagamento');
 });
 
-test('temPalpiteNaFixture: treino é só de quem JÁ palpitou NAQUELA partida', async () => {
-  const veterano = await p.users.findOrCreateByPrivyDid('did:privy:treino-vet');
-  const espectador = await p.users.findOrCreateByPrivyDid('did:privy:treino-esp');
+test('duas rodadas valendo da mesma fixture pagam XP com questionIds diferentes', async () => {
+  const veterano = await p.users.findOrCreateByPrivyDid('did:privy:replay-repetido');
   await p.matches.upsert({ fixtureId: 900002, p1: 'England', p2: 'Argentina', startTime: 1_700_000_000_000 });
-  await p.questions.save({
-    id: 'q_treino',
-    fixtureId: 900002,
-    type: 'next_goal',
-    prompt: 'Quem marca o próximo gol?',
-    options: [{ id: 'p1', label: 'England' }, { id: 'p2', label: 'Argentina' }],
-    opensAt: 1_700_000_000_000,
-    closesAt: 1_700_000_060_000,
-    state: 'open',
-  });
-  await p.predictions.place({
-    id: 'pred_treino',
-    userId: veterano.id,
-    questionId: 'q_treino',
-    choice: 'p1',
-    placedAt: 1_700_000_010_000,
-  });
+  const xpAntes = (await p.users.findById(veterano.id)).xp;
 
-  assert.equal(await p.predictions.temPalpiteNaFixture(veterano.id, 900002), true);
+  for (const rodada of [1, 2]) {
+    const questionId = `q_replay_${rodada}`;
+    const predictionId = `pred_replay_${rodada}`;
+    await p.questions.save({
+      id: questionId,
+      fixtureId: 900002,
+      type: 'next_goal',
+      prompt: 'Quem marca o próximo gol?',
+      options: [{ id: 'p1', label: 'England' }, { id: 'p2', label: 'Argentina' }],
+      opensAt: 1_700_000_000_000 + rodada,
+      closesAt: 1_700_000_060_000 + rodada,
+      state: 'open',
+    });
+    await p.predictions.place({
+      id: predictionId,
+      userId: veterano.id,
+      questionId,
+      choice: 'p1',
+      placedAt: 1_700_000_010_000 + rodada,
+    });
+    const liquidacao = await p.predictions.settle(predictionId, 'won', 150);
+    assert.equal(liquidacao.pagou, true, `rodada ${rodada} deve ser elegível`);
+  }
+
+  const xpDepois = (await p.users.findById(veterano.id)).xp;
   assert.equal(
-    await p.predictions.temPalpiteNaFixture(espectador.id, 900002),
-    false,
-    'quem só ASSISTIU não jogou — replay dele ainda paga',
-  );
-  assert.equal(
-    await p.predictions.temPalpiteNaFixture(veterano.id, 123456),
-    false,
-    'palpite numa partida não contamina as outras',
+    xpDepois - xpAntes,
+    300,
+    'cada nova pergunta paga; só repetir a mesma liquidação é bloqueado',
   );
 });
 

@@ -35,6 +35,7 @@ import { redigeChance } from '@/lib/chances';
 import { formataRelogio } from '@/lib/relogio';
 import { calcularResumoDaSala } from '@/lib/resumo';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
+import { localizeTeamName } from '@/lib/team-names';
 
 type SalaTab = 'desafios' | 'lances' | 'stats' | 'chances' | 'ranking';
 
@@ -529,7 +530,7 @@ function CardDoDesafio({
   onResponder: (optionId: string) => void;
   enviando: boolean;
   recusa: string | null;
-  /** Sem pagamento (sala de treino / já jogou): o card não promete XP nenhum. */
+  /** Sem pagamento (sala de treino explícita): o card não promete XP nenhum. */
   treino: boolean;
   teamA: string;
   teamB: string;
@@ -718,7 +719,7 @@ export function SalaReal({
   lobbyPlayerCount: number;
 }) {
   const router = useRouter();
-  const { t, fmt } = useI18n();
+  const { t, fmt, lang } = useI18n();
   const { session, addXp } = useSession();
   const privy = usePrivyAuth();
   // Espera a ilha ficar pronta ANTES de abrir o stream. O React roda efeitos de
@@ -738,7 +739,6 @@ export function SalaReal({
     chances,
     erro,
     treino,
-    treinoDaSala,
     segundosVivos,
     palpitar,
   } = useSala(fixtureId, partyId, privy.ready && privy.authenticated, addXp);
@@ -796,6 +796,12 @@ export function SalaReal({
     );
   }
 
+  // O estado mantém os nomes canônicos recebidos da TxLINE. Daqui para baixo,
+  // as variantes localizadas existem só para apresentação e para as opções
+  // p1/p2; o palpite enviado ao servidor continua sendo o id estável.
+  const teamA = localizeTeamName(state.teamA, lang);
+  const teamB = localizeTeamName(state.teamB, lang);
+
   const selo = state.source === 'txline-live' ? t.srcTxline : t.srcReplay;
   const abertos = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).length;
   /**
@@ -810,8 +816,8 @@ export function SalaReal({
   if (resumoAberto) {
     return (
       <ResumoDaPartida
-        teamA={state.teamA}
-        teamB={state.teamB}
+        teamA={teamA}
+        teamB={teamB}
         score={state.score}
         resultados={resultados}
         rankingCount={Math.max(ranking.length, lobbyPlayerCount)}
@@ -869,8 +875,8 @@ export function SalaReal({
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, padding: '0 6px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: 96 }}>
-            <Escudo nome={state.teamA} />
-            <span style={{ fontWeight: fw.heavy, fontSize: 13.5, textAlign: 'center' }}>{state.teamA}</span>
+            <Escudo nome={teamA} />
+            <span style={{ fontWeight: fw.heavy, fontSize: 13.5, textAlign: 'center' }}>{teamA}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <span style={{ fontWeight: fw.black, fontSize: 40, fontStyle: 'italic', letterSpacing: -2, lineHeight: 1 }}>
@@ -879,17 +885,16 @@ export function SalaReal({
             <span style={{ fontSize: 10, fontWeight: fw.heavy, letterSpacing: 0.8, color: 'var(--text-muted)', marginTop: 4 }}>
               {selo}
             </span>
-            {/* SEM XP tem que estar escrito ANTES do primeiro palpite — sala de
-                treino (ou "você já jogou") vestida de sala valendo é o G6. */}
+            {/* SEM XP tem que estar escrito ANTES do primeiro palpite no treino. */}
             {treino && (
               <span style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 0.8, color: 'var(--orange)', marginTop: 3 }}>
-                {treinoDaSala ? t.treinoSelo : t.jaJogouSelo}
+                {t.treinoSelo}
               </span>
             )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: 96 }}>
-            <Escudo nome={state.teamB} />
-            <span style={{ fontWeight: fw.heavy, fontSize: 13.5, textAlign: 'center' }}>{state.teamB}</span>
+            <Escudo nome={teamB} />
+            <span style={{ fontWeight: fw.heavy, fontSize: 13.5, textAlign: 'center' }}>{teamB}</span>
           </div>
         </div>
       </div>
@@ -940,8 +945,8 @@ export function SalaReal({
                 key={d.questionId}
                 d={d}
                 treino={treino}
-                teamA={state.teamA}
-                teamB={state.teamB}
+                teamA={teamA}
+                teamB={teamB}
                 enviando={enviando === d.questionId}
                 recusa={recusa[d.questionId] ?? null}
                 onResponder={(o) => responder(d.questionId, o)}
@@ -1039,7 +1044,7 @@ export function SalaReal({
                   {l.minute ?? 0}’
                 </span>
                 <span style={{ fontSize: 13.5, fontWeight: l.goals ? fw.heavy : fw.medium, color: l.goals ? 'var(--lime)' : 'var(--text-1)' }}>
-                  {textoDoLance(l, t, state.teamA, state.teamB)}
+                  {textoDoLance(l, t, teamA, teamB)}
                 </span>
               </div>
             ))}
@@ -1055,12 +1060,12 @@ export function SalaReal({
           (stats.length ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--text-1)' }}>{state.teamA}</span>
+                <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--text-1)' }}>{teamA}</span>
                 {/* "AO VIVO" não: esta sala roda replay, e selo de origem não mente (G6). */}
                 <span style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)' }}>
                   {t.statsMatchHdr}
                 </span>
-                <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--text-1)' }}>{state.teamB}</span>
+                <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--text-1)' }}>{teamB}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {stats.map((st) => (
@@ -1095,8 +1100,8 @@ export function SalaReal({
               <LinhaDeChance
                 key={`${c.ts}-${c.priceName}`}
                 c={c}
-                teamA={state.teamA}
-                teamB={state.teamB}
+                teamA={teamA}
+                teamB={teamB}
               />
             ))}
             {!chances.length && (
@@ -1190,8 +1195,8 @@ export function SalaReal({
             key={noOverlay.questionId}
             d={noOverlay}
             treino={treino}
-            teamA={state.teamA}
-            teamB={state.teamB}
+            teamA={teamA}
+            teamB={teamB}
             enviando={enviando === noOverlay.questionId}
             recusa={recusa[noOverlay.questionId] ?? null}
             onResponder={(o) => responder(noOverlay.questionId, o)}
@@ -1203,8 +1208,8 @@ export function SalaReal({
       {detalhe && (
         <DetalheDoResultado
           r={detalhe}
-          teamA={state.teamA}
-          teamB={state.teamB}
+          teamA={teamA}
+          teamB={teamB}
           onVoltar={() => setDetalhe(null)}
         />
       )}

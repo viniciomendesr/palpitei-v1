@@ -23,6 +23,7 @@ import { api, type ApiFixture, type ApiLeagues } from '@/lib/api';
 import type { SessionState } from '@/lib/session';
 import type { Dict } from '@/lib/i18n';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
+import { localizeTeamName } from '@/lib/team-names';
 
 type Tab = 'live' | 'next' | 'replays';
 
@@ -170,7 +171,7 @@ function useLeagues(session: SessionState | null, t: Dict) {
 
 export default function HomePage() {
   const router = useRouter();
-  const { t, fmt } = useI18n();
+  const { t, fmt, lang } = useI18n();
   const { session, update, refreshState } = useSession();
   const ready = useRequireSession();
   const [tab, setTab] = useState<Tab>('live');
@@ -264,8 +265,8 @@ export default function HomePage() {
             live={f.live}
             status={f.status}
             group={`${f.group} · ${f.source}`}
-            teamA={f.teamA}
-            teamB={f.teamB}
+            teamA={localizeTeamName(f.teamA, lang)}
+            teamB={localizeTeamName(f.teamB, lang)}
             scoreA={f.scoreA}
             scoreB={f.scoreB}
             cta={f.cta}

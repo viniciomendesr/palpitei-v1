@@ -49,7 +49,6 @@ import {
   createEventRepo,
   createMatchRepo,
   createOddsRepo,
-  createPredictionRepo,
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
 import { criarFiltroDeLances } from './lances';
@@ -62,7 +61,7 @@ import {
 } from './chances';
 import { createDb } from './db';
 import { resetLobby } from './lobbies';
-import { chaveDaSala } from './room-id';
+import { chaveDaSala, politicaDaSala } from './room-id';
 
 export { chaveDaSala, parsePartyId, parseRoomId } from './room-id';
 
@@ -124,20 +123,10 @@ type Room = {
   partyId: string;
   /**
    * Sala de TREINO: a mesma partida, o mesmo motor — e XP sempre 0, para
-   * TODO MUNDO, com NADA persistido. Existe para rejogar com gabarito decorado
-   * sem corromper o ranking: a sala valendo paga cada fã só na primeira jogada
-   * dele, e o treino é para as seguintes. Não gravar nada aqui é o que impede
-   * o treino de queimar a primeira vez valendo (o detector olha o banco).
+   * TODO MUNDO, com NADA persistido. Sala valendo sempre paga normalmente,
+   * inclusive em replays repetidos e parties diferentes da mesma fixture.
    */
   treino: boolean;
-  /**
-   * Na sala VALENDO: quem JÁ jogou esta partida antes (palpite anterior no
-   * banco) entra em modo treino individual — veredito normal, XP 0.
-   * Decidido UMA vez por fã, no primeiro contato (`decidirPagamento`).
-   */
-  semXp: Set<string>;
-  /** Fãs cuja decisão de pagamento já foi tomada (cache da consulta). */
-  decididos: Set<string>;
   /**
    * Os FATOS do jogo no instante em que cada pergunta liquidou (minuto, placar,
    * escanteios). É a matéria-prima da explicação na tela de resultado — o
@@ -198,9 +187,8 @@ const ehScore = (ev: NormEvent): ev is ScoreEvent => ev.kind === 'score';
  * Portas da sala de TREINO: interface idêntica, persistência NENHUMA.
  *
  * Não é preguiça — é a regra do treino inteira num lugar só: sem linhas em
- * `questions`/`predictions`, o treino (1) não queima a primeira jogada valendo
- * do fã (o detector consulta o banco), (2) não infla o aproveitamento do
- * perfil e (3) não deixa pergunta órfã em 'open' quando a sala morre no meio.
+ * `questions`/`predictions`, o treino (1) não infla XP/aproveitamento do
+ * perfil e (2) não deixa pergunta órfã em 'open' quando a sala morre no meio.
  * O motor continua vendo palpites normalmente: eles vivem na memória dele.
  */
 function portsDeTreino(): EnginePorts {
@@ -241,8 +229,10 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
 
   // A régua dos contadores é DESTA partida, então o filtro nasce com a sala.
   const ehLance = criarFiltroDeLances();
-  // Treino não persiste NADA (ver portsDeTreino); valendo grava no Postgres.
-  const ports = treino ? portsDeTreino() : createEnginePorts(db);
+  // O prefixo da rota é a fonte única da política: treino não persiste; qualquer
+  // replay valendo persiste e paga, mesmo que este fã já tenha jogado a fixture.
+  const politica = politicaDaSala(treino);
+  const ports = politica.persiste ? createEnginePorts(db) : portsDeTreino();
   const cursor: ReplayCursor = { matchTs: linhaDoTempo[0]!.ts, realAt: Date.now() };
   const clock = cursorClock(cursor, REPLAY_SPEED);
   const kickoff = eventos.find((e) => e.action === 'kickoff') ?? eventos[0]!;
@@ -267,8 +257,6 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     fixtureId,
     partyId,
     treino,
-    semXp: new Set(),
-    decididos: new Set(),
     fatos: new Map(),
     pct1x2: {},
     db,
@@ -289,9 +277,8 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
    * Traduz uma mensagem do motor para o evento do §8 QUE ESTE FÃ deve receber.
    * `null` = não é da conta dele.
    */
-  /** Este fã está sem pagamento nesta sala? (treino, ou valendo-já-jogado) */
-  const semXpPara = (userId: string | null): boolean =>
-    treino || (userId !== null && sala.semXp.has(userId));
+  /** Só a sala explicitamente marcada como treino fica sem pagamento. */
+  const semXpPara = (): boolean => !politica.pagaXp;
 
   const paraOFa = (msg: RoomMessage, userId: string | null): RoomMessage | null => {
     const ts = cursor.matchTs;
@@ -321,8 +308,8 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         // Quanto vale, do próprio motor — nunca uma tabela copiada aqui.
         // É o PISO: quem palpita na primeira metade da janela leva 1.5x, e o
         // resultado revela o valor real. Piso não é mentira; número inventado é.
-        // Para quem está SEM pagamento (treino/já jogou), o piso honesto é 0.
-        xp: semXpPara(userId) ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
+        // No treino, o piso honesto é 0; todo replay valendo anuncia o XP real.
+        xp: semXpPara() ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
         closesAt: q.closesAt,
         closesInRealMs: msg.closesInRealMs as number,
       };
@@ -457,10 +444,9 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     fixture,
     clock,
     ports,
-    // Quem NÃO é pago: a sala de treino inteira, ou (na valendo) o fã que já
-    // jogou esta partida antes. O motor dá o veredito normal e paga 0 — uma
-    // tabela de pagamento, um pagador.
-    pagaXp: treino ? () => false : (userId) => !sala.semXp.has(userId),
+    // Só a sala de treino explícita não paga. IDs novos por runner mantêm cada
+    // nova execução elegível; o banco continua idempotente dentro da pergunta.
+    pagaXp: () => politica.pagaXp,
     emit: (msg) => {
       // O core NÃO conhece a porta saveQuestion (o contrato dele tem só
       // uid/savePrediction/saveBet). Sem gravar a pergunta aqui, o primeiro
@@ -639,33 +625,6 @@ export async function abrirSala(
   return criacao;
 }
 
-/**
- * Decide, UMA vez por fã por sala, se os palpites dele nesta sala pagam XP.
- *
- * Sala de treino: ninguém é pago, não há o que decidir. Sala valendo: quem já
- * tem palpite desta partida no banco (jogou antes, em qualquer rodada) entra em
- * `semXp` — o gabarito decorado não vale ranking; a primeira jogada de cada fã
- * segue pagando normal. Roda no PRIMEIRO contato (join do stream e/ou primeiro
- * palpite), sempre ANTES do primeiro `place` da rodada — por isso a consulta
- * não precisa excluir a rodada corrente: os palpites dela ainda não existem.
- */
-export async function decidirPagamento(sala: Room, userId: string): Promise<void> {
-  if (sala.treino || sala.decididos.has(userId)) return;
-  sala.decididos.add(userId);
-  try {
-    const jaJogou = await createPredictionRepo(sala.db).temPalpiteNaFixture(
-      userId,
-      sala.fixtureId,
-    );
-    if (jaJogou) sala.semXp.add(userId);
-  } catch {
-    // Banco fora na decisão: o fã fica como pagante (o caminho normal). Errar
-    // para o lado do fã honesto é melhor que negar XP à primeira jogada por
-    // causa de um soluço de rede — e o farm exige o banco de pé de todo jeito.
-    sala.decididos.delete(userId);
-  }
-}
-
 /** Uma pergunta no formato do §8, com o prazo já convertido em ms REAIS. */
 function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
   return {
@@ -680,7 +639,7 @@ function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
       pct: q.type === 'final_result' ? sala.pct1x2[o.id as keyof Pct1x2] ?? null : null,
     })),
     // O PISO do XP, do próprio motor — a mesma régua do question_open.
-    // Sem pagamento (treino/já jogou), o piso honesto é 0.
+    // Sem pagamento (treino explícito), o piso honesto é 0.
     xp: semXp ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
     state: q.state,
     closesAt: q.closesAt,
@@ -706,7 +665,7 @@ function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
 export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage {
   const respostas = userId ? sala.engine.respostasDe(userId) : [];
   const minhasPorId = new Set(respostas.map((r) => r.question.id));
-  const semXp = sala.treino || (userId !== null && sala.semXp.has(userId));
+  const semXp = sala.treino;
 
   // Abertas para todo mundo — mais as FECHADAS em que este fã palpitou: o card
   // "janela fechada · aguardando o lance" tem que renascer no F5.
@@ -743,10 +702,8 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
     state: { ...sala.state, questions },
     minhas,
     resultados,
-    // NA VOZ DESTE FÃ: os palpites dele aqui valem XP? `treinoDaSala` separa
-    // "sala de treino" de "você já jogou esta partida" — o aviso é outro.
+    // O prefixo da sala é a única fonte desta informação.
     treino: semXp,
-    treinoDaSala: sala.treino,
   };
 }
 
@@ -819,10 +776,6 @@ export async function palpitar(
   questionId: string,
   choice: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  // ANTES do place: a decisão de pagamento tem que existir quando a pergunta
-  // resolver — e um curl que palpita sem nunca ter aberto o stream não pode
-  // escapar dela (seria o farm entrando pela porta dos fundos).
-  await decidirPagamento(sala, user.id);
   const r = sala.engine.place(user, questionId, choice);
   if (!r.ok) return r;
   // `place` devolve ok ANTES de o INSERT terminar (as portas são

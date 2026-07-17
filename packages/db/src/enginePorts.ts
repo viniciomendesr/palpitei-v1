@@ -158,7 +158,7 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
       // O core chama isto DUAS vezes na vida do palpite:
       //   1) quando o fã palpita        -> result == null -> registra
       //   2) quando a pergunta resolve  -> result != null -> paga o XP, 1x só
-      // O segundo caso passa pelo CAS do settle: replay não paga de novo.
+      // O segundo caso passa pelo CAS do settle: a mesma liquidação não paga de novo.
       //
       // ============================================================
       // POR QUE ESPERA A PERGUNTA (e por que isto perdia palpite)

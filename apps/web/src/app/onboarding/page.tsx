@@ -23,12 +23,13 @@ import { fw } from '@/lib/tokens';
 import { TEAMS } from '@/lib/mock';
 import { useRequireSession } from '@/lib/guard';
 import { NicknameInput, MAX_NICK, isNicknameValid } from '@/components/NicknameInput';
+import { localizeTeamName } from '@/lib/team-names';
 
 const EASE = 'cubic-bezier(.2,.7,.3,1)';
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { session, update, logout } = useSession();
   const ready = useRequireSession();
 
@@ -386,7 +387,7 @@ export default function OnboardingPage() {
                         color: on ? 'var(--text-hi)' : 'var(--text-1)',
                       }}
                     >
-                      {team}
+                      {localizeTeamName(team, lang)}
                     </button>
                   );
                 })}

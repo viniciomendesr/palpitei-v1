@@ -108,7 +108,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         // que viesse. `cache_source` é gravado pelo ingestor.
         source: (fx.cacheSource ?? 'txline-cache') as ApiFixture['source'],
       } satisfies Omit<ApiFixture, 'id' | 'status'>;
-      // A partida VALENDO: paga XP — cada fã, na primeira jogada dele.
+      // A partida VALENDO: paga XP em toda execução, inclusive repetida.
       fixtures.push({ ...base, id: String(fx.fixtureId), status: 'REPLAY' });
       // E a irmã de TREINO: mesma partida, XP sempre 0, nada persistido.
       // Existe para rejogar com o gabarito decorado sem corromper o ranking.

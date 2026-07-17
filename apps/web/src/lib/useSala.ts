@@ -185,13 +185,8 @@ export function useSala(
   /** Leituras de chance, mais recente PRIMEIRO (cap 60 — o mesmo do servidor). */
   const [chances, setChances] = useState<SalaChance[]>([]);
   const [erro, setErro] = useState<string | null>(null);
-  /**
-   * MEUS palpites aqui valem XP? `treino: true` = não — ou porque a sala é de
-   * treino (`treinoDaSala`), ou porque EU já joguei esta partida antes e a
-   * sala valendo só paga a primeira jogada. A tela avisa; o servidor decide.
-   */
+  /** Meus palpites valem XP? Apenas `treino-*` responde não. */
   const [treino, setTreino] = useState(false);
-  const [treinoDaSala, setTreinoDaSala] = useState(false);
   /**
    * O relógio INTERPOLADO entre eventos, em segundos DE JOGO. O feed pode
    * ficar minutos sem lance; sem isto o badge congelava no 0’ e saltava para
@@ -289,7 +284,6 @@ export function useSala(
             setErro(null);
             const s = msg.state as SalaState & { questions?: QuestionDoServidor[] };
             setTreino(Boolean(msg.treino));
-            setTreinoDaSala(Boolean(msg.treinoDaSala));
             // A âncora do relógio, do estado inteiro: quem entra no minuto 34
             // vê o 34 andando, não parado.
             if (typeof s.clockSeconds === 'number') {
@@ -609,7 +603,6 @@ export function useSala(
     chances,
     erro,
     treino,
-    treinoDaSala,
     segundosVivos,
     palpitar,
   };

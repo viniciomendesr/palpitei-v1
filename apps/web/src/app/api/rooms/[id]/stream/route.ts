@@ -19,7 +19,6 @@ import {
   abrirSala,
   assinar,
   chaveDaSala,
-  decidirPagamento,
   estadoDaSalaPara,
   parsePartyId,
   parseRoomId,
@@ -95,9 +94,6 @@ export async function GET(
     // ranking só aprendia o nome quando uma pergunta resolvia, e quem escolheu
     // o apelido depois do primeiro palpite ficava "sem apelido" até lá.
     registrarApelido(sala, user.id, user.handle);
-    // E a decisão de pagamento nasce ANTES do primeiro pacote: é ela que diz à
-    // tela se os palpites deste fã aqui valem XP (sala valendo, já jogou → 0).
-    await decidirPagamento(sala, user.id);
   } catch {
     // Sem usuario, o fa ainda assiste — so nao recebe XP proprio.
   } finally {

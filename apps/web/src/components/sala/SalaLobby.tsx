@@ -11,6 +11,7 @@ import { useLobby } from '@/lib/useLobby';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { fw } from '@/lib/tokens';
 import { SalaReal } from './SalaReal';
+import { localizeTeamName } from '@/lib/team-names';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -70,7 +71,7 @@ function LobbyView({
   start: () => Promise<void>;
 }) {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [copied, setCopied] = useState(false);
   const allReady = useMemo(
     () => Boolean(state?.players.length && state.players.every((player) => player.ready)),
@@ -110,7 +111,8 @@ function LobbyView({
         </p>
         {state && (
           <div style={{ marginTop: 18, fontSize: 18, fontWeight: fw.black }}>
-            {state.teamA} <span style={{ color: 'var(--text-muted)' }}>×</span> {state.teamB}
+            {localizeTeamName(state.teamA, lang)} <span style={{ color: 'var(--text-muted)' }}>×</span>{' '}
+            {localizeTeamName(state.teamB, lang)}
           </div>
         )}
       </div>
