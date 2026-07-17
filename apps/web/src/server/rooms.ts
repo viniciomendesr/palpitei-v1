@@ -37,7 +37,6 @@ import type {
 } from '@palpitei/core';
 import { ReplayRunner } from '@palpitei/txline';
 import {
-  createDb,
   createEnginePorts,
   createEventRepo,
   createMatchRepo,
@@ -45,6 +44,7 @@ import {
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
 import { criarFiltroDeLances } from './lances';
+import { createDb } from './db';
 
 /** 60 = um minuto de jogo por segundo real. O mesmo default do config da txline. */
 const REPLAY_SPEED = Number(process.env.REPLAY_SPEED ?? 60) || 60;
@@ -130,6 +130,9 @@ type Room = {
 };
 
 const salas = new Map<string, Room>();
+/** A promessa entra no Map ANTES do primeiro await: duas visitas simultâneas
+ * compartilham a mesma criação, o mesmo runner e os mesmos questionIds. */
+const salasEmCriacao = new Map<string, Promise<Room | null>>();
 
 const ehScore = (ev: NormEvent): ev is ScoreEvent => ev.kind === 'score';
 
@@ -177,7 +180,7 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     await db.close?.();
     return null;
   }
-  const eventos = await createEventRepo(db).listByFixture(fixtureId);
+  const eventos = await createEventRepo(db).listReplayByFixture(fixtureId);
   if (!eventos.length) {
     await db.close?.();
     return null;
@@ -482,7 +485,18 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
 
 /** A sala desta partida, criando-a (e dando o apito inicial) na primeira visita. */
 export async function abrirSala(fixtureId: number, treino = false): Promise<Room | null> {
-  return salas.get(chaveDaSala(fixtureId, treino)) ?? (await criarSala(fixtureId, treino));
+  const chave = chaveDaSala(fixtureId, treino);
+  const aberta = salas.get(chave);
+  if (aberta) return aberta;
+
+  const existente = salasEmCriacao.get(chave);
+  if (existente) return existente;
+
+  const criacao = criarSala(fixtureId, treino).finally(() => {
+    if (salasEmCriacao.get(chave) === criacao) salasEmCriacao.delete(chave);
+  });
+  salasEmCriacao.set(chave, criacao);
+  return criacao;
 }
 
 /**

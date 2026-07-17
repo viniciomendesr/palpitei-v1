@@ -8,7 +8,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createDb, createLeagueRepo, createUserRepo } from '@palpitei/db';
+import { createLeagueRepo, createUserRepo } from '@palpitei/db';
+import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 
 export const runtime = 'nodejs';
@@ -33,12 +34,9 @@ export async function GET(
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
     const ligas = createLeagueRepo(db);
 
-    // A checagem de membro vem ANTES de qualquer leitura da liga.
-    if (!(await ligas.isMember(id, user.id))) {
-      return NextResponse.json({ error: 'essa liga não existe' }, { status: 404 });
-    }
-
-    const liga = await ligas.findById(id);
+    // Uma consulta só comprova acesso e lê a liga. Sem associação, não revela
+    // se o id existe.
+    const liga = await ligas.findForMember(id, user.id);
     if (!liga) return NextResponse.json({ error: 'essa liga não existe' }, { status: 404 });
 
     const membros = await ligas.listMembers(id);

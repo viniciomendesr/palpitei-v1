@@ -11,7 +11,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createDb, createLeagueRepo, createUserRepo, LIGAS_FREE } from '@palpitei/db';
+import { createLeagueRepo, createUserRepo, LIGAS_FREE } from '@palpitei/db';
+import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 
 export const runtime = 'nodejs';
@@ -30,10 +31,11 @@ export async function GET(req: Request): Promise<NextResponse> {
   try {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
     const ligas = createLeagueRepo(db);
-    const [minhas, criadas] = await Promise.all([
-      ligas.listForUser(user.id),
-      ligas.countOwned(user.id),
-    ]);
+    const minhas = await ligas.listForUser(user.id);
+    // Toda liga criada põe o dono em league_members na mesma transação. Logo as
+    // linhas `iLead` desta lista são exatamente as ligas criadas, sem uma
+    // segunda consulta de count.
+    const criadas = minhas.reduce((n, liga) => n + (liga.iLead ? 1 : 0), 0);
 
     return NextResponse.json({
       leagues: minhas.map((l) => ({

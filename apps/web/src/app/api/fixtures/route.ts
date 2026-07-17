@@ -23,8 +23,9 @@
 
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
-import { fetchFixtures } from '@palpitei/txline';
-import { createDb, createMatchRepo } from '@palpitei/db';
+import { createMatchRepo } from '@palpitei/db';
+import { createDb } from '@/server/db';
+import { fixturesTxline } from '@/server/fixtures';
 import type { ApiFixture } from '@/lib/api';
 
 /** pg e o cliente da TxLINE não rodam no edge; e a resposta muda a cada evento. */
@@ -60,11 +61,17 @@ export async function GET(req: Request): Promise<NextResponse> {
     );
   }
 
+  const db = createDb();
+  const [txline, cache] = await Promise.allSettled([
+    fixturesTxline(),
+    createMatchRepo(db).listCached(),
+  ]);
   const fixtures: ApiFixture[] = [];
 
-  // 1) As agendadas, direto da devnet. O snapshot já traz nome, horário e estado.
-  try {
-    for (const fx of await fetchFixtures()) {
+  // As duas fontes são independentes e começam juntas: a devnet lenta não
+  // segura um replay que já está pronto no Postgres.
+  if (txline.status === 'fulfilled') {
+    for (const fx of txline.value) {
       fixtures.push({
         id: String(fx.fixtureId),
         // gameState 1 = agendada. Só é "ao vivo" quando o feed disser que é —
@@ -81,17 +88,15 @@ export async function GET(req: Request): Promise<NextResponse> {
         source: 'txline',
       });
     }
-  } catch (e) {
+  } else {
     // A devnet fora do ar não pode derrubar a partida gravada: ela é justamente
     // o que existe para a demo não depender da rede (A1).
+    const e = txline.reason;
     console.error('[palpitei] /fixtures/snapshot falhou:', e instanceof Error ? e.message : e);
   }
 
-  // 2) A retroativa, do cache no Postgres. É ela que dá um jogo COMPLETO para
-  //    o jurado ver depois do prazo, quando nada está ao vivo.
-  const db = createDb();
-  try {
-    for (const fx of await createMatchRepo(db).listCached()) {
+  if (cache.status === 'fulfilled') {
+    for (const fx of cache.value) {
       const base = {
         live: false,
         group: nomeDoGrupo(fx.competition),
@@ -102,17 +107,16 @@ export async function GET(req: Request): Promise<NextResponse> {
         // O selo diz de onde o dado REALMENTE veio, não de onde seria bonito
         // que viesse. `cache_source` é gravado pelo ingestor.
         source: (fx.cacheSource ?? 'txline-cache') as ApiFixture['source'],
-      };
+      } satisfies Omit<ApiFixture, 'id' | 'status'>;
       // A partida VALENDO: paga XP — cada fã, na primeira jogada dele.
       fixtures.push({ ...base, id: String(fx.fixtureId), status: 'REPLAY' });
       // E a irmã de TREINO: mesma partida, XP sempre 0, nada persistido.
       // Existe para rejogar com o gabarito decorado sem corromper o ranking.
       fixtures.push({ ...base, id: `treino-${fx.fixtureId}`, status: 'TREINO', treino: true });
     }
-  } catch (e) {
+  } else {
+    const e = cache.reason;
     console.error('[palpitei] cache do Postgres falhou:', e instanceof Error ? e.message : e);
-  } finally {
-    await db.close?.();
   }
 
   return NextResponse.json({ fixtures });

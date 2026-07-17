@@ -14,7 +14,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createDb, createLeagueRepo, createPredictionRepo, createUserRepo } from '@palpitei/db';
+import { createLeagueRepo, createPredictionRepo, createUserRepo } from '@palpitei/db';
+import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 
 export const runtime = 'nodejs';
@@ -33,9 +34,9 @@ export async function GET(req: Request): Promise<NextResponse> {
   try {
     // Find-or-create: esta pode ser a PRIMEIRA rota que um login novo chama.
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
-    const [aproveitamento, ligas] = await Promise.all([
+    const [aproveitamento, leaguesCount] = await Promise.all([
       createPredictionRepo(db).estatisticas(user.id),
-      createLeagueRepo(db).listForUser(user.id),
+      createLeagueRepo(db).countForUser(user.id),
     ]);
 
     return NextResponse.json({
@@ -51,7 +52,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         wallet: user.wallet,
         walletSource: user.walletSource,
       },
-      leaguesCount: ligas.length,
+      leaguesCount,
       isPremium: user.isPremium,
       // O aproveitamento sai da tabela de palpites, que o MOTOR liquida — a
       // tela nunca conta acerto por conta própria (seria a segunda tabela).

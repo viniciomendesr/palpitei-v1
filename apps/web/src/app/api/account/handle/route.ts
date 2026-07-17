@@ -22,12 +22,12 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import {
-  createDb,
   createUserRepo,
   HandleInvalidError,
   HandleTakenError,
   UserNotFoundError,
 } from '@palpitei/db';
+import { createDb } from '@/server/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

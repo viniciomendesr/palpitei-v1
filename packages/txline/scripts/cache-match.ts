@@ -94,8 +94,10 @@ async function main(): Promise<void> {
   console.log(`destino: ${onde}`);
   console.log(`varrendo /updates (~144 requisições)…\n`);
 
-  const scores = await fetchScoresUpdates(fixtureId, startTime);
-  const odds = await fetchOddsUpdates(fixtureId, startTime);
+  const [scores, odds] = await Promise.all([
+    fetchScoresUpdates(fixtureId, startTime),
+    fetchOddsUpdates(fixtureId, startTime),
+  ]);
 
   if (!scores.length) {
     console.error("nenhum evento de placar — nada a gravar.");

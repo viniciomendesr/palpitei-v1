@@ -76,51 +76,61 @@ export function createOddsRepo(db: Db) {
         usados.push(raw as Record<string, any>);
       }
 
-      await db.withTx(async (tx) => {
-        for (const r of usados) {
-          const fixtureId = Number(r.FixtureId ?? r.fixtureId);
-          const names = r.PriceNames ?? r.priceNames;
-          if (!Number.isFinite(fixtureId) || !Array.isArray(names)) {
-            stats.ilegiveis++;
-            continue;
-          }
-          const prices = r.Prices ?? r.prices ?? [];
-          const pct = r.Pct ?? r.pct ?? null;
-          const params = r.MarketParameters ?? r.marketParameters;
-          const line = params?.line != null ? Number(params.line) : null;
-          const periodo = r.MarketPeriod ?? r.marketPeriod;
+      const preparados: Record<string, unknown>[] = [];
+      for (const r of usados) {
+        const fixtureId = Number(r.FixtureId ?? r.fixtureId);
+        const names = r.PriceNames ?? r.priceNames;
+        if (!Number.isFinite(fixtureId) || !Array.isArray(names)) {
+          stats.ilegiveis++;
+          continue;
+        }
+        const prices = r.Prices ?? r.prices ?? [];
+        const pct = r.Pct ?? r.pct ?? null;
+        const params = r.MarketParameters ?? r.marketParameters;
+        const line = params?.line != null ? Number(params.line) : null;
+        const periodo = r.MarketPeriod ?? r.marketPeriod;
+        preparados.push({
+          message_id: chaveDaCotacao(r),
+          fixture_id: fixtureId,
+          ts: Number(r.Ts ?? r.ts) || 0,
+          market_type: String(r.SuperOddsType ?? r.superOddsType ?? '?'),
+          market_period: periodo == null ? null : String(periodo),
+          line: Number.isFinite(line as number) ? line : null,
+          in_running: r.InRunning ?? r.inRunning ?? null,
+          bookmaker: r.Bookmaker ?? r.bookmaker ?? null,
+          price_names: names,
+          // Prices vazio continua vazio; lote não muda a semântica G8.
+          prices: Array.isArray(prices) ? prices : [],
+          pct,
+          raw: r,
+        });
+      }
 
+      const TAM_LOTE = 500;
+      await db.withTx(async (tx) => {
+        for (let inicio = 0; inicio < preparados.length; inicio += TAM_LOTE) {
+          const lote = preparados.slice(inicio, inicio + TAM_LOTE);
           const res = await tx.query(
             `
-            insert into match_odds (message_id, fixture_id, ts, market_type, market_period,
-                                    line, in_running, bookmaker, price_names, prices, pct, raw)
-            values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb)
+            insert into match_odds
+              (message_id, fixture_id, ts, market_type, market_period, line,
+               in_running, bookmaker, price_names, prices, pct, raw)
+            select message_id, fixture_id, ts, market_type, market_period, line,
+                   in_running, bookmaker, price_names, prices, pct, raw
+              from jsonb_to_recordset($1::jsonb) as x(
+                message_id text, fixture_id bigint, ts bigint, market_type text,
+                market_period text, line double precision, in_running boolean,
+                bookmaker text, price_names jsonb, prices jsonb, pct jsonb, raw jsonb
+              )
             on conflict (message_id) do nothing
             returning message_id
             `,
-            [
-              chaveDaCotacao(r),
-              fixtureId,
-              Number(r.Ts ?? r.ts) || 0,
-              String(r.SuperOddsType ?? r.superOddsType ?? '?'),
-              periodo == null ? null : String(periodo),
-              Number.isFinite(line as number) ? line : null,
-              r.InRunning ?? r.inRunning ?? null,
-              r.Bookmaker ?? r.bookmaker ?? null,
-              JSON.stringify(names),
-              // Os três arrays vão como VIERAM. Prices: [] com PriceNames cheio é
-              // dado real (26 de 3.758): mercado sem cotação naquele instante.
-              // Preencher com zeros aqui é o que fez o v0 anunciar "a chance caiu
-              // para 0%" 115 vezes (G8). Quem lê confere os tamanhos.
-              JSON.stringify(Array.isArray(prices) ? prices : []),
-              pct == null ? null : JSON.stringify(pct),
-              JSON.stringify(r),
-            ]
+            [JSON.stringify(lote)]
           );
-          if (res.length > 0) stats.gravados++;
-          else stats.repetidos++;
+          stats.gravados += res.length;
         }
       });
+      stats.repetidos = preparados.length - stats.gravados;
 
       return stats;
     },

@@ -10,7 +10,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createDb, createLeagueRepo, createUserRepo } from '@palpitei/db';
+import { createLeagueRepo, createUserRepo } from '@palpitei/db';
+import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 
 export const runtime = 'nodejs';

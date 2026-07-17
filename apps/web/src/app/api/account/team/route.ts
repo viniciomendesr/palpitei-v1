@@ -11,7 +11,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createDb, createUserRepo } from '@palpitei/db';
+import { createUserRepo } from '@palpitei/db';
+import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 
 export const runtime = 'nodejs';

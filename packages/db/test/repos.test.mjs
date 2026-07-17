@@ -387,6 +387,14 @@ test('A4: evento sem Score grava NULL e o último placar CONHECIDO não regride'
   assert.equal(semScore.totals, undefined, 'sem bloco Score não existem totais');
 });
 
+test('replay compacto não transporta o payload raw que o motor não consome', async () => {
+  const lidos = await p.events.listReplayByFixture(900002);
+  assert.ok(lidos.length > 0);
+  assert.equal(lidos[0].raw, undefined);
+  assert.equal(typeof lidos[0].seq, 'number');
+  assert.equal(typeof lidos[0].hasScore, 'boolean');
+});
+
 test('message_id é STRING: ids que Number() colapsaria continuam sendo registros distintos', async () => {
   // Este é o bug do v0 em forma de teste: num() devolvia -1 para os dois e o
   // Map guardava um só. A série inteira (3.758 eventos) virava 1 registro.

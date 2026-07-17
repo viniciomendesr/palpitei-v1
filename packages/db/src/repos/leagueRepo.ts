@@ -108,11 +108,37 @@ export function createLeagueRepo(db: Db) {
       return rows[0] ? mapLeague(rows[0]) : null;
     },
 
+    /**
+     * Busca protegida pela associação. Junta o antigo isMember()+findById()
+     * numa ida ao Postgres e mantém o mesmo contrato de privacidade: sem linha
+     * significa tanto "não existe" quanto "você não é membro".
+     */
+    async findForMember(id: string, userId: string): Promise<League | null> {
+      const rows = await db.query(
+        `select ${COLS}
+           from leagues l
+           join league_members acesso
+             on acesso.league_id = l.id and acesso.user_id = $2
+          where l.id = $1`,
+        [id, userId]
+      );
+      return rows[0] ? mapLeague(rows[0]) : null;
+    },
+
     /** Quantas ligas o fã CRIOU. É este número que o gate do free enxerga. */
     async countOwned(userId: string): Promise<number> {
       const rows = await db.query(`select count(*)::int as n from leagues where owner_id = $1`, [
         userId,
       ]);
+      return Number(rows[0]?.n ?? 0);
+    },
+
+    /** Contagem barata para cabeçalho/estado; não carrega cada liga só para usar `.length`. */
+    async countForUser(userId: string): Promise<number> {
+      const rows = await db.query(
+        `select count(*)::int as n from league_members where user_id = $1`,
+        [userId]
+      );
       return Number(rows[0]?.n ?? 0);
     },
 

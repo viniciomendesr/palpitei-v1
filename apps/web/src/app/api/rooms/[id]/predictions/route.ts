@@ -13,7 +13,8 @@
 
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
-import { createDb, createUserRepo } from '@palpitei/db';
+import { createUserRepo } from '@palpitei/db';
+import { createDb } from '@/server/db';
 import { abrirSala, palpitar, parseRoomId } from '@/server/rooms';
 import { paraCore } from '@/server/identidade';
 

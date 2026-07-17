@@ -24,7 +24,8 @@
 
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
-import { createDb, createEventRepo, createMatchRepo } from '@palpitei/db';
+import { createEventRepo, createMatchRepo } from '@palpitei/db';
+import { createDb } from '@/server/db';
 import { criarFiltroDeLances } from '@/server/lances';
 
 export const runtime = 'nodejs';
@@ -79,7 +80,7 @@ export async function GET(
       return NextResponse.json({ error: 'partida não encontrada no cache' }, { status: 404 });
     }
 
-    const eventos = await createEventRepo(db).listByFixture(fixtureId);
+    const eventos = await createEventRepo(db).listReplayByFixture(fixtureId);
 
     // O apito inicial ancora o minuto. Sem ele o relógio começaria no primeiro
     // evento do feed — que pode ser 44 min antes da bola rolar (G4).

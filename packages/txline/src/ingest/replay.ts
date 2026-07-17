@@ -133,15 +133,16 @@ export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = 
   const startTime = await descobreStartTime(fixture);
   if (startTime) {
     try {
-      const scores = await fetchScoresUpdates(fixtureId, startTime);
-      if (scores.length) {
-        let odds: any[] = [];
-        try {
-          odds = await fetchOddsUpdates(fixtureId, startTime);
-        } catch (e) {
-          // Sem odds a partida roda; o explicador é que fica mudo.
+      // São feeds independentes e caros (~72 baldes cada). Começam juntos;
+      // odds continua opcional, scores continua obrigatório para o replay.
+      const [scores, odds] = await Promise.all([
+        fetchScoresUpdates(fixtureId, startTime),
+        fetchOddsUpdates(fixtureId, startTime).catch((e) => {
           warn(`[replay] odds/updates de ${fixtureId} falhou (${motivo(e)}) — replay só com scores`);
-        }
+          return [];
+        }),
+      ]);
+      if (scores.length) {
         const events = mesclar(scores, odds);
         if (hasRealMatchContent(events)) {
           info(`[replay] fixture ${fixtureId}: ${events.length} eventos de /updates`);
