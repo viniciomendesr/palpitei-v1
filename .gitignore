@@ -30,3 +30,6 @@ coverage/
 
 # Artefato de build do tsc — nao versione.
 *.tsbuildinfo
+
+# Worktrees de agentes: são cópias de trabalho, não fazem parte do projeto.
+.claude/worktrees/
