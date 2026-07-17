@@ -25,6 +25,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { createDb, createEventRepo, createMatchRepo } from '@palpitei/db';
+import { criarFiltroDeLances } from '@/server/lances';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,51 +33,6 @@ export const dynamic = 'force-dynamic';
 const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? '';
 const APP_SECRET = process.env.PRIVY_APP_SECRET ?? '';
 
-/**
- * O que vira lance na tela. O feed tem 962 eventos e 194 deles são
- * `safe_possession`: mostrar tudo é ruído, não narração.
- */
-const LANCES = new Set([
-  'kickoff',
-  'goal',
-  'yellow_card',
-  'red_card',
-  'corner',
-  'shot',
-  'substitution',
-  'injury',
-  'additional_time',
-  'halftime_finalised',
-  'game_finalised',
-]);
-
-/**
- * Lance contado ⇒ o contador em `totals` é a verdade; a ação é só o anúncio.
- *
- * A TxLINE emite o lance DUAS vezes: uma ao anunciar e outra ao contabilizar.
- * Medido aqui: escanteio no seq 76 com `corners 0-0` e no seq 77, 12s depois e
- * no mesmo minuto, com `corners 1-0`. Renderizar os dois faz o fã ler
- * "escanteio · escanteio" e o placar de escanteios parecer o dobro.
- *
- * É a MESMA lição do gol (9 ações `goal` para 3 gols), generalizada: o que
- * conta é o delta do contador, nunca a repetição da ação.
- *
- * Gol fica FORA deste mapa de propósito: `e.goals` já é `Total.Goals`, tipado, e
- * é o campo que os motores usam. Duas leituras do mesmo número são duas verdades.
- */
-const CONTADORES: Record<string, string> = {
-  corner: 'Corners',
-  yellow_card: 'YellowCards',
-  red_card: 'RedCards',
-};
-
-const totalDe = (e: { totals?: { p1: Record<string, number>; p2: Record<string, number> } }, chave: string) => ({
-  // Chave AUSENTE no Total é ZERO aqui (G7) — o oposto do bloco Score ausente
-  // (A4). O mesmo feed exige as duas leituras, e trocá-las some com linhas da
-  // tela ou inventa gol. Por isso a distinção vive em `hasScore`, não aqui.
-  p1: e.totals?.p1?.[chave] ?? 0,
-  p2: e.totals?.p2?.[chave] ?? 0,
-});
 
 export interface RoomEvent {
   seq: number;
@@ -136,39 +92,17 @@ export async function GET(
 
     const timeline: RoomEvent[] = [];
     let placar = { p1: 0, p2: 0 };
-    /** Último valor visto de cada contador — a régua do delta. */
-    const contado: Record<string, { p1: number; p2: number }> = {};
-    /** Lances sem contador (kickoff, apito) vêm em par: o clock desempata. */
-    const vistos = new Set<string>();
+    // A MESMA regra que a sala ao vivo usa (server/lances.ts). Estava duplicada
+    // aqui, e as duas cópias divergiram: a sala mostrava "37’ Chute" quatro vezes
+    // enquanto esta rota já filtrava. Uma regra, um lugar.
+    const ehLance = criarFiltroDeLances();
 
     for (const e of eventos) {
       // Só evento COM bloco Score move o placar (A4).
       const mudou = e.hasScore && (e.goals.p1 !== placar.p1 || e.goals.p2 !== placar.p2);
       if (mudou) placar = { p1: e.goals.p1, p2: e.goals.p2 };
 
-      if (!LANCES.has(e.action)) continue;
-
-      const chave = CONTADORES[e.action];
-      if (e.action === 'goal') {
-        // Gol é o delta do placar, e só. `goal` que não moveu o placar é
-        // VAR/amend: nesta partida são 9 ações para 3 gols.
-        if (!mudou) continue;
-      } else if (chave) {
-        // Sem bloco Score não dá para saber se o contador andou — e o anúncio
-        // vem justamente antes da contagem. Espera o evento que conta.
-        if (!e.hasScore) continue;
-        const agora = totalDe(e, chave);
-        // A régua começa em zero porque a partida começa em zero: sem isto o
-        // primeiro escanteio/cartão do jogo seria engolido como "calibração".
-        const antes = contado[chave] ?? { p1: 0, p2: 0 };
-        contado[chave] = agora;
-        if (agora.p1 === antes.p1 && agora.p2 === antes.p2) continue;
-      } else {
-        // kickoff/apito duplicam no mesmo instante de jogo; um por clock basta.
-        const id = `${e.action}:${e.clockSeconds ?? e.ts}`;
-        if (vistos.has(id)) continue;
-        vistos.add(id);
-      }
+      if (!ehLance(e, mudou)) continue;
 
       timeline.push({
         seq: e.seq,

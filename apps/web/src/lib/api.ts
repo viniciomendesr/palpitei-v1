@@ -44,7 +44,12 @@ export interface ApiUser {
   level: number;
   xp: number;
   streak: number;
-  walletSource: WalletSource;
+  /**
+   * `null` = o fã entrou e NÃO ganhou carteira Solana. É a regressão E2 visível,
+   * e o tipo a mantém visível de propósito: colapsar para 'simulated' marcaria um
+   * fã real de Google como conta de teste da §5.1.
+   */
+  walletSource: WalletSource | null;
 }
 
 export interface ApiState {
@@ -177,6 +182,15 @@ let authTokenProvider: TokenProvider = async () => null;
 /** O PrivyIsland pluga o getAccessToken aqui no boot. */
 export function setAuthTokenProvider(fn: TokenProvider): void {
   authTokenProvider = fn;
+}
+
+/**
+ * O Bearer, para quem NÃO consegue mandar header: o EventSource do SSE só aceita
+ * URL. É por isso que o /stream é somente leitura — token em query entra em log
+ * de proxy e em histórico. Palpite é POST, com o header, por aqui.
+ */
+export function getAuthToken(): Promise<string | null> {
+  return authTokenProvider();
 }
 
 export class ApiError extends Error {

@@ -11,6 +11,7 @@
  */
 
 import { PrivyClient } from '@privy-io/server-auth';
+import { createDb, createUserRepo } from '@palpitei/db';
 import { abrirSala, assinar, estadoDaSala } from '@/server/rooms';
 
 export const runtime = 'nodejs';
@@ -41,7 +42,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  if (!(await didVerificado(req))) {
+  const did = await didVerificado(req);
+  if (!did) {
     return Response.json(
       { error: 'sem sessão verificada — o modo demo não usa esta rota' },
       { status: 401 },
@@ -56,6 +58,18 @@ export async function GET(
   const sala = await abrirSala(fixtureId);
   if (!sala) {
     return Response.json({ error: 'partida não encontrada no cache' }, { status: 404 });
+  }
+
+  // O id interno do fã: e o `question_resolved` do §8 manda `gained`, que e o XP
+  // DELE. Sem saber quem esta ouvindo, nao da pra dizer quanto ELE ganhou.
+  const dbUser = createDb();
+  let userId: string | null = null;
+  try {
+    userId = (await createUserRepo(dbUser).findOrCreateByPrivyDid(did)).id;
+  } catch {
+    // Sem usuario, o fa ainda assiste — so nao recebe XP proprio.
+  } finally {
+    await dbUser.close?.();
   }
 
   const enc = new TextEncoder();
@@ -74,7 +88,7 @@ export async function GET(
       // O primeiro pacote é o estado INTEIRO. Sem isto quem chega no minuto 60
       // vê 0 × 0 até o próximo lance — e o placar mentiria por omissão.
       mandar({ type: 'room_state', state: estadoDaSala(sala) });
-      desassinar = assinar(sala, mandar);
+      desassinar = assinar(sala, { userId, enviar: mandar });
 
       // O abort do cliente é o único sinal confiável de que ele foi embora.
       req.signal.addEventListener('abort', () => {

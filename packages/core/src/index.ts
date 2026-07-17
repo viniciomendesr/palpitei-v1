@@ -43,6 +43,7 @@ export {
 } from "./questions.ts";
 
 export { MarketEngine, START_BALANCE_CENTS } from "./markets.ts";
+export { XP_BASE } from "./questions.ts";
 
 export { addXp, levelForXp, Ranking } from "./ranking.ts";
 

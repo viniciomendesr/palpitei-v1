@@ -33,6 +33,7 @@ import { FlagArgentina, FlagCaboVerde } from '@/components/Flag';
 import { ChallengeSheet } from '@/components/sala/ChallengeSheet';
 import { ChallengeResult, type LastResult } from '@/components/sala/ChallengeResult';
 import { GameEnd } from '@/components/sala/GameEnd';
+import { SalaReal } from '@/components/sala/SalaReal';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
@@ -55,7 +56,33 @@ import '@/lib/invariants';
 type Phase = 'question' | 'result' | 'fim';
 type SalaTab = 'lances' | 'stats' | 'ranking';
 
+/**
+ * A bifurcação da sala. Duas máquinas de estado OPOSTAS, e por isso dois
+ * componentes:
+ *
+ *   demo (§5.1)  → SalaMock: o motor mora aqui dentro (`optId === spec.correct`),
+ *                  o relógio é um setInterval, e nada depende de rede. É o
+ *                  caminho do jurado; é o único que não pode falhar.
+ *   partida real → SalaReal: quem abre, fecha e julga é o SERVIDOR, via SSE. A
+ *                  tela não decide nada, porque palpite vale XP no ranking
+ *                  público e cliente que decide o próprio XP é fraude (§4).
+ *
+ * O id decide: as partidas reais são fixtureId da TxLINE (numérico); as do mock
+ * são apelidos do protótipo ('arg-cab', 'esp-cor'). Sem isto, "Rever partida" no
+ * England × Argentina abria Argentina × Cabo Verde — dado inventado com cara de
+ * real, que é o G6 que este projeto existe para evitar.
+ */
 export default function SalaPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const { session } = useSession();
+  const ehDemo = !session || session.authMethod === 'demo';
+  // Partida real só existe atrás de login: o demo nunca chama a rota (nem tem
+  // Bearer para isso).
+  if (!ehDemo && /^\d+$/.test(id)) return <SalaReal fixtureId={id} />;
+  return <SalaMock params={params} />;
+}
+
+function SalaMock({ params }: { params: Promise<{ id: string }> }) {
   // Next 15: params é uma Promise. `use()` desembrulha no cliente.
   const { id } = use(params);
   const router = useRouter();

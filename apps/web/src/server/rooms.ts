@@ -25,11 +25,12 @@
  * relógio DESTA sala. O cliente só recebe e mostra.
  */
 
-import { QuestionEngine, cursorClock, type ReplayCursor } from '@palpitei/core';
+import { QuestionEngine, XP_BASE, cursorClock, type ReplayCursor } from '@palpitei/core';
 import type { Fixture, NormEvent, Question, RoomMessage, ScoreEvent, User } from '@palpitei/core';
 import { ReplayRunner } from '@palpitei/txline';
 import { createDb, createEnginePorts, createEventRepo, createMatchRepo } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
+import { criarFiltroDeLances } from './lances';
 
 /** 60 = um minuto de jogo por segundo real. O mesmo default do config da txline. */
 const REPLAY_SPEED = Number(process.env.REPLAY_SPEED ?? 60) || 60;
@@ -47,7 +48,16 @@ export type RoomState = {
   feed: { minute: number | null; action: string; goals: { p1: number; p2: number } | null }[];
 };
 
-type Sub = (msg: RoomMessage) => void;
+/**
+ * Um assinante é uma CONEXÃO DE UM FÃ, não um canal genérico — e isso não é
+ * detalhe: o contrato do §8 (lib/api.ts) é escrito na primeira pessoa.
+ * `question_resolved` manda `gained`, o XP DAQUELE fã; o motor, por dentro,
+ * emite `results[]` com o palpite e o XP de TODO MUNDO na sala.
+ *
+ * Traduzir por assinante é o que faz o contrato ser cumprido e, de quebra, evita
+ * transmitir para cada fã o que os outros palpitaram e quanto ganharam.
+ */
+type Sub = { userId: string | null; enviar: (msg: RoomMessage) => void };
 
 type Room = {
   fixtureId: number;
@@ -66,12 +76,6 @@ type Room = {
 
 const salas = new Map<number, Room>();
 
-/** Só isto vira lance na tela — 194 dos 962 eventos são `safe_possession`. */
-const LANCES = new Set([
-  'kickoff', 'goal', 'yellow_card', 'red_card', 'corner', 'shot',
-  'substitution', 'injury', 'additional_time', 'halftime_finalised', 'game_finalised',
-]);
-
 const ehScore = (ev: NormEvent): ev is ScoreEvent => ev.kind === 'score';
 
 async function criarSala(fixtureId: number): Promise<Room | null> {
@@ -87,6 +91,8 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     return null;
   }
 
+  // A régua dos contadores é DESTA partida, então o filtro nasce com a sala.
+  const ehLance = criarFiltroDeLances();
   const ports = createEnginePorts(db);
   const cursor: ReplayCursor = { matchTs: eventos[0]!.ts, realAt: Date.now() };
   const clock = cursorClock(cursor, REPLAY_SPEED);
@@ -117,12 +123,83 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     encerrar: () => {},
   };
 
+  /**
+   * Traduz uma mensagem do motor para o evento do §8 QUE ESTE FÃ deve receber.
+   * `null` = não é da conta dele.
+   */
+  const paraOFa = (msg: RoomMessage, userId: string | null): RoomMessage | null => {
+    const ts = cursor.matchTs;
+
+    if (msg.type === 'question_open') {
+      const q = msg.question as Question;
+      return {
+        type: 'question_open',
+        ts,
+        questionId: q.id,
+        prompt: q.prompt,
+        // `pct` vem do OddsExplainer, que esta sala ainda não roda. null é a
+        // leitura honesta e é a MESMA do G8 ("a TxLINE não mandou preço"):
+        // quem renderizar `?? 0` inventa "a chance caiu pra zero".
+        options: q.options.map((o) => ({ id: o.id, label: o.label, pct: null })),
+        // Quanto vale, do próprio motor — nunca uma tabela copiada aqui.
+        // É o PISO: quem palpita na primeira metade da janela leva 1.5x, e o
+        // resultado revela o valor real. Piso não é mentira; número inventado é.
+        xp: XP_BASE[q.type as keyof typeof XP_BASE] ?? 0,
+        closesAt: q.closesAt,
+        closesInRealMs: msg.closesInRealMs as number,
+      };
+    }
+
+    if (msg.type === 'question_closed') {
+      return { type: 'question_closed', ts, questionId: msg.questionId as string };
+    }
+
+    if (msg.type === 'question_resolved') {
+      const q = msg.question as Question;
+      const results = (msg.results ?? []) as { userId: string; awardedXp: number }[];
+      const meu = userId ? results.find((r) => r.userId === userId) : undefined;
+      return {
+        type: 'question_resolved',
+        ts,
+        questionId: q.id,
+        correctOptionId: q.correct,
+        // Sem palpite meu, `gained` é 0 — e é verdade: não ganhei nada.
+        gained: meu?.awardedXp ?? 0,
+      };
+    }
+
+    if (msg.type === 'question_void') {
+      const q = msg.question as Question;
+      return { type: 'question_void', ts, questionId: q.id, reason: msg.reason as string };
+    }
+
+    if (msg.type === 'game_end') {
+      return { type: 'game_end', ts, scoreA: state.score.p1, scoreB: state.score.p2 };
+    }
+
+    // `log` e o que mais o motor emitir para si mesmo não é evento de fã.
+    return null;
+  };
+
   const publicar = (msg: RoomMessage) => {
     for (const sub of sala.subs) {
+      const dele = paraOFa(msg, sub.userId);
+      if (!dele) continue;
       try {
-        sub(msg);
+        sub.enviar(dele);
       } catch {
         // Um assinante morto não pode derrubar a sala dos outros.
+      }
+    }
+  };
+
+  /** Eventos que já nascem no formato do §8 e são iguais para todo mundo. */
+  const publicarBruto = (msg: RoomMessage) => {
+    for (const sub of sala.subs) {
+      try {
+        sub.enviar(msg);
+      } catch {
+        // idem
       }
     }
   };
@@ -160,7 +237,7 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
       if (mudou) state.score = { p1: ev.goals.p1, p2: ev.goals.p2 };
       if (typeof ev.clockSeconds === 'number') state.minute = Math.floor(ev.clockSeconds / 60);
 
-      if (LANCES.has(ev.action) && !(ev.action === 'goal' && !mudou)) {
+      if (ehLance(ev, mudou)) {
         const lance = {
           minute: state.minute,
           action: ev.action,
@@ -168,12 +245,21 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
         };
         state.feed.unshift(lance);
         if (state.feed.length > 40) state.feed.pop();
-        publicar({ type: 'score_event', lance, score: state.score, minute: state.minute });
+        publicarBruto({
+          type: 'score_event',
+          ts: ev.ts,
+          minute: state.minute,
+          // Ausente NAO e zero (A4): so mando placar quando o bloco Score veio.
+          // null diz "nao mudou"; quem renderizar `?? 0` da gol fantasma.
+          scoreA: mudou ? state.score.p1 : null,
+          scoreB: mudou ? state.score.p2 : null,
+          lance,
+        });
       }
     },
     () => {
       state.finished = true;
-      publicar({ type: 'replay_done' });
+      publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
     },
   );
 

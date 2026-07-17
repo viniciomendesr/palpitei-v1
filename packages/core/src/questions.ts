@@ -22,7 +22,16 @@ export const WINDOW_FINAL_MS = 600_000;
 export const FAIRNESS_VOID_REASON =
   "evento resolvedor chegou com a janela aberta (regra de justiça)";
 
-const XP_BASE: Record<QuestionType, number> = {
+/**
+ * O que cada tipo de pergunta vale. Exportado porque a TELA precisa dizer ao fã
+ * quanto está em jogo ANTES de ele palpitar — e a única alternativa era copiar a
+ * tabela no servidor da sala, que é como duas verdades nascem.
+ *
+ * O valor final ainda pode ser MAIOR: quem palpita na primeira metade da janela
+ * leva 1.5x (ver `fast`, abaixo). Este é o piso, não o teto — e por isso mostrar
+ * este número na abertura não mente: o resultado revela o que de fato saiu.
+ */
+export const XP_BASE: Record<QuestionType, number> = {
   final_result: 150,
   next_goal: 100,
   hilo_corners: 50,

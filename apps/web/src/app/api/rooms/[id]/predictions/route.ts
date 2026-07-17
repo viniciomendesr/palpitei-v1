@@ -50,9 +50,11 @@ export async function POST(
   const fixtureId = Number((await params).id);
   const body: unknown = await req.json().catch(() => null);
   const questionId = (body as { questionId?: unknown } | null)?.questionId;
-  const choice = (body as { choice?: unknown } | null)?.choice;
-  if (typeof questionId !== 'string' || typeof choice !== 'string') {
-    return NextResponse.json({ error: 'questionId e choice são obrigatórios' }, { status: 400 });
+  // `optionId` é o nome do contrato herdado (PredictionRequest em lib/api.ts).
+  // O motor chama de `choice`; quem se ajusta é a rota, não o contrato.
+  const optionId = (body as { optionId?: unknown } | null)?.optionId;
+  if (typeof questionId !== 'string' || typeof optionId !== 'string') {
+    return NextResponse.json({ error: 'questionId e optionId são obrigatórios' }, { status: 400 });
   }
 
   const sala = await abrirSala(fixtureId);
@@ -66,7 +68,7 @@ export async function POST(
     // carteira muda, e o MESMO endereço aparece duas vezes depois do export).
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
     // paraCore estoura se o fã não tem carteira Solana (E2). Não coage NULL.
-    const r = await palpitar(sala, paraCore(user), questionId, choice);
+    const r = await palpitar(sala, paraCore(user), questionId, optionId);
     // 409: a pergunta existe, o palpite é que não vale (janela fechada, repetido).
     return NextResponse.json(r, { status: r.ok ? 200 : 409 });
   } catch (e) {
