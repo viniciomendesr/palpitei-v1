@@ -193,23 +193,20 @@ produto da Privy (E15).
   rotação de segredo na mesma app: é **app nova com segredo novo**, que resolve E10 e
   o item abaixo de uma vez. Reproduz comparando os hashes — **nunca imprima o valor**.
 - ✅ **App Privy de dev** → **RESOLVIDO**: a v1 roda numa app própria
-  (`cmrnum7sz00ft0cjruc4dtkj2`). Continua valendo: **o domínio de produção precisa
-  entrar em Allowed origins antes do deploy** — hoje as 5 origens liberadas são de
-  desenvolvimento (localhost e IPs de LAN).
+  (`cmrnum7sz00ft0cjruc4dtkj2`). A origem Railway entrou em Allowed origins em 17/07;
+  continuam valendo as origens locais/LAN para desenvolvimento.
 
   **Deploy de produção NO AR desde 17/07** (Railway, processo persistente — a
   sala vive na memória do processo e serverless a mata, ver railway.json):
   **https://palpitei-v1-production.up.railway.app** · projeto Railway
-  `palpitei-v1` (`d2a0f110`), 1 réplica, `REPLAY_SPEED=12` e
-  `TXLINE_LIVE_INGEST=false` explícitos, `TXLINE_ALLOW_SYNTHETIC` AUSENTE de
-  propósito. Medido em 17/07 na URL: demo inteiro funciona (home, sala
-  simulada, ranking mock); rotas autenticadas respondem 401 fechado.
-  🔴 **PENDENTE: esta origem AINDA NÃO está em Allowed origins da Privy** — o
-  console de produção mostra o CSP dela bloqueando (`frame-ancestors` lista só
-  as 5 origens de dev). Login Google/carteira NÃO funciona lá até adicionar —
-  e o painel não salva sozinho (toggle ligado ≠ salvo, §3). Confira depois com
-  `npm run privy:doctor`. Apple, se for usar, exige credencial
-  própria **antes do primeiro usuário** (porta de mão única, E8).
+  `palpitei-v1` (`d2a0f110`), 1 réplica e `REPLAY_SPEED=12`.
+  **Medido em 17/07 após o deploy ao vivo:** `TXLINE_LIVE_INGEST=true`,
+  `LIVE_FIXTURE_IDS=18257865,18257739`; a rota pública `/api/live/status` devolve as
+  duas fixtures semeadas e os streams SSE abertos. O painel da Privy devolveu 6
+  Allowed origins, incluindo `https://palpitei-v1-production.up.railway.app`.
+  Reproduz sem imprimir segredos com `railway run -- npm run db:status` e o curl
+  autenticado pelo `NEXT_PUBLIC_PRIVY_APP_ID` do serviço. Apple, se for usar, exige
+  credencial própria **antes do primeiro usuário** (porta de mão única, E8).
 - 🔴 **Payload da TxLINE versionado** (§7).
 - 🟡 Estado em memória: o XP some no primeiro restart.
 
