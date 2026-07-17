@@ -49,9 +49,15 @@ export class OddsExplainer {
       if (Math.abs(delta) < DELTA_THRESHOLD_PP) continue;
 
       let contexto = "";
+      let contextAction: string | undefined;
       if (this.lastAction && Math.abs(ev.ts - this.lastAction.ts) <= CONTEXT_WINDOW_MS) {
         const acao = ACTION_PT[this.lastAction.action];
-        if (acao) contexto = ` depois ${acao}`;
+        if (acao) {
+          contexto = ` depois ${acao}`;
+          // A causa em FORMA, não só em frase: é o que deixa a tela redigir
+          // no idioma do fã sem perder o "depois do gol".
+          contextAction = this.lastAction.action;
+        }
       }
 
       const text = `A chance de ${this.describe(price.name, ev.line)} ${
@@ -66,6 +72,7 @@ export class OddsExplainer {
         priceName: price.name,
         fromPct: prev,
         toPct: price.pct,
+        contextAction,
         ts: ev.ts,
       });
     }

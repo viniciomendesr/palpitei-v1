@@ -43,6 +43,24 @@ function makeExplainer() {
   return { ex, emitted };
 }
 
+test("a mensagem carrega o CONTEXTO estruturado (contextAction) para a tela redigir bilíngue", () => {
+  const { ex, emitted } = makeExplainer();
+
+  // Com gol na janela de contexto: contextAction = 'goal'
+  ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
+  ex.onScoreEvent(goal(T0 + 30_000));
+  ex.onOddsEvent(odds(T0 + 60_000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].contextAction, "goal");
+
+  // Sem lance na janela: contextAction ausente — a tela não inventa causa.
+  const { ex: ex2, emitted: em2 } = makeExplainer();
+  ex2.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
+  ex2.onOddsEvent(odds(T0 + 1000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
+  assert.equal(em2.length, 1);
+  assert.equal(em2[0].contextAction, undefined);
+});
+
 test("delta abaixo de 3 p.p. não emite, mas atualiza o cache", () => {
   const { ex, emitted } = makeExplainer();
 
