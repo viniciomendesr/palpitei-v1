@@ -96,6 +96,13 @@ const pt = {
   // O fã que ainda não passou pelo passo do apelido. Dizer isso é o certo: o
   // apelido é público e nunca sai do e-mail (E12), então não há nome pra mostrar.
   salaNoHandle: 'sem apelido',
+  // Sair da sala tem preço (sala vazia por 30s morre e o replay recomeça do
+  // zero) — o fã decide SABENDO, num painel da tela. Nunca window.confirm.
+  sairSalaTitulo: 'Sair da sala?',
+  sairSalaAviso:
+    'Se a sala ficar vazia, o replay recomeça do zero — e os desafios abertos vão junto.',
+  sairSalaFica: 'Ficar na sala',
+  sairSalaVai: 'Sair mesmo assim',
   lanceGoal: 'GOL',
   lanceKickoff: 'A bola rolou',
   lanceCorner: 'Escanteio',
@@ -516,6 +523,11 @@ const en: Dict = {
   salaVoidBody: 'The deciding play landed before the window closed. No XP — and that is fair: nobody could have picked in time.',
   salaRankEmpty: 'Nobody has scored yet. The list shows up here as soon as the first challenge is settled.',
   salaNoHandle: 'no nickname',
+  sairSalaTitulo: 'Leave the room?',
+  sairSalaAviso:
+    'If the room empties out, the replay restarts from scratch — open challenges go with it.',
+  sairSalaFica: 'Stay in the room',
+  sairSalaVai: 'Leave anyway',
   lanceGoal: 'GOAL',
   lanceKickoff: 'Kick-off',
   lanceCorner: 'Corner',

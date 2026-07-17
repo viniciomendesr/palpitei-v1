@@ -26,7 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { esperaDeReconexao } from '@/lib/reconexao';
-import { minutoDoReplay } from '@/lib/relogio';
+import { segundoDoReplay } from '@/lib/relogio';
 
 export type SalaOpcao = { id: string; label: string; pct: number | null };
 
@@ -157,12 +157,12 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
   const [treino, setTreino] = useState(false);
   const [treinoDaSala, setTreinoDaSala] = useState(false);
   /**
-   * O minuto INTERPOLADO entre eventos. O feed pode ficar meia dúzia de
-   * minutos de jogo sem lance; sem isto o badge congelava no 0’ e saltava
-   * para o 6’ — relógio parado com cara de sala travada. A âncora é sempre o
+   * O relógio INTERPOLADO entre eventos, em segundos DE JOGO. O feed pode
+   * ficar minutos sem lance; sem isto o badge congelava no 0’ e saltava para
+   * o 6’ — relógio parado com cara de sala travada. A âncora é sempre o
    * último evento COM relógio (B2): o lance re-ancora, a parede só preenche.
    */
-  const [minutoVivo, setMinutoVivo] = useState<number | null>(null);
+  const [segundosVivos, setSegundosVivos] = useState<number | null>(null);
   const ancora = useRef<{ game: number; realAt: number } | null>(null);
   const speedRef = useRef<number | null>(null);
   const acabouRef = useRef(false);
@@ -478,23 +478,24 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     };
   }, [fixtureId, ativo]);
 
-  // O tique do relógio da tela: 1s de intervalo, mas só re-renderiza quando o
-  // MINUTO muda (a 12×, a cada ~5s). Congela no apito final — relógio que anda
-  // depois do fim é mentira andando.
+  // O tique do relógio da tela: 250ms de intervalo (a 12×, 1s real = 12s de
+  // jogo — com 1s de tique o cronômetro pularia de 12 em 12), re-renderizando
+  // só quando o SEGUNDO exibido muda. Congela no apito final — relógio que
+  // anda depois do fim é mentira andando.
   useEffect(() => {
     if (!ativo) return;
     const tick = () => {
       if (acabouRef.current || !ancora.current || speedRef.current === null) return;
-      const m = minutoDoReplay(
+      const s = segundoDoReplay(
         ancora.current.game,
         ancora.current.realAt,
         speedRef.current,
         Date.now(),
       );
-      setMinutoVivo((antes) => (antes === m ? antes : m));
+      setSegundosVivos((antes) => (antes === s ? antes : s));
     };
     tick();
-    const timer = setInterval(tick, 1_000);
+    const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [ativo, fixtureId]);
 
@@ -519,5 +520,15 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     [fixtureId],
   );
 
-  return { state, desafios, resultados, ranking, erro, treino, treinoDaSala, minutoVivo, palpitar };
+  return {
+    state,
+    desafios,
+    resultados,
+    ranking,
+    erro,
+    treino,
+    treinoDaSala,
+    segundosVivos,
+    palpitar,
+  };
 }

@@ -30,6 +30,7 @@ import {
   type SalaResultado,
   type SalaTotais,
 } from '@/lib/useSala';
+import { formataRelogio } from '@/lib/relogio';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 
 type SalaTab = 'desafios' | 'lances' | 'stats' | 'ranking';
@@ -341,12 +342,15 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
   // `addXp` no terceiro argumento: quando o motor paga, o contador do cabeçalho
   // acompanha na hora — antes ele mostrava o XP de quando a sessão nasceu, e o
   // fã via "+75" no resultado com o total parado.
-  const { state, desafios, resultados, ranking, erro, treino, treinoDaSala, minutoVivo, palpitar } =
+  const { state, desafios, resultados, ranking, erro, treino, treinoDaSala, segundosVivos, palpitar } =
     useSala(fixtureId, privy.ready && privy.authenticated, addXp);
 
   const [tab, setTab] = useState<SalaTab>('desafios');
   const [enviando, setEnviando] = useState<string | null>(null);
   const [recusa, setRecusa] = useState<Record<string, string>>({});
+  // Sair tem preço (sala vazia por 30s morre e o replay recomeça do zero):
+  // o fã confirma SABENDO, num painel da tela. Jogo encerrado sai direto.
+  const [confirmandoSaida, setConfirmandoSaida] = useState(false);
 
   // A aba NÃO rouba mais o foco quando abre desafio. Quem chama o fã é o
   // OVERLAY: a janela dura ~96s de tempo real e ele não pode ter que procurar
@@ -413,7 +417,7 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button
-            onClick={() => router.push('/home')}
+            onClick={() => (state.finished ? router.push('/home') : setConfirmandoSaida(true))}
             aria-label={t.backHome}
             style={{
               all: 'unset',
@@ -430,12 +434,14 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
             <ChevronLeft size={18} />
           </button>
           {/* Uma partida GRAVADA não é "ao vivo", por mais que o relógio corra.
-              O minuto é o INTERPOLADO: entre um lance e outro ele continua
-              andando — o do servidor é o piso, nunca o teto. */}
+              O cronômetro é o INTERPOLADO (MM:SS): entre um lance e outro ele
+              continua andando — o do servidor é o piso, nunca o teto. */}
           <Badge tone={state.finished ? 'neutral' : 'live'} dot={!state.finished}>
             {state.finished
               ? t.lanceEnd
-              : `${t.replayShort} · ${Math.max(minutoVivo ?? 0, state.minute ?? 0)}’`}
+              : `${t.replayShort} · ${formataRelogio(
+                  Math.max(segundosVivos ?? 0, (state.minute ?? 0) * 60),
+                )}`}
           </Badge>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: fw.heavy, color: 'var(--gold)' }}>
             <Star />
@@ -753,6 +759,49 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
             recusa={recusa[noOverlay.questionId] ?? null}
             onResponder={(o) => responder(noOverlay.questionId, o)}
           />
+        </div>
+      )}
+
+      {/* SAIR TEM PREÇO: sala vazia por 30s morre e o replay recomeça do zero.
+          O painel diz isso ANTES — sair sem saber e voltar para um 0×0 novo
+          é a tela quebrando a confiança. Ficar é o caminho fácil (primeiro e
+          em destaque); sair é escolha informada. */}
+      {confirmandoSaida && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'color-mix(in srgb, var(--bg-app) 76%, transparent)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            padding: '0 12px 16px',
+            animation: 'fadeUp .2s cubic-bezier(.2,.7,.3,1) both',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              background: 'var(--surface-1)',
+              border: '1.5px solid var(--border-2)',
+              borderRadius: 'var(--r-2xl)',
+              padding: 16,
+            }}
+          >
+            <div style={{ fontWeight: fw.black, fontStyle: 'italic', fontSize: 20, letterSpacing: -0.4 }}>
+              {t.sairSalaTitulo}
+            </div>
+            <p style={{ fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-2)', marginTop: 8, textWrap: 'pretty' }}>
+              {t.sairSalaAviso}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+              <Button full onClick={() => setConfirmandoSaida(false)}>
+                {t.sairSalaFica}
+              </Button>
+              <Button variant="ghost" full onClick={() => router.push('/home')}>
+                {t.sairSalaVai}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

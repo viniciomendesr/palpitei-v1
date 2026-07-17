@@ -16,6 +16,24 @@ export function minutoDoReplay(
   speed: number,
   agoraMs: number,
 ): number {
+  return Math.floor(segundoDoReplay(ancoraGameSeconds, ancoraRealAtMs, speed, agoraMs) / 60);
+}
+
+/** Os segundos DE JOGO desde a âncora — a mesma interpolação, sem arredondar a minuto. */
+export function segundoDoReplay(
+  ancoraGameSeconds: number,
+  ancoraRealAtMs: number,
+  speed: number,
+  agoraMs: number,
+): number {
   const decorridoRealS = Math.max(0, agoraMs - ancoraRealAtMs) / 1000;
-  return Math.floor((ancoraGameSeconds + decorridoRealS * speed) / 60);
+  return Math.floor(ancoraGameSeconds + decorridoRealS * speed);
+}
+
+/** `MM:SS`, como cronômetro de transmissão. Só formata — quem conta é o de cima. */
+export function formataRelogio(totalGameSeconds: number): string {
+  const s = Math.max(0, totalGameSeconds);
+  const mm = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
 }
