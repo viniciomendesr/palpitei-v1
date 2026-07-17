@@ -20,16 +20,25 @@
 import type { NormEvent } from '@palpitei/core';
 import { MERCADO_1X2 } from '@palpitei/db';
 
-type EnvDoCanal = { TXLINE_LIVE_INGEST?: string; LIVE_FIXTURE_ID?: string } & Record<
+type EnvDoCanal = { TXLINE_LIVE_INGEST?: string; LIVE_FIXTURE_ID?: string; LIVE_FIXTURE_IDS?: string } & Record<
   string,
   string | undefined
 >;
 
-/** A fixture do canal ao vivo, ou null se as travas não abriram. */
+/** Fixtures observadas pelo canal. `LIVE_FIXTURE_ID` continua aceito por compatibilidade. */
+export function fixturesAoVivo(env: EnvDoCanal): number[] {
+  if (env.TXLINE_LIVE_INGEST !== 'true') return [];
+  const bruto = env.LIVE_FIXTURE_IDS ?? env.LIVE_FIXTURE_ID ?? '';
+  const ids = bruto
+    .split(',')
+    .map((v) => Number(v.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  return [...new Set(ids)];
+}
+
+/** Compatibilidade para os chamadores que só precisam da primeira fixture. */
 export function fixtureAoVivo(env: EnvDoCanal): number | null {
-  if (env.TXLINE_LIVE_INGEST !== 'true') return null;
-  const id = Number(env.LIVE_FIXTURE_ID);
-  return Number.isInteger(id) && id > 0 ? id : null;
+  return fixturesAoVivo(env)[0] ?? null;
 }
 
 /** O evento terminal que torna a fixture apta para settlement. */

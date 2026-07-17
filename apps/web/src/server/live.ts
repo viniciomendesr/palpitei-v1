@@ -29,7 +29,7 @@ import {
 } from '@palpitei/txline';
 import { createEventRepo, createMatchRepo, createOddsRepo, createPregamePickRepo } from '@palpitei/db';
 import { createDb } from './db';
-import { classificarParaSala, eventoEncerraPartida, fixtureAoVivo } from './live-regras';
+import { classificarParaSala, eventoEncerraPartida, fixturesAoVivo } from './live-regras';
 
 type Contadores = {
   ignoradosDeOutrasFixtures: number;
@@ -65,14 +65,24 @@ type Canal = {
   };
 };
 
-const CHAVE = '__palpitei_canal_ao_vivo__' as const;
-type GlobalComCanal = typeof globalThis & { [CHAVE]?: Canal };
+const CHAVE = '__palpitei_canais_ao_vivo__' as const;
+type GlobalComCanais = typeof globalThis & { [CHAVE]?: Map<number, Canal> };
 
-const canalAtivo = (): Canal | null => (globalThis as GlobalComCanal)[CHAVE] ?? null;
+const canaisAtivos = (): Map<number, Canal> | null => (globalThis as GlobalComCanais)[CHAVE] ?? null;
 
-/** A fixture do canal ativo — é por ela que `criarSala` decide o ramo live. */
+/** A primeira fixture ativa, preservada para consumidores legados do status. */
 export function fixtureDoCanal(): number | null {
-  return canalAtivo()?.fixtureId ?? null;
+  return canaisAtivos()?.keys().next().value ?? null;
+}
+
+/** Todas as fixtures ativas: uma conexão SSE pode servir mais de uma partida. */
+export function fixturesDosCanais(): number[] {
+  return [...(canaisAtivos()?.keys() ?? [])];
+}
+
+/** Decide se uma sala deve usar o alimentador ao vivo. */
+export function fixtureTemCanalAoVivo(fixtureId: number): boolean {
+  return canaisAtivos()?.has(fixtureId) ?? false;
 }
 
 /**
@@ -83,8 +93,8 @@ export function assinarCanalAoVivo(
   fixtureId: number,
   handler: (ev: NormEvent) => void,
 ): (() => void) | null {
-  const canal = canalAtivo();
-  if (!canal || canal.fixtureId !== fixtureId) return null;
+  const canal = canaisAtivos()?.get(fixtureId);
+  if (!canal) return null;
   canal.handlers.add(handler);
   return () => canal.handlers.delete(handler);
 }
@@ -215,11 +225,11 @@ function aoReceber(canal: Canal, ev: NormEvent): void {
  * GET /api/live/status.
  */
 export function iniciarCanalAoVivo(): void {
-  if (canalAtivo()) return;
-  const fixtureId = fixtureAoVivo(process.env);
-  if (!fixtureId) return;
+  if (canaisAtivos()) return;
+  const fixtureIds = fixturesAoVivo(process.env);
+  if (!fixtureIds.length) return;
 
-  const canal: Canal = {
+  const canais = new Map<number, Canal>(fixtureIds.map((fixtureId) => [fixtureId, {
     fixtureId,
     iniciadoEm: Date.now(),
     semeada: false,
@@ -240,12 +250,15 @@ export function iniciarCanalAoVivo(): void {
       status: () => ({ scores: liveStatus.scores, odds: liveStatus.odds }),
       silencio: segundosEmSilencio,
     },
-  };
-  (globalThis as GlobalComCanal)[CHAVE] = canal;
+  }]));
+  (globalThis as GlobalComCanais)[CHAVE] = canais;
 
-  info(`[canal-ao-vivo] ligando: fixture ${fixtureId} (TXLINE_LIVE_INGEST=true)`);
-  void semear(canal);
-  startLiveIngest((ev) => aoReceber(canal, ev));
+  info(`[canal-ao-vivo] ligando fixtures ${fixtureIds.join(', ')} (TXLINE_LIVE_INGEST=true)`);
+  for (const canal of canais.values()) void semear(canal);
+  startLiveIngest((ev) => {
+    const canal = canais.get(ev.fixtureId);
+    if (canal) aoReceber(canal, ev);
+  });
 }
 
 /** O LiveStatus SEM a amostra crua: payload da TxLINE não sai por rota pública (§7). */
@@ -256,14 +269,15 @@ function semAmostra(s: LiveStatus): Omit<LiveStatus, 'ultimaAmostra'> {
 
 /** O painel do runbook — tudo que os olhos precisam, nada que o §7 proíbe. */
 export function statusDoCanal(): Record<string, unknown> {
-  const canal = canalAtivo();
+  const canais = canaisAtivos();
+  const canal = canais?.values().next().value as Canal | undefined;
   // Canal ligado: ler pelo bundle que LIGOU (canal.txline) — o import local
   // deste arquivo pode ser a outra instância do módulo, com contadores zerados.
   const resumo = canal ? canal.txline.resumo() : liveResumo();
   const streams = canal ? canal.txline.status() : { scores: liveStatus.scores, odds: liveStatus.odds };
   const silencio = canal ? canal.txline.silencio : segundosEmSilencio;
   return {
-    ativo: canal !== null,
+    ativo: canais !== null,
     fixtureId: canal?.fixtureId ?? null,
     iniciadoEm: canal?.iniciadoEm ?? null,
     fixtureSemeada: canal?.semeada ?? false,
@@ -272,5 +286,12 @@ export function statusDoCanal(): Record<string, unknown> {
     streams: { scores: semAmostra(streams.scores), odds: semAmostra(streams.odds) },
     silencioSegundos: { scores: silencio('scores'), odds: silencio('odds') },
     contadores: canal?.contadores ?? null,
+    fixtures: [...(canais?.values() ?? [])].map((c) => ({
+      fixtureId: c.fixtureId,
+      iniciadoEm: c.iniciadoEm,
+      fixtureSemeada: c.semeada,
+      marcadaAoVivo: c.marcadaAoVivo,
+      contadores: c.contadores,
+    })),
   };
 }

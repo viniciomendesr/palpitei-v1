@@ -53,7 +53,7 @@ import {
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
 import { criarDedupeDeKickoff, criarFiltroDeLances } from './lances';
-import { assinarCanalAoVivo, fixtureDoCanal } from './live';
+import { assinarCanalAoVivo, fixtureTemCanalAoVivo } from './live';
 import {
   atualizarPct1x2,
   mesclarLinhaDoTempo,
@@ -224,7 +224,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
   // O ramo AO VIVO: a mesma sala, o mesmo motor — muda o alimentador (o canal
   // de live.ts em vez do ReplayRunner) e a velocidade (1×). Decidido pelo canal
   // ATIVO, não pelo env cru: as três travas moram em live-regras.ts.
-  const aoVivo = fixtureDoCanal() === fixtureId;
+  const aoVivo = fixtureTemCanalAoVivo(fixtureId);
 
   // Assinar ANTES de ler o banco: o que chegar durante a leitura fica no buffer
   // e entra depois do catch-up, dedupado por seq/messageId. Assinar depois
