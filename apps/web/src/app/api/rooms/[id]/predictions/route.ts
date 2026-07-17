@@ -14,7 +14,7 @@
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { createDb, createUserRepo } from '@palpitei/db';
-import { abrirSala, palpitar } from '@/server/rooms';
+import { abrirSala, palpitar, parseRoomId } from '@/server/rooms';
 import { paraCore } from '@/server/identidade';
 
 export const runtime = 'nodejs';
@@ -47,7 +47,12 @@ export async function POST(
     );
   }
 
-  const fixtureId = Number((await params).id);
+  // `treino-18241006` é a MESMA partida sem XP — a regra de parse é uma só
+  // (parseRoomId), senão stream e palpite abririam salas diferentes do mesmo id.
+  const roomId = parseRoomId((await params).id);
+  if (!roomId) {
+    return NextResponse.json({ error: 'sala inválida' }, { status: 400 });
+  }
   const body: unknown = await req.json().catch(() => null);
   const questionId = (body as { questionId?: unknown } | null)?.questionId;
   // `optionId` é o nome do contrato herdado (PredictionRequest em lib/api.ts).
@@ -57,7 +62,7 @@ export async function POST(
     return NextResponse.json({ error: 'questionId e optionId são obrigatórios' }, { status: 400 });
   }
 
-  const sala = await abrirSala(fixtureId);
+  const sala = await abrirSala(roomId.fixtureId, roomId.treino);
   if (!sala) {
     return NextResponse.json({ error: 'sala não está aberta' }, { status: 404 });
   }

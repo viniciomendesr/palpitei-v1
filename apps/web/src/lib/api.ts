@@ -82,6 +82,8 @@ export interface ApiFixture {
   scoreB: number | null;
   /** Selo de origem do dado — a trilha exige a TxLINE como fonte primária. */
   source: 'txline' | ReplaySource;
+  /** Sala de TREINO: mesma partida, XP sempre 0, nada persistido. */
+  treino?: boolean;
 }
 
 /**

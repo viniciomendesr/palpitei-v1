@@ -68,6 +68,7 @@ export class QuestionEngine {
   private emit: EngineEmit;
   private ports: EnginePorts;
   private onResolvedCb?: (q: Question, results: ResolvedResult[]) => void;
+  private pagaXp: (userId: string) => boolean;
 
   private tracked = new Map<string, Tracked>();
   private prevGoals: { p1: number; p2: number } | null = null;
@@ -85,12 +86,21 @@ export class QuestionEngine {
     emit: EngineEmit;
     ports: EnginePorts;
     onResolved?: (q: Question, results: ResolvedResult[]) => void;
+    /**
+     * Modo treino: `false` para um fã = o veredito dele sai normal (won/lost),
+     * mas o XP pago é SEMPRE 0 — replay rejogado com gabarito decorado não pode
+     * valer ranking. Ausente = todo mundo é pago (o caminho ao vivo não muda).
+     * A decisão de QUEM é treino é da aplicação; o motor só obedece — uma
+     * tabela de pagamento, um pagador.
+     */
+    pagaXp?: (userId: string) => boolean;
   }) {
     this.fixture = opts.fixture;
     this.clock = opts.clock;
     this.emit = opts.emit;
     this.ports = opts.ports;
     this.onResolvedCb = opts.onResolved;
+    this.pagaXp = opts.pagaXp ?? (() => true);
   }
 
   onScoreEvent(ev: ScoreEvent): void {
@@ -444,7 +454,9 @@ export class QuestionEngine {
       const won = p.choice === correct;
       // Bônus de velocidade: palpite na primeira metade da janela vale 1.5x.
       const fast = p.placedAt <= q.opensAt + (q.closesAt - q.opensAt) / 2;
-      const awardedXp = won ? Math.floor(XP_BASE[q.type] * (fast ? 1.5 : 1)) : 0;
+      // Treino (pagaXp=false): acertou, o veredito diz "won" — e o XP é 0.
+      const awardedXp =
+        won && this.pagaXp(p.userId) ? Math.floor(XP_BASE[q.type] * (fast ? 1.5 : 1)) : 0;
       p.result = won ? "won" : "lost";
       p.awardedXp = awardedXp;
       const user = t.users.get(p.userId);

@@ -293,6 +293,52 @@ test("game_finalised resolve tudo pelo placar e emite game_end por último", () 
   assert.deepEqual(emitted[emitted.length - 1].goals, { p1: 1, p2: 0 });
 });
 
+test("pagaXp falso vira modo treino: o veredito sai, o XP não", () => {
+  const emitted: RoomMessage[] = [];
+  const clock = manualClock(T0);
+  const fake = makeFakeStore();
+  const treino = fake.createUser("rejogando");
+  const novato = fake.createUser("primeira_vez");
+  const engine = new QuestionEngine({
+    fixture: FX,
+    clock,
+    emit: (m) => emitted.push(m),
+    ports: fake.ports,
+    // replay já jogado: este fã não recebe XP — os outros seguem normais
+    pagaXp: (userId) => userId !== treino.id,
+  });
+
+  engine.onScoreEvent(ev(1, T0));
+  clock.set(T0 + 5000);
+  engine.onScoreEvent(ev(2, T0 + 5000, { action: "kickoff" }));
+  const ng = engine.openQuestions().find((q) => q.type === "next_goal")!;
+
+  clock.set(T0 + 10_000);
+  assert.ok(engine.place(treino, ng.id, "p2").ok);
+  assert.ok(engine.place(novato, ng.id, "p2").ok);
+
+  engine.onScoreEvent(ev(3, T0 + 70_000)); // fecha a janela
+  engine.onScoreEvent(ev(4, T0 + 120_000, { action: "goal", goals: { p1: 0, p2: 1 } }));
+
+  // os dois ACERTARAM; só o novato é pago
+  assert.equal(novato.xp, 150, "quem joga pela primeira vez leva o bônus normal");
+  assert.equal(treino.xp, 0, "treino não paga XP");
+
+  const resolved = emitted.find(
+    (m) => m.type === "question_resolved" && m.question.id === ng.id,
+  )!;
+  const rTreino = resolved.results.find((r: { userId: string }) => r.userId === treino.id)!;
+  const rNovato = resolved.results.find((r: { userId: string }) => r.userId === novato.id)!;
+  assert.equal(rTreino.result, "won", "o veredito continua sendo dele — só o pagamento muda");
+  assert.equal(rTreino.awardedXp, 0);
+  assert.equal(rNovato.awardedXp, 150);
+
+  // e o banco recebe o 0 — recibo honesto, não omissão
+  const predTreino = [...fake.predictions.values()].find((p) => p.userId === treino.id)!;
+  assert.equal(predTreino.result, "won");
+  assert.equal(predTreino.awardedXp, 0);
+});
+
 test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca as dos outros", () => {
   const { engine, clock, createUser } = makeEngine();
   const ana = createUser("ana_r");

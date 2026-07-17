@@ -84,9 +84,10 @@ function useFixtures(session: SessionState | null, t: Dict) {
       // (A4): renderizar 0 aqui afirma um empate que ninguém jogou.
       scoreA: f.scoreA ?? '–',
       scoreB: f.scoreB ?? '–',
-      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : t.ctaReplay,
-      // O selo diz o que o servidor gravou, não o que seria bonito.
-      source: f.source === 'txline' ? t.srcTxline : t.srcReplay,
+      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : f.treino ? t.ctaTreino : t.ctaReplay,
+      // O selo diz o que o servidor gravou, não o que seria bonito. TREINO
+      // entra no selo: sala que não paga XP não pode se vestir de sala que paga.
+      source: f.source === 'txline' ? t.srcTxline : f.treino ? t.srcTreino : t.srcReplay,
     });
   }
   return { abas, carregando: reais === null && !erro, erro };

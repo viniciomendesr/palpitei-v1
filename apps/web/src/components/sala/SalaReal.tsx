@@ -137,11 +137,14 @@ function CardDoDesafio({
   onResponder,
   enviando,
   recusa,
+  treino,
 }: {
   d: SalaDesafio;
   onResponder: (optionId: string) => void;
   enviando: boolean;
   recusa: string | null;
+  /** Sem pagamento (sala de treino / já jogou): o card não promete XP nenhum. */
+  treino: boolean;
 }) {
   const { t } = useI18n();
   const secs = useSegundos(d.fechaEm);
@@ -166,7 +169,9 @@ function CardDoDesafio({
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 10.5, fontWeight: fw.black, letterSpacing: 1, color: 'var(--lime)' }}>
-          {rotulo[d.type] ?? t.salaChallenge} · +{d.xp} XP
+          {/* "+0 XP" seria promessa quebrada com cara de prêmio: no treino a
+              etiqueta diz TREINO, e valor só aparece quando há valor. */}
+          {rotulo[d.type] ?? t.salaChallenge} · {treino ? t.treinoTag : `+${d.xp} XP`}
         </span>
         {/* Janela fechada não tem contagem regressiva: o que falta agora é o
             LANCE, não o tempo. Um "0s" parado ali diria que o fã perdeu o prazo. */}
@@ -233,7 +238,7 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
   // `addXp` no terceiro argumento: quando o motor paga, o contador do cabeçalho
   // acompanha na hora — antes ele mostrava o XP de quando a sessão nasceu, e o
   // fã via "+75" no resultado com o total parado.
-  const { state, desafios, resultados, ranking, erro, palpitar } = useSala(
+  const { state, desafios, resultados, ranking, erro, treino, treinoDaSala, palpitar } = useSala(
     fixtureId,
     privy.ready && privy.authenticated,
     addXp,
@@ -346,6 +351,13 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
             <span style={{ fontSize: 10, fontWeight: fw.heavy, letterSpacing: 0.8, color: 'var(--text-muted)', marginTop: 4 }}>
               {selo}
             </span>
+            {/* SEM XP tem que estar escrito ANTES do primeiro palpite — sala de
+                treino (ou "você já jogou") vestida de sala valendo é o G6. */}
+            {treino && (
+              <span style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 0.8, color: 'var(--orange)', marginTop: 3 }}>
+                {treinoDaSala ? t.treinoSelo : t.jaJogouSelo}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: 96 }}>
             <Escudo nome={state.teamB} />
@@ -379,6 +391,7 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
               <CardDoDesafio
                 key={d.questionId}
                 d={d}
+                treino={treino}
                 enviando={enviando === d.questionId}
                 recusa={recusa[d.questionId] ?? null}
                 onResponder={(o) => responder(d.questionId, o)}
@@ -418,16 +431,30 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
                         </div>
                       </>
                     ) : (
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: fw.black,
-                          marginTop: 6,
-                          color: r.gained > 0 ? 'var(--lime)' : 'var(--text-1)',
-                        }}
-                      >
-                        {r.gained > 0 ? `${t.salaHit} +${r.gained} XP` : t.salaMiss}
-                      </div>
+                      (() => {
+                        // Acerto é comparar com o GABARITO do servidor — não com o
+                        // XP: no treino o acerto paga 0, e `gained > 0` como régua
+                        // diria "Errou" para um palpite certo. A tela não mente
+                        // nem para bonito, nem para feio.
+                        const acertou =
+                          r.correctOptionId !== undefined && r.minhaEscolha === r.correctOptionId;
+                        return (
+                          <div
+                            style={{
+                              fontSize: 14,
+                              fontWeight: fw.black,
+                              marginTop: 6,
+                              color: acertou ? 'var(--lime)' : 'var(--text-1)',
+                            }}
+                          >
+                            {acertou
+                              ? r.gained > 0
+                                ? `${t.salaHit} +${r.gained} XP`
+                                : t.salaHitTreino
+                              : t.salaMiss}
+                          </div>
+                        );
+                      })()
                     )}
                   </div>
                 ))}
@@ -574,6 +601,7 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
           <CardDoDesafio
             key={noOverlay.questionId}
             d={noOverlay}
+            treino={treino}
             enviando={enviando === noOverlay.questionId}
             recusa={recusa[noOverlay.questionId] ?? null}
             onResponder={(o) => responder(noOverlay.questionId, o)}

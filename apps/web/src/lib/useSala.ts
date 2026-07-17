@@ -127,6 +127,13 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
   const [resultados, setResultados] = useState<SalaResultado[]>([]);
   const [ranking, setRanking] = useState<SalaRankRow[]>([]);
   const [erro, setErro] = useState<string | null>(null);
+  /**
+   * MEUS palpites aqui valem XP? `treino: true` = não — ou porque a sala é de
+   * treino (`treinoDaSala`), ou porque EU já joguei esta partida antes e a
+   * sala valendo só paga a primeira jogada. A tela avisa; o servidor decide.
+   */
+  const [treino, setTreino] = useState(false);
+  const [treinoDaSala, setTreinoDaSala] = useState(false);
   /** O enunciado de cada pergunta, para o resultado poder dizer do que se tratava. */
   const enunciados = useRef<Map<string, string>>(new Map());
   const escolhas = useRef<Map<string, string>>(new Map());
@@ -166,6 +173,8 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
         switch (msg.type) {
           case 'room_state': {
             const s = msg.state as SalaState & { questions?: QuestionDoServidor[] };
+            setTreino(Boolean(msg.treino));
+            setTreinoDaSala(Boolean(msg.treinoDaSala));
             setState({
               fixtureId: s.fixtureId,
               teamA: s.teamA,
@@ -359,5 +368,5 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     [fixtureId],
   );
 
-  return { state, desafios, resultados, ranking, erro, palpitar };
+  return { state, desafios, resultados, ranking, erro, treino, treinoDaSala, palpitar };
 }

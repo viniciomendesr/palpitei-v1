@@ -92,10 +92,8 @@ export async function GET(req: Request): Promise<NextResponse> {
   const db = createDb();
   try {
     for (const fx of await createMatchRepo(db).listCached()) {
-      fixtures.push({
-        id: String(fx.fixtureId),
+      const base = {
         live: false,
-        status: 'REPLAY',
         group: nomeDoGrupo(fx.competition),
         teamA: fx.p1,
         teamB: fx.p2,
@@ -104,7 +102,12 @@ export async function GET(req: Request): Promise<NextResponse> {
         // O selo diz de onde o dado REALMENTE veio, não de onde seria bonito
         // que viesse. `cache_source` é gravado pelo ingestor.
         source: (fx.cacheSource ?? 'txline-cache') as ApiFixture['source'],
-      });
+      };
+      // A partida VALENDO: paga XP — cada fã, na primeira jogada dele.
+      fixtures.push({ ...base, id: String(fx.fixtureId), status: 'REPLAY' });
+      // E a irmã de TREINO: mesma partida, XP sempre 0, nada persistido.
+      // Existe para rejogar com o gabarito decorado sem corromper o ranking.
+      fixtures.push({ ...base, id: `treino-${fx.fixtureId}`, status: 'TREINO', treino: true });
     }
   } catch (e) {
     console.error('[palpitei] cache do Postgres falhou:', e instanceof Error ? e.message : e);

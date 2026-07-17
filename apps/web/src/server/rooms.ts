@@ -36,7 +36,13 @@ import type {
   User,
 } from '@palpitei/core';
 import { ReplayRunner } from '@palpitei/txline';
-import { createDb, createEnginePorts, createEventRepo, createMatchRepo } from '@palpitei/db';
+import {
+  createDb,
+  createEnginePorts,
+  createEventRepo,
+  createMatchRepo,
+  createPredictionRepo,
+} from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
 import { criarFiltroDeLances } from './lances';
 
@@ -79,6 +85,22 @@ type Sub = { userId: string | null; enviar: (msg: RoomMessage) => void };
 
 type Room = {
   fixtureId: number;
+  /**
+   * Sala de TREINO: a mesma partida, o mesmo motor — e XP sempre 0, para
+   * TODO MUNDO, com NADA persistido. Existe para rejogar com gabarito decorado
+   * sem corromper o ranking: a sala valendo paga cada fã só na primeira jogada
+   * dele, e o treino é para as seguintes. Não gravar nada aqui é o que impede
+   * o treino de queimar a primeira vez valendo (o detector olha o banco).
+   */
+  treino: boolean;
+  /**
+   * Na sala VALENDO: quem JÁ jogou esta partida antes (palpite anterior no
+   * banco) entra em modo treino individual — veredito normal, XP 0.
+   * Decidido UMA vez por fã, no primeiro contato (`decidirPagamento`).
+   */
+  semXp: Set<string>;
+  /** Fãs cuja decisão de pagamento já foi tomada (cache da consulta). */
+  decididos: Set<string>;
   engine: QuestionEngine;
   runner: ReplayRunner;
   ports: EnginePorts;
@@ -107,11 +129,48 @@ type Room = {
   encerrar: () => void;
 };
 
-const salas = new Map<number, Room>();
+const salas = new Map<string, Room>();
 
 const ehScore = (ev: NormEvent): ev is ScoreEvent => ev.kind === 'score';
 
-async function criarSala(fixtureId: number): Promise<Room | null> {
+/**
+ * O id da sala na URL: `18241006` (valendo) ou `treino-18241006` (treino).
+ * Qualquer outra coisa é inválida — e a MESMA regra vale para o stream e para
+ * o palpite, senão os dois abririam salas diferentes do mesmo id.
+ */
+export function parseRoomId(id: string): { fixtureId: number; treino: boolean } | null {
+  const m = /^(treino-)?(\d+)$/.exec(id);
+  if (!m) return null;
+  return { fixtureId: Number(m[2]), treino: Boolean(m[1]) };
+}
+
+const chaveDaSala = (fixtureId: number, treino: boolean): string =>
+  treino ? `treino-${fixtureId}` : String(fixtureId);
+
+/**
+ * Portas da sala de TREINO: interface idêntica, persistência NENHUMA.
+ *
+ * Não é preguiça — é a regra do treino inteira num lugar só: sem linhas em
+ * `questions`/`predictions`, o treino (1) não queima a primeira jogada valendo
+ * do fã (o detector consulta o banco), (2) não infla o aproveitamento do
+ * perfil e (3) não deixa pergunta órfã em 'open' quando a sala morre no meio.
+ * O motor continua vendo palpites normalmente: eles vivem na memória dele.
+ */
+function portsDeTreino(): EnginePorts {
+  let n = 0;
+  return {
+    uid: (prefix) => `${prefix}_t${(++n).toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+    savePrediction: () => {},
+    saveBet: () => {},
+    saveQuestion: () => {},
+    saveMarket: () => {},
+    flush: () => Promise.resolve(),
+    flushDe: () => Promise.resolve(),
+    pendentes: () => 0,
+  };
+}
+
+async function criarSala(fixtureId: number, treino: boolean): Promise<Room | null> {
   const db = createDb();
   const fixture: Fixture | null = await createMatchRepo(db).findById(fixtureId);
   if (!fixture) {
@@ -126,7 +185,8 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
 
   // A régua dos contadores é DESTA partida, então o filtro nasce com a sala.
   const ehLance = criarFiltroDeLances();
-  const ports = createEnginePorts(db);
+  // Treino não persiste NADA (ver portsDeTreino); valendo grava no Postgres.
+  const ports = treino ? portsDeTreino() : createEnginePorts(db);
   const cursor: ReplayCursor = { matchTs: eventos[0]!.ts, realAt: Date.now() };
   const clock = cursorClock(cursor, REPLAY_SPEED);
   const kickoff = eventos.find((e) => e.action === 'kickoff') ?? eventos[0]!;
@@ -146,6 +206,9 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
 
   const sala: Room = {
     fixtureId,
+    treino,
+    semXp: new Set(),
+    decididos: new Set(),
     db,
     ports,
     cursor,
@@ -164,6 +227,10 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
    * Traduz uma mensagem do motor para o evento do §8 QUE ESTE FÃ deve receber.
    * `null` = não é da conta dele.
    */
+  /** Este fã está sem pagamento nesta sala? (treino, ou valendo-já-jogado) */
+  const semXpPara = (userId: string | null): boolean =>
+    treino || (userId !== null && sala.semXp.has(userId));
+
   const paraOFa = (msg: RoomMessage, userId: string | null): RoomMessage | null => {
     const ts = cursor.matchTs;
 
@@ -186,7 +253,8 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
         // Quanto vale, do próprio motor — nunca uma tabela copiada aqui.
         // É o PISO: quem palpita na primeira metade da janela leva 1.5x, e o
         // resultado revela o valor real. Piso não é mentira; número inventado é.
-        xp: XP_BASE[q.type as keyof typeof XP_BASE] ?? 0,
+        // Para quem está SEM pagamento (treino/já jogou), o piso honesto é 0.
+        xp: semXpPara(userId) ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
         closesAt: q.closesAt,
         closesInRealMs: msg.closesInRealMs as number,
       };
@@ -279,6 +347,10 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     fixture,
     clock,
     ports,
+    // Quem NÃO é pago: a sala de treino inteira, ou (na valendo) o fã que já
+    // jogou esta partida antes. O motor dá o veredito normal e paga 0 — uma
+    // tabela de pagamento, um pagador.
+    pagaXp: treino ? () => false : (userId) => !sala.semXp.has(userId),
     emit: (msg) => {
       // O core NÃO conhece a porta saveQuestion (o contrato dele tem só
       // uid/savePrediction/saveBet). Sem gravar a pergunta aqui, o primeiro
@@ -399,22 +471,49 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     if (sala.desligar) clearTimeout(sala.desligar);
     sala.desligar = null;
     sala.runner.stop();
-    salas.delete(fixtureId);
+    salas.delete(chaveDaSala(fixtureId, treino));
     void ports.flush().catch(() => {}).finally(() => void db.close?.());
   };
 
   sala.runner.start();
-  salas.set(fixtureId, sala);
+  salas.set(chaveDaSala(fixtureId, treino), sala);
   return sala;
 }
 
 /** A sala desta partida, criando-a (e dando o apito inicial) na primeira visita. */
-export async function abrirSala(fixtureId: number): Promise<Room | null> {
-  return salas.get(fixtureId) ?? (await criarSala(fixtureId));
+export async function abrirSala(fixtureId: number, treino = false): Promise<Room | null> {
+  return salas.get(chaveDaSala(fixtureId, treino)) ?? (await criarSala(fixtureId, treino));
+}
+
+/**
+ * Decide, UMA vez por fã por sala, se os palpites dele nesta sala pagam XP.
+ *
+ * Sala de treino: ninguém é pago, não há o que decidir. Sala valendo: quem já
+ * tem palpite desta partida no banco (jogou antes, em qualquer rodada) entra em
+ * `semXp` — o gabarito decorado não vale ranking; a primeira jogada de cada fã
+ * segue pagando normal. Roda no PRIMEIRO contato (join do stream e/ou primeiro
+ * palpite), sempre ANTES do primeiro `place` da rodada — por isso a consulta
+ * não precisa excluir a rodada corrente: os palpites dela ainda não existem.
+ */
+export async function decidirPagamento(sala: Room, userId: string): Promise<void> {
+  if (sala.treino || sala.decididos.has(userId)) return;
+  sala.decididos.add(userId);
+  try {
+    const jaJogou = await createPredictionRepo(sala.db).temPalpiteNaFixture(
+      userId,
+      sala.fixtureId,
+    );
+    if (jaJogou) sala.semXp.add(userId);
+  } catch {
+    // Banco fora na decisão: o fã fica como pagante (o caminho normal). Errar
+    // para o lado do fã honesto é melhor que negar XP à primeira jogada por
+    // causa de um soluço de rede — e o farm exige o banco de pé de todo jeito.
+    sala.decididos.delete(userId);
+  }
 }
 
 /** Uma pergunta no formato do §8, com o prazo já convertido em ms REAIS. */
-function perguntaDoPacote(sala: Room, q: Question) {
+function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
   return {
     id: q.id,
     type: q.type,
@@ -422,7 +521,8 @@ function perguntaDoPacote(sala: Room, q: Question) {
     // `pct: null` = o explicador de odds não roda nesta sala (G8: ausente ≠ 0%).
     options: q.options.map((o) => ({ id: o.id, label: o.label, pct: null })),
     // O PISO do XP, do próprio motor — a mesma régua do question_open.
-    xp: XP_BASE[q.type as keyof typeof XP_BASE] ?? 0,
+    // Sem pagamento (treino/já jogou), o piso honesto é 0.
+    xp: semXp ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
     state: q.state,
     closesAt: q.closesAt,
     // Quanto falta DE VERDADE, pelo relógio da sala. O primeiro pacote mandava
@@ -447,13 +547,14 @@ function perguntaDoPacote(sala: Room, q: Question) {
 export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage {
   const respostas = userId ? sala.engine.respostasDe(userId) : [];
   const minhasPorId = new Set(respostas.map((r) => r.question.id));
+  const semXp = sala.treino || (userId !== null && sala.semXp.has(userId));
 
   // Abertas para todo mundo — mais as FECHADAS em que este fã palpitou: o card
   // "janela fechada · aguardando o lance" tem que renascer no F5.
   const questions = sala.engine
     .allQuestions()
     .filter((q) => q.state === 'open' || (q.state === 'closed' && minhasPorId.has(q.id)))
-    .map((q) => perguntaDoPacote(sala, q));
+    .map((q) => perguntaDoPacote(sala, q, semXp));
 
   const minhas = respostas
     .filter((r) => r.question.state === 'open' || r.question.state === 'closed')
@@ -479,6 +580,10 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
     state: { ...sala.state, questions },
     minhas,
     resultados,
+    // NA VOZ DESTE FÃ: os palpites dele aqui valem XP? `treinoDaSala` separa
+    // "sala de treino" de "você já jogou esta partida" — o aviso é outro.
+    treino: semXp,
+    treinoDaSala: sala.treino,
   };
 }
 
@@ -551,6 +656,10 @@ export async function palpitar(
   questionId: string,
   choice: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  // ANTES do place: a decisão de pagamento tem que existir quando a pergunta
+  // resolver — e um curl que palpita sem nunca ter aberto o stream não pode
+  // escapar dela (seria o farm entrando pela porta dos fundos).
+  await decidirPagamento(sala, user.id);
   const r = sala.engine.place(user, questionId, choice);
   if (!r.ok) return r;
   // `place` devolve ok ANTES de o INSERT terminar (as portas são

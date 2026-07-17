@@ -12,7 +12,15 @@
 
 import { PrivyClient } from '@privy-io/server-auth';
 import { createDb, createUserRepo } from '@palpitei/db';
-import { abrirSala, assinar, estadoDaSalaPara, rankingDaSala, registrarApelido } from '@/server/rooms';
+import {
+  abrirSala,
+  assinar,
+  decidirPagamento,
+  estadoDaSalaPara,
+  parseRoomId,
+  rankingDaSala,
+  registrarApelido,
+} from '@/server/rooms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,12 +58,14 @@ export async function GET(
     );
   }
 
-  const fixtureId = Number((await params).id);
-  if (!Number.isFinite(fixtureId)) {
-    return Response.json({ error: 'fixture inválida' }, { status: 400 });
+  // `treino-18241006` = a mesma partida, XP zero, nada persistido. A regra de
+  // parse é uma só (parseRoomId) — a mesma do POST do palpite.
+  const roomId = parseRoomId((await params).id);
+  if (!roomId) {
+    return Response.json({ error: 'sala inválida' }, { status: 400 });
   }
 
-  const sala = await abrirSala(fixtureId);
+  const sala = await abrirSala(roomId.fixtureId, roomId.treino);
   if (!sala) {
     return Response.json({ error: 'partida não encontrada no cache' }, { status: 404 });
   }
@@ -71,6 +81,9 @@ export async function GET(
     // ranking só aprendia o nome quando uma pergunta resolvia, e quem escolheu
     // o apelido depois do primeiro palpite ficava "sem apelido" até lá.
     registrarApelido(sala, user.id, user.handle);
+    // E a decisão de pagamento nasce ANTES do primeiro pacote: é ela que diz à
+    // tela se os palpites deste fã aqui valem XP (sala valendo, já jogou → 0).
+    await decidirPagamento(sala, user.id);
   } catch {
     // Sem usuario, o fa ainda assiste — so nao recebe XP proprio.
   } finally {

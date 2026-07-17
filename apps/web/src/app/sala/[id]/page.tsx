@@ -77,8 +77,9 @@ export default function SalaPage({ params }: { params: Promise<{ id: string }> }
   const { session } = useSession();
   const ehDemo = !session || session.authMethod === 'demo';
   // Partida real só existe atrás de login: o demo nunca chama a rota (nem tem
-  // Bearer para isso).
-  if (!ehDemo && /^\d+$/.test(id)) return <SalaReal fixtureId={id} />;
+  // Bearer para isso). `treino-<fixtureId>` é a MESMA partida real em modo
+  // treino (XP sempre 0) — a regra de parse é a do servidor (parseRoomId).
+  if (!ehDemo && /^(treino-)?\d+$/.test(id)) return <SalaReal fixtureId={id} />;
   return <SalaMock params={params} />;
 }
 
