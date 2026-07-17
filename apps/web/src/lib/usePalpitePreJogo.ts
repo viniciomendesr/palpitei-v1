@@ -15,7 +15,7 @@ import { PREGAME_XP } from '@palpitei/core';
 import { useSession } from './session';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { useI18n } from './i18n';
-import { api, ApiError, type PregamePick } from './api';
+import { api, ApiError, type PregameMarket, type PregamePick } from './api';
 import { fixtures } from './mock';
 import { timeVisual } from './teamVisual';
 
@@ -28,7 +28,9 @@ export interface Mercados {
   scoreB: number;
   scoreTouched: boolean;
   goals: AcimaAbaixo;
+  goalsLine: number | null;
   corners: AcimaAbaixo;
+  cornersLine: number | null;
 }
 
 export interface PregameVM {
@@ -44,6 +46,10 @@ export interface PregameVM {
   closesText: string | null;
   /** Amigos que já palpitaram — só no demo; null no logado (não inventa dado). */
   friends: number | null;
+  /** Lista de mercados que a TxLINE abriu e que o produto sabe liquidar. */
+  markets: PregameMarket[];
+  /** false significa falha de leitura da fonte, não "0%". */
+  txlineOddsAvailable: boolean;
   locked: boolean;
   finished: boolean;
   submitted: boolean;
@@ -57,7 +63,18 @@ export interface Toast {
   sub: string;
 }
 
-const VAZIO: Mercados = { result: null, scoreA: 0, scoreB: 0, scoreTouched: false, goals: null, corners: null };
+const VAZIO: Mercados = {
+  result: null,
+  scoreA: 0,
+  scoreB: 0,
+  scoreTouched: false,
+  goals: null,
+  goalsLine: null,
+  corners: null,
+  cornersLine: null,
+};
+
+const SEM_MERCADOS: PregameMarket[] = [];
 
 /** Extras sociais/tempo do demo, por id — batem com o mockup. */
 const DEMO_EXTRAS: Record<string, { friends: number; closesPt: string; closesEn: string }> = {
@@ -103,7 +120,9 @@ function mercadosDePick(p: PregamePick): Mercados {
     scoreB: p.scoreB,
     scoreTouched: p.scoreSet,
     goals: p.goals,
+    goalsLine: p.goalsLine,
     corners: p.corners,
+    cornersLine: p.cornersLine,
   };
 }
 
@@ -118,6 +137,7 @@ export interface UsePalpitePreJogo {
   m: Mercados;
   filled: number;
   xpInPlay: number;
+  availableMarkets: number;
   saving: boolean;
   toast: Toast | null;
   setResult: (r: Exclude<Resultado, null>) => void;
@@ -168,7 +188,18 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
       const raw = sessionStorage.getItem(demoKey);
       if (raw) {
         const parsed = JSON.parse(raw) as Mercados & { submitted?: boolean };
-        salvo = { result: parsed.result, scoreA: parsed.scoreA, scoreB: parsed.scoreB, scoreTouched: parsed.scoreTouched, goals: parsed.goals, corners: parsed.corners };
+        salvo = {
+          result: parsed.result,
+          scoreA: parsed.scoreA,
+          scoreB: parsed.scoreB,
+          scoreTouched: parsed.scoreTouched,
+          // Versões antigas do demo guardavam totais fixos. Não recuperamos
+          // essas escolhas como se ainda fossem cotadas pela TxLINE.
+          goals: null,
+          goalsLine: null,
+          corners: null,
+          cornersLine: null,
+        };
         jaEnviou = parsed.submitted === true;
       }
     } catch {
@@ -187,6 +218,8 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
       kickoffText: fx.status,
       closesText: extra ? (lang === 'en' ? extra.closesEn : extra.closesPt) : null,
       friends: extra?.friends ?? 0,
+      markets: SEM_MERCADOS,
+      txlineOddsAvailable: false,
       locked: false,
       finished: false,
       submitted: jaEnviou,
@@ -231,6 +264,8 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
           kickoffText: startTs != null ? textoDoApito(startTs, agora, lang) : '',
           closesText: r.locked || startTs == null ? null : textoDoFechamento(startTs, agora, lang),
           friends: null, // logado: sem dado real de amigos ainda — não inventa
+          markets: r.markets,
+          txlineOddsAvailable: r.txlineOddsAvailable,
           locked: r.locked,
           finished: r.finished,
           submitted: !!r.pick?.submittedAt,
@@ -281,9 +316,19 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
 
   const travado = vm?.locked ?? false;
 
-  const setResult = useCallback((r: Exclude<Resultado, null>) => { if (!travado) setM((s) => ({ ...s, result: r })); }, [travado]);
-  const setGoals = useCallback((v: Exclude<AcimaAbaixo, null>) => { if (!travado) setM((s) => ({ ...s, goals: v })); }, [travado]);
-  const setCorners = useCallback((v: Exclude<AcimaAbaixo, null>) => { if (!travado) setM((s) => ({ ...s, corners: v })); }, [travado]);
+  const setResult = useCallback((r: Exclude<Resultado, null>) => {
+    if (!travado && vm?.markets.some((market) => market.id === 'result')) setM((s) => ({ ...s, result: r }));
+  }, [travado, vm?.markets]);
+  const setGoals = useCallback((v: Exclude<AcimaAbaixo, null>) => {
+    const market = vm?.markets.find((candidate) => candidate.id === 'goals');
+    const line = market?.kind === 'over_under' ? market.line : null;
+    if (!travado && line != null) setM((s) => ({ ...s, goals: v, goalsLine: line }));
+  }, [travado, vm?.markets]);
+  const setCorners = useCallback((v: Exclude<AcimaAbaixo, null>) => {
+    const market = vm?.markets.find((candidate) => candidate.id === 'corners');
+    const line = market?.kind === 'over_under' ? market.line : null;
+    if (!travado && line != null) setM((s) => ({ ...s, corners: v, cornersLine: line }));
+  }, [travado, vm?.markets]);
   const step = useCallback(
     (side: 'a' | 'b', delta: number) => {
       if (travado) return;
@@ -322,7 +367,9 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
         scoreB: m.scoreB,
         scoreSet: m.scoreTouched,
         goals: m.goals,
+        goalsLine: m.goalsLine,
         corners: m.corners,
+        cornersLine: m.cornersLine,
       })
       .then(() => {
         marcarEnviado();
@@ -344,6 +391,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
     m,
     filled,
     xpInPlay,
+    availableMarkets: 1 + (vm?.markets.length ?? 0),
     saving,
     toast,
     setResult,

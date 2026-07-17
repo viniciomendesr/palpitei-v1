@@ -16,6 +16,7 @@ import { useI18n } from '@/lib/i18n';
 import { fw } from '@/lib/tokens';
 import { useRequireSession } from '@/lib/guard';
 import { usePalpitePreJogo } from '@/lib/usePalpitePreJogo';
+import type { PregameMarket } from '@/lib/api';
 import {
   AvataresEmpilhados,
   ClockIcon,
@@ -40,7 +41,7 @@ export default function PalpitePreJogoPage() {
   const pronto = useRequireSession();
 
   const jogo = usePalpitePreJogo(fixtureId);
-  const { vm, m, filled, xpInPlay, saving, toast } = jogo;
+  const { vm, m, filled, xpInPlay, availableMarkets, saving, toast } = jogo;
 
   const voltar = () => router.push('/home');
 
@@ -68,19 +69,6 @@ export default function PalpitePreJogoPage() {
   }
 
   const locked = vm.locked;
-  const resultOptions = [
-    { id: 'home' as const, label: vm.teamA },
-    { id: 'draw' as const, label: t.pmDraw },
-    { id: 'away' as const, label: vm.teamB },
-  ];
-  const golsOptions = [
-    { id: 'over' as const, label: `${t.pmOver} ${fmt(2.5)}` },
-    { id: 'under' as const, label: `${t.pmUnder} ${fmt(2.5)}` },
-  ];
-  const escanteiosOptions = [
-    { id: 'over' as const, label: `${t.pmOver} ${fmt(9.5)}` },
-    { id: 'under' as const, label: `${t.pmUnder} ${fmt(9.5)}` },
-  ];
   const worth = (xp: number) => `${t.worth} ${xp} XP`;
   const confirmLabel = vm.submitted ? t.pmSave : t.pmConfirm;
 
@@ -207,10 +195,34 @@ export default function PalpitePreJogoPage() {
           </div>
         )}
 
-        {/* 1. RESULTADO */}
-        <MercadoCard label={t.pmResultHdr} sub={t.pmResultSub} worthText={worth(30)} selectedText={t.pmSelected} selected={!!m.result}>
-          <Segmentado options={resultOptions} value={m.result} onSelect={jogo.setResult} disabled={locked} />
-        </MercadoCard>
+        {vm.txlineOddsAvailable && vm.markets.length > 0 ? (
+          <div style={{ margin: '3px 2px 1px', fontSize: 9.5, fontWeight: fw.black, letterSpacing: 0.8, color: 'var(--text-faint)' }}>
+            {t.pmTxlineChances}
+          </div>
+        ) : (
+          <MercadoIndisponivel text={vm.friends != null ? t.pmDemoOddsUnavailable : t.pmMarketUnavailable} />
+        )}
+
+        {/* A lista da TxLINE, não quatro cards previamente desenhados. */}
+        {vm.markets.map((market) => (
+          <MercadoTxline
+            key={market.id}
+            market={market}
+            teamA={vm.teamA}
+            teamB={vm.teamB}
+            result={m.result}
+            goals={m.goals}
+            corners={m.corners}
+            locked={locked}
+            t={t}
+            fmt={fmt}
+            worth={worth}
+            selectedText={t.pmSelected}
+            onResult={jogo.setResult}
+            onGoals={jogo.setGoals}
+            onCorners={jogo.setCorners}
+          />
+        ))}
 
         {/* 2. PLACAR EXATO */}
         <MercadoCard label={t.pmScoreHdr} sub={t.pmScoreSub} worthText={worth(60)} selectedText={t.pmSelected} selected={m.scoreTouched}>
@@ -219,16 +231,6 @@ export default function PalpitePreJogoPage() {
             <span style={{ fontWeight: fw.black, fontStyle: 'italic', fontSize: 24, color: 'var(--text-faint)', marginTop: 28 }}>×</span>
             <Stepper code={vm.codeB} color={vm.colB} value={m.scoreB} onDec={() => jogo.step('b', -1)} onInc={() => jogo.step('b', 1)} disabled={locked} />
           </div>
-        </MercadoCard>
-
-        {/* 3. TOTAL DE GOLS */}
-        <MercadoCard label={t.pmGolsHdr} sub={t.pmGolsSub} worthText={worth(25)} selectedText={t.pmSelected} selected={!!m.goals}>
-          <Segmentado options={golsOptions} value={m.goals} onSelect={jogo.setGoals} disabled={locked} />
-        </MercadoCard>
-
-        {/* 4. ESCANTEIOS */}
-        <MercadoCard label={t.pmCornersHdr} sub={t.pmCornersSub} worthText={worth(25)} selectedText={t.pmSelected} selected={!!m.corners}>
-          <Segmentado options={escanteiosOptions} value={m.corners} onSelect={jogo.setCorners} disabled={locked} />
         </MercadoCard>
 
         {/* nota de justiça */}
@@ -265,7 +267,7 @@ export default function PalpitePreJogoPage() {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 }}>
             <span style={{ fontSize: 12, fontWeight: fw.heavy, color: 'var(--text-2)' }}>
-              {filled} {t.pmPicksOf}
+              {filled} {t.pmPicksOf} {availableMarkets} {t.pmPicksWord}
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: fw.black, color: 'var(--gold)' }}>
               <Star size={14} />+{fmt(xpInPlay)} {t.pmXpInPlay}
@@ -317,6 +319,96 @@ function TimeBadge({ code, color, name }: { code: string; color: string; name: s
         {code}
       </div>
       <span style={{ fontWeight: fw.heavy, fontSize: 13.5, textAlign: 'center' }}>{name}</span>
+    </div>
+  );
+}
+
+/** Um card por item recebido na lista TxLINE; nenhuma categoria é reservada na UI. */
+function MercadoTxline({
+  market,
+  teamA,
+  teamB,
+  result,
+  goals,
+  corners,
+  locked,
+  t,
+  fmt,
+  worth,
+  selectedText,
+  onResult,
+  onGoals,
+  onCorners,
+}: {
+  market: PregameMarket;
+  teamA: string;
+  teamB: string;
+  result: 'home' | 'draw' | 'away' | null;
+  goals: 'over' | 'under' | null;
+  corners: 'over' | 'under' | null;
+  locked: boolean;
+  t: ReturnType<typeof useI18n>['t'];
+  fmt: (n: number) => string;
+  worth: (xp: number) => string;
+  selectedText: string;
+  onResult: (id: 'home' | 'draw' | 'away') => void;
+  onGoals: (id: 'over' | 'under') => void;
+  onCorners: (id: 'over' | 'under') => void;
+}) {
+  if (market.kind === 'result') {
+    const labels = { home: teamA, draw: t.pmDraw, away: teamB } as const;
+    const options = market.options.map((option) => ({
+      id: option.id,
+      label: labels[option.id],
+      detail: chance(option.pct, fmt),
+    }));
+    return (
+      <MercadoCard label={t.pmResultHdr} sub={t.pmResultSub} worthText={worth(30)} selectedText={selectedText} selected={!!result}>
+        <Segmentado options={options} value={result} onSelect={onResult} disabled={locked} />
+      </MercadoCard>
+    );
+  }
+
+  const isGoals = market.id === 'goals';
+  const options = market.options.map((option) => ({
+    id: option.id,
+    label: `${option.id === 'over' ? t.pmOver : t.pmUnder} ${fmt(market.line)}`,
+    detail: chance(option.pct, fmt),
+  }));
+  const value = isGoals ? goals : corners;
+  return (
+    <MercadoCard
+      label={isGoals ? t.pmGolsHdr : t.pmCornersHdr}
+      sub={isGoals ? t.pmGolsSub : t.pmCornersSub}
+      worthText={worth(25)}
+      selectedText={selectedText}
+      selected={!!value}
+    >
+      <Segmentado options={options} value={value} onSelect={isGoals ? onGoals : onCorners} disabled={locked} />
+    </MercadoCard>
+  );
+}
+
+function chance(pct: number, fmt: (n: number) => string): string {
+  return `${fmt(pct)}%`;
+}
+
+function MercadoIndisponivel({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: '12px 15px',
+        borderRadius: 'var(--r-2xl)',
+        background: 'var(--surface-sunken)',
+        border: '1px solid var(--border-1)',
+        fontSize: 12,
+        fontWeight: fw.medium,
+        color: 'var(--text-muted)',
+        lineHeight: 1.4,
+      }}
+    >
+      {text}
     </div>
   );
 }

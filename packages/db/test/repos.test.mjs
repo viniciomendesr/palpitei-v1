@@ -48,6 +48,7 @@ const MIGRATIONS = [
   resolve(AQUI, '../../../supabase/migrations/0003_lobbies.sql'),
   resolve(AQUI, '../../../supabase/migrations/0004_lobby_presence.sql'),
   resolve(AQUI, '../../../supabase/migrations/0005_pregame_picks.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0006_pregame_txline_lines.sql'),
 ];
 const PORTA = 5599;
 
@@ -1039,8 +1040,8 @@ const gradeFake = (pick, final) => {
     final.goalsP1 > final.goalsP2 ? 'home' : final.goalsP2 > final.goalsP1 ? 'away' : 'draw';
   const resultCorrect = pick.result === null ? null : pick.result === outcome;
   const scoreCorrect = !pick.scoreSet ? null : pick.scoreA === final.goalsP1 && pick.scoreB === final.goalsP2;
-  const goalsCorrect = pick.goals === null ? null : pick.goals === (final.goalsP1 + final.goalsP2 > 2.5 ? 'over' : 'under');
-  const cornersCorrect = pick.corners === null ? null : pick.corners === (final.cornersTotal > 9.5 ? 'over' : 'under');
+  const goalsCorrect = pick.goals === null ? null : pick.goals === (final.goalsP1 + final.goalsP2 > pick.goalsLine ? 'over' : 'under');
+  const cornersCorrect = pick.corners === null ? null : pick.corners === (final.cornersTotal > pick.cornersLine ? 'over' : 'under');
   const awardedXp =
     (resultCorrect ? 30 : 0) + (scoreCorrect ? 60 : 0) + (goalsCorrect ? 25 : 0) + (cornersCorrect ? 25 : 0);
   return { resultCorrect, scoreCorrect, goalsCorrect, cornersCorrect, awardedXp };
@@ -1051,7 +1052,7 @@ test('pregame: upsert grava um palpite e reler devolve o que foi salvo', async (
   await p.matches.upsert({ fixtureId: 920001, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
 
   const salvo = await p.pregame.upsert(u.id, 920001, {
-    result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', corners: null,
+    result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', goalsLine: 2.5, corners: null, cornersLine: null,
   });
   assert.equal(salvo.result, 'home');
   assert.equal(salvo.scoreA, 2);
@@ -1061,6 +1062,7 @@ test('pregame: upsert grava um palpite e reler devolve o que foi salvo', async (
   const lido = await p.pregame.getByUserFixture(u.id, 920001);
   assert.equal(lido.result, 'home');
   assert.equal(lido.goals, 'over');
+  assert.equal(lido.goalsLine, 2.5, 'a linha TxLINE viaja junto com o palpite');
   assert.equal(lido.corners, null);
 });
 
@@ -1069,14 +1071,15 @@ test('pregame: reeditar NÃO duplica a linha e preserva o submitted_at original'
   await p.matches.upsert({ fixtureId: 920002, p1: 'A', p2: 'B', startTime: 1_700_000_000_000 });
 
   const um = await p.pregame.upsert(u.id, 920002, {
-    result: 'home', scoreA: 0, scoreB: 0, scoreSet: false, goals: null, corners: null,
+    result: 'home', scoreA: 0, scoreB: 0, scoreSet: false, goals: null, goalsLine: null, corners: null, cornersLine: null,
   });
   const dois = await p.pregame.upsert(u.id, 920002, {
-    result: 'away', scoreA: 1, scoreB: 3, scoreSet: true, goals: 'under', corners: 'over',
+    result: 'away', scoreA: 1, scoreB: 3, scoreSet: true, goals: 'under', goalsLine: 3.5, corners: 'over', cornersLine: 9.5,
   });
 
   assert.equal(dois.result, 'away', 'a edição vale');
   assert.equal(dois.scoreSet, true);
+  assert.equal(dois.goalsLine, 3.5, 'edição troca a linha junto com o mercado');
   assert.equal(dois.submittedAt, um.submittedAt, 'submitted_at é de quando confirmou a 1ª vez');
 
   const [linha] = await p.db.query(`select count(*)::int as n from pregame_picks where user_id = $1 and fixture_id = 920002`, [u.id]);
@@ -1088,7 +1091,7 @@ test('pregame: liquidar credita o XP dos acertos, e liquidar de novo paga ZERO',
   await p.matches.upsert({ fixtureId: 920003, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
   // Crava tudo certo para o final 2×1, 12 escanteios: 30+60+25+25 = 140.
   await p.pregame.upsert(u.id, 920003, {
-    result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', corners: 'over',
+    result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', goalsLine: 2.5, corners: 'over', cornersLine: 9.5,
   });
   const xpAntes = (await p.users.findById(u.id)).xp;
   const final = { goalsP1: 2, goalsP2: 1, cornersTotal: 12 };
@@ -1119,7 +1122,7 @@ test('pregame: só os acertos pagam — resultado certo e placar errado credita 
   const u = await p.users.findOrCreateByPrivyDid('did:privy:pregame-parcial');
   await p.matches.upsert({ fixtureId: 920004, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
   await p.pregame.upsert(u.id, 920004, {
-    result: 'home', scoreA: 3, scoreB: 0, scoreSet: true, goals: 'under', corners: null,
+    result: 'home', scoreA: 3, scoreB: 0, scoreSet: true, goals: 'under', goalsLine: 2.5, corners: null, cornersLine: null,
   });
   const xpAntes = (await p.users.findById(u.id)).xp;
 

@@ -20,6 +20,7 @@ import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 import { fixturesTxline } from '@/server/fixtures';
 import { parsePregameBody, travadoNoApito, xpEmJogo } from '@/server/pregame';
+import { mercadoPorId, mesmaLinha, oddsPregameTxline, SEM_MERCADOS } from '@/server/pregameOdds';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -78,6 +79,12 @@ export async function GET(
     }
 
     const pick = await pregame.getByUserFixture(user.id, fixtureId);
+    // Snapshot é a fonte correta para a tela pré-jogo (a série /updates é para
+    // replay). Falha ou ausência chega como lista vazia explícita — não travamos
+    // a leitura do placar exato, mas nunca devolvemos uma linha fixa em seu lugar.
+    const cotacoes = finished
+      ? { markets: SEM_MERCADOS, txlineAvailable: false }
+      : await oddsPregameTxline(fixtureId);
     return NextResponse.json({
       match: {
         fixtureId,
@@ -88,6 +95,8 @@ export async function GET(
         state: estado,
       },
       pick,
+      markets: cotacoes.markets,
+      txlineOddsAvailable: cotacoes.txlineAvailable,
       locked: travadoNoApito({ state: estado, startTs: match.startTime ?? null }, Date.now()),
       finished,
       final,
@@ -126,6 +135,26 @@ export async function POST(
     // A trava no apito é servidor: o cliente pode mentir o horário, o banco não.
     if (travadoNoApito({ state: match.state ?? 'scheduled', startTs: match.startTime ?? null }, Date.now())) {
       return NextResponse.json({ error: 'os palpites travam no apito inicial' }, { status: 409 });
+    }
+
+    // Resultado e totais só podem ser salvos se a cotação atual da TxLINE ainda
+    // existe. A linha vem do cliente apenas para ser conferida contra a fonte;
+    // é essa linha verificada que fica gravada e que a liquidação usará.
+    const dependeDeCotacao = parsed.fields.result !== null || parsed.fields.goals !== null || parsed.fields.corners !== null;
+    if (dependeDeCotacao) {
+      const cotacoes = await oddsPregameTxline(fixtureId);
+      if (!cotacoes.txlineAvailable) {
+        return NextResponse.json({ error: 'as cotações da TxLINE não estão disponíveis agora; tente de novo' }, { status: 503 });
+      }
+      if (parsed.fields.result !== null && !mercadoPorId(cotacoes.markets, 'result')) {
+        return NextResponse.json({ error: 'a TxLINE não trouxe cotação de resultado para esta partida' }, { status: 409 });
+      }
+      if (parsed.fields.goals !== null && !mesmaLinha(parsed.fields.goalsLine, mercadoPorId(cotacoes.markets, 'goals'))) {
+        return NextResponse.json({ error: 'a cotação de gols mudou; atualize a tela antes de confirmar' }, { status: 409 });
+      }
+      if (parsed.fields.corners !== null && !mesmaLinha(parsed.fields.cornersLine, mercadoPorId(cotacoes.markets, 'corners'))) {
+        return NextResponse.json({ error: 'a cotação de escanteios mudou; atualize a tela antes de confirmar' }, { status: 409 });
+      }
     }
 
     const pick = await createPregamePickRepo(db).upsert(user.id, fixtureId, parsed.fields);

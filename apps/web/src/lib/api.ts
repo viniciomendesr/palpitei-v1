@@ -179,7 +179,11 @@ export interface PregamePickRequest {
   scoreB?: number;
   scoreSet?: boolean;
   goals?: 'over' | 'under' | null;
+  /** Linha TxLINE exibida junto do total de gols. */
+  goalsLine?: number | null;
   corners?: 'over' | 'under' | null;
+  /** Linha TxLINE exibida junto do total de escanteios. */
+  cornersLine?: number | null;
 }
 
 /** O palpite como o banco o guarda (tempos em epoch ms; correções só após liquidar). */
@@ -192,7 +196,9 @@ export interface PregamePick {
   scoreB: number;
   scoreSet: boolean;
   goals: 'over' | 'under' | null;
+  goalsLine: number | null;
   corners: 'over' | 'under' | null;
+  cornersLine: number | null;
   submittedAt: number | null;
   settledAt: number | null;
   resultCorrect: boolean | null;
@@ -201,6 +207,20 @@ export interface PregamePick {
   cornersCorrect: boolean | null;
   awardedXp: number | null;
 }
+
+/** Lista segura de mercados do snapshot TxLINE — sem payload cru licenciado. */
+export type PregameMarket =
+  | {
+      id: 'result';
+      kind: 'result';
+      options: { id: 'home' | 'draw' | 'away'; pct: number }[];
+    }
+  | {
+      id: 'goals' | 'corners';
+      kind: 'over_under';
+      line: number;
+      options: { id: 'over' | 'under'; pct: number }[];
+    };
 
 export interface PregameView {
   match: {
@@ -212,6 +232,10 @@ export interface PregameView {
     state: 'scheduled' | 'live' | 'finished' | 'cancelled';
   };
   pick: PregamePick | null;
+  /** Mercados atuais da TxLINE. Lista vazia significa que a fonte não cotou nada utilizável. */
+  markets: PregameMarket[];
+  /** false = a leitura da TxLINE falhou; não é o mesmo que mercado inexistente. */
+  txlineOddsAvailable: boolean;
   /** true quando o apito passou (ou a partida saiu de "agendada"): a tela trava. */
   locked: boolean;
   finished: boolean;

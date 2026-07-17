@@ -52,4 +52,4 @@ export { OddsExplainer } from "./explain.ts";
 export { normalizeOdds, normalizeScore } from "./normalize.ts";
 
 export type { PregameFinal, PregameGrade, PregamePickInput } from "./pregame.ts";
-export { gradePregame, PREGAME_LINES, PREGAME_XP } from "./pregame.ts";
+export { gradePregame, PREGAME_LEGACY_LINES, PREGAME_XP } from "./pregame.ts";

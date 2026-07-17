@@ -27,7 +27,7 @@ export function Segmentado<T extends string>({
   onSelect,
   disabled = false,
 }: {
-  options: { id: T; label: string }[];
+  options: { id: T; label: string; detail?: string }[];
   value: T | null;
   onSelect: (id: T) => void;
   disabled?: boolean;
@@ -59,7 +59,12 @@ export function Segmentado<T extends string>({
               opacity: disabled && !on ? 0.6 : 1,
             }}
           >
-            {o.label}
+            <span style={{ display: 'block' }}>{o.label}</span>
+            {o.detail && (
+              <span style={{ display: 'block', marginTop: 3, fontSize: 10, fontWeight: fw.bold, color: on ? 'var(--lime)' : 'var(--text-muted)' }}>
+                {o.detail}
+              </span>
+            )}
           </button>
         );
       })}

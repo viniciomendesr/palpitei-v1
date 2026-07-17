@@ -24,7 +24,11 @@ export interface PregamePickFields {
   scoreB: number;
   scoreSet: boolean;
   goals: 'over' | 'under' | null;
+  /** Linha de meio gol da TxLINE que estava aberta ao confirmar. */
+  goalsLine: number | null;
   corners: 'over' | 'under' | null;
+  /** Linha de meio gol da TxLINE que estava aberta ao confirmar. */
+  cornersLine: number | null;
 }
 
 /** Uma linha de palpite pré-jogo, como o resto do app a lê (epoch ms nos tempos). */
@@ -61,7 +65,7 @@ export type PregameGradeFn = (
 };
 
 const COLS =
-  'id, user_id, fixture_id, result, score_a, score_b, score_set, goals, corners, ' +
+  'id, user_id, fixture_id, result, score_a, score_b, score_set, goals, goals_line, corners, corners_line, ' +
   'submitted_at, settled_at, result_correct, score_correct, goals_correct, corners_correct, awarded_xp';
 
 const ms = (v: unknown): number | null => (v == null ? null : new Date(v as string).getTime());
@@ -76,7 +80,9 @@ function mapPick(r: Record<string, unknown>): PregamePick {
     scoreB: Number(r.score_b ?? 0),
     scoreSet: r.score_set === true,
     goals: (r.goals as PregamePick['goals']) ?? null,
+    goalsLine: r.goals_line == null ? null : Number(r.goals_line),
     corners: (r.corners as PregamePick['corners']) ?? null,
+    cornersLine: r.corners_line == null ? null : Number(r.corners_line),
     submittedAt: ms(r.submitted_at),
     settledAt: ms(r.settled_at),
     resultCorrect: r.result_correct == null ? null : r.result_correct === true,
@@ -106,19 +112,32 @@ export function createPregamePickRepo(db: Db) {
     async upsert(userId: string, fixtureId: number, pick: PregamePickFields): Promise<PregamePick> {
       const rows = await db.query(
         `insert into pregame_picks
-           (user_id, fixture_id, result, score_a, score_b, score_set, goals, corners, submitted_at, updated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
+           (user_id, fixture_id, result, score_a, score_b, score_set, goals, goals_line, corners, corners_line, submitted_at, updated_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())
          on conflict (user_id, fixture_id) do update set
            result   = excluded.result,
            score_a  = excluded.score_a,
            score_b  = excluded.score_b,
            score_set = excluded.score_set,
            goals    = excluded.goals,
+           goals_line = excluded.goals_line,
            corners  = excluded.corners,
+           corners_line = excluded.corners_line,
            submitted_at = coalesce(pregame_picks.submitted_at, excluded.submitted_at),
            updated_at = now()
          returning ${COLS}`,
-        [userId, fixtureId, pick.result, pick.scoreA, pick.scoreB, pick.scoreSet, pick.goals, pick.corners]
+        [
+          userId,
+          fixtureId,
+          pick.result,
+          pick.scoreA,
+          pick.scoreB,
+          pick.scoreSet,
+          pick.goals,
+          pick.goalsLine,
+          pick.corners,
+          pick.cornersLine,
+        ]
       );
       return mapPick(rows[0]!);
     },
@@ -159,7 +178,9 @@ export function createPregamePickRepo(db: Db) {
               scoreB: pick.scoreB,
               scoreSet: pick.scoreSet,
               goals: pick.goals,
+              goalsLine: pick.goalsLine,
               corners: pick.corners,
+              cornersLine: pick.cornersLine,
             },
             final
           );

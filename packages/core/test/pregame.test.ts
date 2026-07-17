@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   gradePregame,
   PREGAME_XP,
-  PREGAME_LINES,
+  PREGAME_LEGACY_LINES,
   type PregamePickInput,
   type PregameFinal,
 } from "../src/pregame.ts";
@@ -15,12 +15,14 @@ const EMPTY: PregamePickInput = {
   scoreB: 0,
   scoreSet: false,
   goals: null,
+  goalsLine: null,
   corners: null,
+  cornersLine: null,
 };
 
-test("linhas e pesos batem com o mockup", () => {
+test("pesos vêm do produto e as linhas fixas são apenas legado", () => {
   assert.deepEqual(PREGAME_XP, { result: 30, score: 60, goals: 25, corners: 25 });
-  assert.deepEqual(PREGAME_LINES, { goals: 2.5, corners: 9.5 });
+  assert.deepEqual(PREGAME_LEGACY_LINES, { goals: 2.5, corners: 9.5 });
 });
 
 test("tudo certo credita os 140 XP e marca cada mercado", () => {
@@ -31,7 +33,9 @@ test("tudo certo credita os 140 XP e marca cada mercado", () => {
     scoreB: 1,
     scoreSet: true,
     goals: "over", // 3 gols > 2,5
+    goalsLine: 2.5,
     corners: "over", // 12 > 9,5
+    cornersLine: 9.5,
   };
   const g = gradePregame(pick, final);
   assert.deepEqual(g, {
@@ -57,24 +61,32 @@ test("resultado: mapeia p1>p2=home, p2>p1=away, igual=draw", () => {
   assert.equal(g.awardedXp, PREGAME_XP.result);
 });
 
-test("total de gols: 2 gols é Abaixo, 3 gols é Acima de 2,5", () => {
+test("total de gols: usa a linha que estava na cotação confirmada", () => {
   const dois: PregameFinal = { goalsP1: 1, goalsP2: 1, cornersTotal: 0 };
-  assert.equal(gradePregame({ ...EMPTY, goals: "under" }, dois).goalsCorrect, true);
-  assert.equal(gradePregame({ ...EMPTY, goals: "over" }, dois).goalsCorrect, false);
+  assert.equal(gradePregame({ ...EMPTY, goals: "under", goalsLine: 2.5 }, dois).goalsCorrect, true);
+  assert.equal(gradePregame({ ...EMPTY, goals: "over", goalsLine: 2.5 }, dois).goalsCorrect, false);
 
   const tres: PregameFinal = { goalsP1: 2, goalsP2: 1, cornersTotal: 0 };
-  assert.equal(gradePregame({ ...EMPTY, goals: "over" }, tres).goalsCorrect, true);
-  assert.equal(gradePregame({ ...EMPTY, goals: "over" }, tres).awardedXp, PREGAME_XP.goals);
+  assert.equal(gradePregame({ ...EMPTY, goals: "over", goalsLine: 2.5 }, tres).goalsCorrect, true);
+  assert.equal(gradePregame({ ...EMPTY, goals: "over", goalsLine: 2.5 }, tres).awardedXp, PREGAME_XP.goals);
+  assert.equal(gradePregame({ ...EMPTY, goals: "under", goalsLine: 3.5 }, tres).goalsCorrect, true, 'a linha de 3,5 não cai para 2,5');
 });
 
 test("escanteios: 9 é Abaixo, 10 é Acima de 9,5", () => {
   const nove: PregameFinal = { goalsP1: 0, goalsP2: 0, cornersTotal: 9 };
-  assert.equal(gradePregame({ ...EMPTY, corners: "under" }, nove).cornersCorrect, true);
-  assert.equal(gradePregame({ ...EMPTY, corners: "over" }, nove).cornersCorrect, false);
+  assert.equal(gradePregame({ ...EMPTY, corners: "under", cornersLine: 9.5 }, nove).cornersCorrect, true);
+  assert.equal(gradePregame({ ...EMPTY, corners: "over", cornersLine: 9.5 }, nove).cornersCorrect, false);
 
   const dez: PregameFinal = { goalsP1: 0, goalsP2: 0, cornersTotal: 10 };
-  assert.equal(gradePregame({ ...EMPTY, corners: "over" }, dez).cornersCorrect, true);
-  assert.equal(gradePregame({ ...EMPTY, corners: "over" }, dez).awardedXp, PREGAME_XP.corners);
+  assert.equal(gradePregame({ ...EMPTY, corners: "over", cornersLine: 9.5 }, dez).cornersCorrect, true);
+  assert.equal(gradePregame({ ...EMPTY, corners: "over", cornersLine: 9.5 }, dez).awardedXp, PREGAME_XP.corners);
+});
+
+test("linha ausente, inteira ou asiática não liquida como se fosse uma cotação real", () => {
+  const final: PregameFinal = { goalsP1: 2, goalsP2: 1, cornersTotal: 12 };
+  assert.equal(gradePregame({ ...EMPTY, goals: 'over', goalsLine: null }, final).goalsCorrect, null);
+  assert.equal(gradePregame({ ...EMPTY, goals: 'over', goalsLine: 3 }, final).goalsCorrect, null);
+  assert.equal(gradePregame({ ...EMPTY, corners: 'over', cornersLine: 9.25 }, final).cornersCorrect, null);
 });
 
 test("placar exato: só pontua com scoreSet, e exige os dois lados", () => {
