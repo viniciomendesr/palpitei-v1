@@ -25,10 +25,19 @@
  * relógio DESTA sala. O cliente só recebe e mostra.
  */
 
-import { QuestionEngine, XP_BASE, cursorClock, type Clock, type ReplayCursor } from '@palpitei/core';
+import {
+  OddsExplainer,
+  QuestionEngine,
+  XP_BASE,
+  cursorClock,
+  normalizeOdds,
+  type Clock,
+  type ReplayCursor,
+} from '@palpitei/core';
 import type {
   Fixture,
   NormEvent,
+  OddsEvent,
   Question,
   ResolvedResult,
   RoomMessage,
@@ -40,10 +49,19 @@ import {
   createEnginePorts,
   createEventRepo,
   createMatchRepo,
+  createOddsRepo,
   createPredictionRepo,
+  eh1x2JogoInteiro,
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
 import { criarFiltroDeLances } from './lances';
+import {
+  atualizarPct1x2,
+  mesclarLinhaDoTempo,
+  registrarLeitura,
+  type LeituraDeChance,
+  type Pct1x2,
+} from './chances';
 import { createDb } from './db';
 
 /** 60 = um minuto de jogo por segundo real. O mesmo default do config da txline. */
@@ -79,6 +97,12 @@ export type RoomState = {
    * `Shots`, sem `Possession`. A UI mostra o que vier; nada mais.
    */
   totals: { p1: Record<string, number>; p2: Record<string, number> };
+  /**
+   * As leituras do explicador de cotação, mais recente PRIMEIRO (cap 60).
+   * Cada uma nasce de um evento de odds REAL que moveu a chance — nunca de
+   * relógio ou de chute (G6): sem dado, o array fica vazio e vazio é a verdade.
+   */
+  chances: LeituraDeChance[];
 };
 
 /**
@@ -117,6 +141,12 @@ type Room = {
    * no emit porque `Question` não guarda o estado do jogo, só o veredito.
    */
   fatos: Map<string, FatosDaResolucao>;
+  /**
+   * O último 1X2 conhecido, por opção da final_result. É DAQUI que sai o pct
+   * das opções — só para essa pergunta, que é o mesmo mercado. Chave ausente =
+   * o feed ainda não cotou = null na tela (G8: desconhecido nunca vira 0).
+   */
+  pct1x2: Pct1x2;
   engine: QuestionEngine;
   runner: ReplayRunner;
   ports: EnginePorts;
@@ -210,11 +240,29 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     return null;
   }
 
+  // A série de cotações do cache, para o explicador e o pct da final_result.
+  // O upsert já filtra ao 1X2 de jogo inteiro, mas o filtro se repete aqui de
+  // propósito: `listRaw` devolve o que estiver na tabela, e a sala só pode
+  // consumir o mercado que conhece. O normalize descarta o ilegível — inclusive
+  // Prices vazio, que é dado REAL (G8: mercado sem cotação no momento, 26 nesta
+  // fixture) e sem preço não há o que explicar nem que pct atualizar.
+  const oddsCruas = await createOddsRepo(db).listRaw(fixtureId);
+  const odds: OddsEvent[] = [];
+  for (const raw of oddsCruas) {
+    if (!eh1x2JogoInteiro(raw)) continue;
+    const ev = normalizeOdds(raw);
+    if (ev) odds.push(ev);
+  }
+  // Uma linha do tempo só: no empate de ts o lance vem ANTES da cotação — o
+  // explicador precisa do contexto ("depois do gol") já registrado quando ela
+  // passar por ele.
+  const linhaDoTempo = mesclarLinhaDoTempo(eventos, odds);
+
   // A régua dos contadores é DESTA partida, então o filtro nasce com a sala.
   const ehLance = criarFiltroDeLances();
   // Treino não persiste NADA (ver portsDeTreino); valendo grava no Postgres.
   const ports = treino ? portsDeTreino() : createEnginePorts(db);
-  const cursor: ReplayCursor = { matchTs: eventos[0]!.ts, realAt: Date.now() };
+  const cursor: ReplayCursor = { matchTs: linhaDoTempo[0]!.ts, realAt: Date.now() };
   const clock = cursorClock(cursor, REPLAY_SPEED);
   const kickoff = eventos.find((e) => e.action === 'kickoff') ?? eventos[0]!;
 
@@ -231,6 +279,7 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     questions: [],
     feed: [],
     totals: { p1: {}, p2: {} },
+    chances: [],
   };
 
   const sala: Room = {
@@ -239,6 +288,7 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     semXp: new Set(),
     decididos: new Set(),
     fatos: new Map(),
+    pct1x2: {},
     db,
     ports,
     cursor,
@@ -276,10 +326,16 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
         // garantida na primeira leitura.
         qtype: q.type,
         prompt: q.prompt,
-        // `pct` vem do OddsExplainer, que esta sala ainda não roda. null é a
-        // leitura honesta e é a MESMA do G8 ("a TxLINE não mandou preço"):
-        // quem renderizar `?? 0` inventa "a chance caiu pra zero".
-        options: q.options.map((o) => ({ id: o.id, label: o.label, pct: null })),
+        // `pct` SÓ na final_result, do último 1X2 conhecido — é o MESMO mercado,
+        // e os ids das opções (p1/draw/p2) são as chaves do mapa. Opção que o
+        // feed ainda não cotou fica null (G8: desconhecido nunca vira 0), e os
+        // outros tipos de pergunta não têm mercado correspondente: null sempre.
+        options: q.options.map((o) => ({
+          id: o.id,
+          label: o.label,
+          pct:
+            q.type === 'final_result' ? sala.pct1x2[o.id as keyof Pct1x2] ?? null : null,
+        })),
         // Quanto vale, do próprio motor — nunca uma tabela copiada aqui.
         // É o PISO: quem palpita na primeira metade da janela leva 1.5x, e o
         // resultado revela o valor real. Piso não é mentira; número inventado é.
@@ -359,6 +415,33 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
   };
 
   /**
+   * O explicador de cotação (core, determinístico): só fala quando a chance
+   * MOVEU de verdade (limiar de 3 p.p.) — é ele o dono do limiar, não a sala.
+   * Cada emissão vira uma LeituraDeChance no estado (para quem entrar depois)
+   * e um broadcast igual para todo mundo (não há nada de 1ª pessoa aqui).
+   */
+  const explicador = new OddsExplainer({
+    fixture,
+    emit: (msg) => {
+      if (msg.type !== 'odds_explain') return;
+      const leitura: LeituraDeChance = {
+        ts: msg.ts as number,
+        minute: state.minute,
+        priceName: msg.priceName as string,
+        fromPct: msg.fromPct as number,
+        toPct: msg.toPct as number,
+        // `text` é a frase pt que o core já emite — fallback/log; a tela
+        // redige a própria frase bilíngue pelos campos estruturados.
+        text: msg.text as string,
+      };
+      // Ausente ≠ undefined serializado: sem lance na janela, a chave nem viaja.
+      if (msg.contextAction) leitura.contextAction = msg.contextAction as string;
+      registrarLeitura(state.chances, leitura);
+      publicarBruto({ type: 'odds_explain', ...leitura });
+    },
+  });
+
+  /**
    * Acumula no ranking da sala o que o MOTOR pagou. `awardedXp` é o veredito
    * dele — aqui não se recalcula nada: recontar o bônus de velocidade a partir
    * do `result` daria uma segunda tabela de XP, e duas tabelas divergem.
@@ -435,7 +518,7 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
   });
 
   sala.runner = new ReplayRunner(
-    eventos,
+    linhaDoTempo,
     REPLAY_SPEED,
     (ev) => {
       // A ÂNCORA. Tem que ser atualizada ANTES de o motor rodar: é ela que
@@ -443,8 +526,19 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
       cursor.matchTs = ev.ts;
       cursor.realAt = Date.now();
 
+      // Cotação alimenta o explicador e o pct da final_result — e NADA MAIS:
+      // não passa pelo motor de perguntas, nem pelo filtro de lances, nem
+      // encosta em placar/totais. Odds movem chance; quem move jogo é o placar.
+      if (ev.kind === 'odds') {
+        atualizarPct1x2(sala.pct1x2, ev);
+        explicador.onOddsEvent(ev);
+        return;
+      }
+
       if (!ehScore(ev)) return;
       sala.engine.onScoreEvent(ev);
+      // O explicador só guarda o ÚLTIMO lance como contexto ("depois do gol").
+      explicador.onScoreEvent(ev);
 
       // `hasScore` NÃO basta para mover o placar, e a diferença é a distância
       // entre 1 × 2 e 0 × 0 no meio do jogo.
@@ -589,8 +683,13 @@ function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
     id: q.id,
     type: q.type,
     prompt: q.prompt,
-    // `pct: null` = o explicador de odds não roda nesta sala (G8: ausente ≠ 0%).
-    options: q.options.map((o) => ({ id: o.id, label: o.label, pct: null })),
+    // A MESMA régua do question_open: pct só na final_result, do último 1X2
+    // conhecido; opção não cotada é null (G8: ausente ≠ 0%), outros tipos idem.
+    options: q.options.map((o) => ({
+      id: o.id,
+      label: o.label,
+      pct: q.type === 'final_result' ? sala.pct1x2[o.id as keyof Pct1x2] ?? null : null,
+    })),
     // O PISO do XP, do próprio motor — a mesma régua do question_open.
     // Sem pagamento (treino/já jogou), o piso honesto é 0.
     xp: semXp ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
