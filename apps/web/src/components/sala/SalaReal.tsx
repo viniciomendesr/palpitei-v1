@@ -23,7 +23,13 @@ import { ChevronLeft, Star } from '@/components/Icons';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { fw } from '@/lib/tokens';
-import { useSala, type SalaDesafio, type SalaLance, type SalaTotais } from '@/lib/useSala';
+import {
+  useSala,
+  type SalaDesafio,
+  type SalaLance,
+  type SalaResultado,
+  type SalaTotais,
+} from '@/lib/useSala';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 
 type SalaTab = 'desafios' | 'lances' | 'stats' | 'ranking';
@@ -49,6 +55,98 @@ function textoDoLance(
     game_finalised: t.lanceEnd,
   };
   return nomes[l.action] ?? l.action;
+}
+
+type Dicionario = ReturnType<typeof useI18n>['t'];
+
+/**
+ * A pergunta redigida AQUI, por tipo — não o prompt cru do servidor. O motor
+ * grava pt fixo; a tela é bilíngue e o fã de EN lê no idioma dele. Tipo
+ * desconhecido cai no prompt do servidor: texto verdadeiro vale mais que
+ * texto bonito.
+ */
+function textoDaPergunta(
+  type: string,
+  promptDoServidor: string,
+  t: Dicionario,
+  teamA: string,
+  teamB: string,
+): string {
+  switch (type) {
+    case 'final_result':
+      return t.qPromptFinal.replace('{a}', teamA).replace('{b}', teamB);
+    case 'next_goal':
+      return t.qPromptNextGoal;
+    case 'hilo_corners':
+      return t.qPromptHilo;
+    default:
+      return promptDoServidor;
+  }
+}
+
+/** O rótulo de uma opção: p1/p2 são os TIMES; o resto sai do dicionário. */
+function rotuloDaOpcao(
+  id: string,
+  t: Dicionario,
+  teamA: string,
+  teamB: string,
+  fallback?: { id: string; label: string }[],
+): string {
+  switch (id) {
+    case 'p1':
+      return teamA;
+    case 'p2':
+      return teamB;
+    case 'draw':
+      return t.optDraw;
+    case 'none':
+      return t.optNone;
+    case 'yes':
+      return t.optYes;
+    case 'no':
+      return t.optNo;
+    default:
+      return fallback?.find((o) => o.id === id)?.label ?? id;
+  }
+}
+
+/**
+ * A explicação do resultado: FATOS do feed no instante da liquidação, que o
+ * servidor capturou (minuto, placar, escanteios). Sem fatos, sem frase — uma
+ * explicação inventada seria o G6 dentro da tela de resultado.
+ */
+function explicacaoDoResultado(
+  r: SalaResultado,
+  t: Dicionario,
+  teamA: string,
+  teamB: string,
+): string | null {
+  const f = r.facts;
+  if (!f) return null;
+  const minuto = f.minute !== null ? String(f.minute) : '–';
+  switch (r.qtype) {
+    case 'final_result':
+      return t.explFinal.replace('{a}', String(f.score.p1)).replace('{b}', String(f.score.p2));
+    case 'next_goal': {
+      if (r.correctOptionId === 'none') return t.explNextGoalNone;
+      if (r.correctOptionId !== 'p1' && r.correctOptionId !== 'p2') return null;
+      return t.explNextGoalTeam
+        .replace('{team}', r.correctOptionId === 'p1' ? teamA : teamB)
+        .replace('{m}', minuto)
+        .replace('{a}', String(f.score.p1))
+        .replace('{b}', String(f.score.p2));
+    }
+    case 'hilo_corners': {
+      if (!f.corners) return null;
+      const base = r.correctOptionId === 'yes' ? t.explHiloYes : t.explHiloNo;
+      return base
+        .replace('{ca}', String(f.corners.p1))
+        .replace('{cb}', String(f.corners.p2))
+        .replace('{m}', minuto);
+    }
+    default:
+      return null;
+  }
 }
 
 type LinhaDeStat = { chave: string; label: string; a: number; b: number; aFlex: number; bFlex: number };
@@ -138,6 +236,8 @@ function CardDoDesafio({
   enviando,
   recusa,
   treino,
+  teamA,
+  teamB,
 }: {
   d: SalaDesafio;
   onResponder: (optionId: string) => void;
@@ -145,6 +245,8 @@ function CardDoDesafio({
   recusa: string | null;
   /** Sem pagamento (sala de treino / já jogou): o card não promete XP nenhum. */
   treino: boolean;
+  teamA: string;
+  teamB: string;
 }) {
   const { t } = useI18n();
   const secs = useSegundos(d.fechaEm);
@@ -156,7 +258,6 @@ function CardDoDesafio({
     final_result: t.qFinalResult,
   };
   const respondido = d.minhaEscolha !== null;
-  const escolhida = d.options.find((o) => o.id === d.minhaEscolha);
 
   return (
     <div
@@ -180,7 +281,9 @@ function CardDoDesafio({
         </span>
       </div>
 
-      <p style={{ fontSize: 16, fontWeight: fw.heavy, marginTop: 8, textWrap: 'pretty' }}>{d.prompt}</p>
+      <p style={{ fontSize: 16, fontWeight: fw.heavy, marginTop: 8, textWrap: 'pretty' }}>
+        {textoDaPergunta(d.type, d.prompt, t, teamA, teamB)}
+      </p>
 
       {/* O RECIBO. Sem isto o fã toca e a tela não reage: o servidor só volta a
           falar quando o LANCE resolve, e isso leva minutos de jogo. O recibo não
@@ -196,7 +299,7 @@ function CardDoDesafio({
           }}
         >
           <div style={{ fontSize: 12.5, fontWeight: fw.black, color: 'var(--lime)' }}>
-            {t.salaSent} · {escolhida?.label ?? d.minhaEscolha}
+            {t.salaSent} · {rotuloDaOpcao(d.minhaEscolha ?? '', t, teamA, teamB, d.options)}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-2)', marginTop: 2 }}>
             {t.salaWaitingPlay}
@@ -206,7 +309,7 @@ function CardDoDesafio({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
           {d.options.map((o) => (
             <Button key={o.id} variant="ghost" full disabled={enviando} onClick={() => onResponder(o.id)}>
-              {o.label}
+              {rotuloDaOpcao(o.id, t, teamA, teamB, d.options)}
               {/* `pct` vem do explicador de odds, que esta sala ainda não roda.
                   null = a TxLINE não mandou preço (G8), e AUSENTE não é 0%:
                   mostrar "0%" aqui seria a explicação fantasma do v0. */}
@@ -392,6 +495,8 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
                 key={d.questionId}
                 d={d}
                 treino={treino}
+                teamA={state.teamA}
+                teamB={state.teamB}
                 enviando={enviando === d.questionId}
                 recusa={recusa[d.questionId] ?? null}
                 onResponder={(o) => responder(d.questionId, o)}
@@ -410,54 +515,93 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
                 <div style={{ fontSize: 10.5, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-muted)', marginTop: 10 }}>
                   {t.salaResultsHdr}
                 </div>
-                {resultados.map((r) => (
-                  <div
-                    key={r.questionId}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: 'var(--r-lg)',
-                      background: 'var(--surface-1)',
-                      border: '1px solid var(--border-1)',
-                    }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: fw.medium, color: 'var(--text-2)', textWrap: 'pretty' }}>
-                      {r.prompt}
-                    </div>
-                    {r.voidReason ? (
-                      <>
-                        <div style={{ fontSize: 13.5, fontWeight: fw.black, marginTop: 6 }}>{t.salaVoid}</div>
-                        <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 2, textWrap: 'pretty' }}>
-                          {t.salaVoidBody}
+                {resultados.map((r) => {
+                  // Acerto é comparar com o GABARITO do servidor — não com o
+                  // XP: no treino o acerto paga 0, e `gained > 0` como régua
+                  // diria "Errou" para um palpite certo.
+                  const acertou =
+                    !r.voidReason &&
+                    r.correctOptionId !== undefined &&
+                    r.minhaEscolha === r.correctOptionId;
+                  const minha =
+                    r.minhaEscolha !== null
+                      ? rotuloDaOpcao(r.minhaEscolha, t, state.teamA, state.teamB, r.options)
+                      : null;
+                  const certa =
+                    r.correctOptionId !== undefined
+                      ? rotuloDaOpcao(r.correctOptionId, t, state.teamA, state.teamB, r.options)
+                      : null;
+                  const explicacao = explicacaoDoResultado(r, t, state.teamA, state.teamB);
+                  return (
+                    <div
+                      key={r.questionId}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: 'var(--r-lg)',
+                        background: acertou ? 'var(--lime-a06)' : 'var(--surface-1)',
+                        border: `1px solid ${acertou ? 'var(--lime-line)' : 'var(--border-1)'}`,
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: fw.medium, color: 'var(--text-2)', textWrap: 'pretty' }}>
+                        {r.qtype
+                          ? textoDaPergunta(r.qtype, r.prompt, t, state.teamA, state.teamB)
+                          : r.prompt}
+                      </div>
+
+                      {/* O que EU disse × o que o jogo disse. Sem isto o card
+                          julgava sem mostrar as provas. */}
+                      {(minha || (certa && !r.voidReason)) && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 8 }}>
+                          {minha && (
+                            <span style={{ fontSize: 11.5, fontWeight: fw.bold, color: 'var(--text-muted)' }}>
+                              {t.youPick}{' '}
+                              <span style={{ color: 'var(--text-1)', fontWeight: fw.heavy }}>{minha}</span>
+                            </span>
+                          )}
+                          {certa && !r.voidReason && (
+                            <span style={{ fontSize: 11.5, fontWeight: fw.bold, color: 'var(--text-muted)' }}>
+                              {t.rightPick}{' '}
+                              <span style={{ color: 'var(--lime)', fontWeight: fw.heavy }}>{certa}</span>
+                            </span>
+                          )}
                         </div>
-                      </>
-                    ) : (
-                      (() => {
-                        // Acerto é comparar com o GABARITO do servidor — não com o
-                        // XP: no treino o acerto paga 0, e `gained > 0` como régua
-                        // diria "Errou" para um palpite certo. A tela não mente
-                        // nem para bonito, nem para feio.
-                        const acertou =
-                          r.correctOptionId !== undefined && r.minhaEscolha === r.correctOptionId;
-                        return (
-                          <div
-                            style={{
-                              fontSize: 14,
-                              fontWeight: fw.black,
-                              marginTop: 6,
-                              color: acertou ? 'var(--lime)' : 'var(--text-1)',
-                            }}
-                          >
-                            {acertou
-                              ? r.gained > 0
-                                ? `${t.salaHit} +${r.gained} XP`
-                                : t.salaHitTreino
-                              : t.salaMiss}
+                      )}
+
+                      {r.voidReason ? (
+                        <>
+                          <div style={{ fontSize: 13.5, fontWeight: fw.black, marginTop: 6 }}>{t.salaVoid}</div>
+                          <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 2, textWrap: 'pretty' }}>
+                            {t.salaVoidBody}
                           </div>
-                        );
-                      })()
-                    )}
-                  </div>
-                ))}
+                        </>
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: fw.black,
+                            marginTop: 8,
+                            color: acertou ? 'var(--lime)' : 'var(--text-1)',
+                          }}
+                        >
+                          {acertou
+                            ? r.gained > 0
+                              ? `${t.salaHit} +${r.gained} XP`
+                              : t.salaHitTreino
+                            : t.salaMiss}
+                        </div>
+                      )}
+
+                      {/* A LEITURA DO LANCE: fato do feed no instante em que o
+                          desafio liquidou. Sem fatos, sem frase — explicação
+                          inventada é o G6 dentro do resultado. */}
+                      {explicacao && (
+                        <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 6, textWrap: 'pretty' }}>
+                          {explicacao}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </>
             )}
           </div>
@@ -602,6 +746,8 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
             key={noOverlay.questionId}
             d={noOverlay}
             treino={treino}
+            teamA={state.teamA}
+            teamB={state.teamB}
             enviando={enviando === noOverlay.questionId}
             recusa={recusa[noOverlay.questionId] ?? null}
             onResponder={(o) => responder(noOverlay.questionId, o)}

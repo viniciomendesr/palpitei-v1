@@ -87,15 +87,28 @@ export type SalaState = {
  */
 export type SalaRankRow = { name: string; xp: number; me?: boolean };
 
+/** O jogo no instante da liquidação — a matéria-prima da explicação. */
+export type SalaFatos = {
+  minute: number | null;
+  score: { p1: number; p2: number };
+  /** null = o Total não trazia a chave (ausente ≠ zero, G7). */
+  corners: { p1: number; p2: number } | null;
+};
+
 export type SalaResultado = {
   questionId: string;
   prompt: string;
+  /** O TIPO da pergunta — é ele que escolhe o texto e a explicação na tela. */
+  qtype?: string;
   correctOptionId?: string;
   /** Anulada: o lance resolvedor chegou com a janela aberta. Sem XP, e é justo. */
   voidReason?: string;
   /** O XP que EU ganhei. O servidor é quem soma — a tela nunca. */
   gained: number;
   minhaEscolha: string | null;
+  /** Rótulos das opções: o resultado fala por nome, nunca por id. */
+  options?: { id: string; label: string }[];
+  facts?: SalaFatos | null;
 };
 
 /** O que o servidor manda no primeiro pacote. */
@@ -116,10 +129,13 @@ type QuestionDoServidor = {
 type ResultadoDoServidor = {
   questionId: string;
   prompt: string;
+  qtype?: string;
   correctOptionId?: string;
   voidReason?: string;
   gained: number;
   choice: string;
+  options?: { id: string; label: string }[];
+  facts?: SalaFatos | null;
 };
 
 export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number) => void) {
@@ -278,10 +294,13 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
               liquidados.map((r) => ({
                 questionId: r.questionId,
                 prompt: r.prompt,
+                qtype: r.qtype,
                 correctOptionId: r.correctOptionId,
                 voidReason: r.voidReason,
                 gained: r.gained,
                 minhaEscolha: r.choice,
+                options: r.options,
+                facts: r.facts ?? null,
               })),
             );
             return;
@@ -353,10 +372,13 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
                 {
                   questionId: id,
                   prompt: enunciados.current.get(id) ?? '',
+                  qtype: msg.qtype as string | undefined,
                   correctOptionId: msg.correctOptionId as string | undefined,
                   voidReason: msg.reason as string | undefined,
                   gained,
                   minhaEscolha: escolhas.current.get(id) ?? null,
+                  options: msg.options as { id: string; label: string }[] | undefined,
+                  facts: (msg.facts as SalaFatos | null) ?? null,
                 },
                 ...rs,
               ]);

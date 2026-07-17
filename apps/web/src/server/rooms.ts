@@ -101,6 +101,13 @@ type Room = {
   semXp: Set<string>;
   /** Fãs cuja decisão de pagamento já foi tomada (cache da consulta). */
   decididos: Set<string>;
+  /**
+   * Os FATOS do jogo no instante em que cada pergunta liquidou (minuto, placar,
+   * escanteios). É a matéria-prima da explicação na tela de resultado — o
+   * cliente redige o texto; aqui só se registra o que o feed dizia. Capturado
+   * no emit porque `Question` não guarda o estado do jogo, só o veredito.
+   */
+  fatos: Map<string, FatosDaResolucao>;
   engine: QuestionEngine;
   runner: ReplayRunner;
   ports: EnginePorts;
@@ -127,6 +134,14 @@ type Room = {
   desligar: ReturnType<typeof setTimeout> | null;
   /** Quem desliga tudo quando o último fã sai ou o jogo acaba. */
   encerrar: () => void;
+};
+
+/** O que o jogo dizia quando a pergunta liquidou. null = o feed não contou. */
+export type FatosDaResolucao = {
+  minute: number | null;
+  score: { p1: number; p2: number };
+  /** Do Total acumulado; ausente ≠ zero (G7/A4) — null quando não veio. */
+  corners: { p1: number; p2: number } | null;
 };
 
 const salas = new Map<string, Room>();
@@ -212,6 +227,7 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     treino,
     semXp: new Set(),
     decididos: new Set(),
+    fatos: new Map(),
     db,
     ports,
     cursor,
@@ -276,6 +292,12 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
         ts,
         questionId: q.id,
         correctOptionId: q.correct,
+        // Os RÓTULOS das opções e os fatos do instante: é com eles que a tela
+        // diz "Você: England · Certo: Argentina — gol aos 63’". Sem os rótulos
+        // o resultado falava por id; sem os fatos, não explicava nada.
+        options: q.options.map((o) => ({ id: o.id, label: o.label })),
+        facts: sala.fatos.get(q.id) ?? null,
+        qtype: q.type,
         // Sem palpite meu, `gained` é 0 — e é verdade: não ganhei nada.
         gained: meu?.awardedXp ?? 0,
       };
@@ -283,7 +305,15 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
 
     if (msg.type === 'question_void') {
       const q = msg.question as Question;
-      return { type: 'question_void', ts, questionId: q.id, reason: msg.reason as string };
+      return {
+        type: 'question_void',
+        ts,
+        questionId: q.id,
+        reason: msg.reason as string,
+        options: q.options.map((o) => ({ id: o.id, label: o.label })),
+        facts: sala.fatos.get(q.id) ?? null,
+        qtype: q.type,
+      };
     }
 
     if (msg.type === 'game_end') {
@@ -375,6 +405,16 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
       // que acabou de ganhar já contado.
       if (msg.type === 'question_resolved' || msg.type === 'question_void') {
         registrarNoRanking((msg.results ?? []) as ResolvedResult[]);
+        // Os FATOS do instante da liquidação — é deles que a tela redige a
+        // explicação ("gol aos 63’ — 1×0"). Escanteio sai do Total acumulado;
+        // sem a chave, null (ausente ≠ zero, G7/A4 — não se inventa 0×0).
+        const c1 = state.totals.p1.Corners;
+        const c2 = state.totals.p2.Corners;
+        sala.fatos.set((msg.question as Question).id, {
+          minute: state.minute,
+          score: { ...state.score },
+          corners: c1 !== undefined || c2 !== undefined ? { p1: c1 ?? 0, p2: c2 ?? 0 } : null,
+        });
       }
       publicar(msg);
       if (msg.type === 'question_resolved' || msg.type === 'question_void') {
@@ -581,11 +621,15 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
     .map((r) => ({
       questionId: r.question.id,
       prompt: r.question.prompt,
+      qtype: r.question.type,
       correctOptionId: r.question.correct,
       voidReason: r.question.voidReason,
       // O XP que o MOTOR pagou a ele — nunca recalculado aqui (duas tabelas divergem).
       gained: r.prediction.awardedXp ?? 0,
       choice: r.prediction.choice,
+      // Rótulos e fatos: o F5 não pode rebaixar o histórico a ids sem explicação.
+      options: r.question.options.map((o) => ({ id: o.id, label: o.label })),
+      facts: sala.fatos.get(r.question.id) ?? null,
     }));
 
   return {

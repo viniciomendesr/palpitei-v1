@@ -392,7 +392,7 @@ export class QuestionEngine {
       [
         { id: "p1", label: this.fixture.p1 },
         { id: "p2", label: this.fixture.p2 },
-        { id: "none", label: "Ninguém até o fim do tempo" },
+        { id: "none", label: "Ninguém até o fim" },
       ],
       ts,
       ts + this.windowMs(WINDOW_NEXT_GOAL_MS)
