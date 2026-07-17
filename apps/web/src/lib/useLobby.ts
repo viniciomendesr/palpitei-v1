@@ -72,5 +72,13 @@ export function useLobby(roomId: string, partyId: string, active: boolean) {
     }
   }, [roomId, partyId, sending]);
 
-  return { state, error, sending, toggleReady, start };
+  const leave = useCallback(async () => {
+    await api.lobbyLeave(roomId, partyId);
+  }, [roomId, partyId]);
+
+  const finish = useCallback(async () => {
+    await api.lobbyFinish(roomId, partyId);
+  }, [roomId, partyId]);
+
+  return { state, error, sending, toggleReady, start, leave, finish };
 }

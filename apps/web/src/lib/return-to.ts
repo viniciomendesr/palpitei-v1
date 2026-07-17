@@ -16,6 +16,10 @@ export function setPendingReturnTo(value: string): void {
   if (safe && typeof window !== 'undefined') window.sessionStorage.setItem(KEY, safe);
 }
 
+export function returnToFromSearch(search: string): string | null {
+  return safeReturnTo(new URLSearchParams(search).get('returnTo'));
+}
+
 export function peekPendingReturnTo(): string | null {
   if (typeof window === 'undefined') return null;
   return safeReturnTo(window.sessionStorage.getItem(KEY));

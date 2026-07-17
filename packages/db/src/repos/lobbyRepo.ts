@@ -17,7 +17,7 @@ const COLUNAS = `
   l.id, l.invite_code, l.fixture_id, l.treino, l.host_user_id, l.phase,
   l.max_players, extract(epoch from l.expires_at) * 1000 as expires_ms,
   extract(epoch from l.created_at) * 1000 as created_ms,
-  (select count(*) from lobby_members lm where lm.lobby_id = l.id)::int as member_count
+  (select count(*) from lobby_members lm where lm.lobby_id = l.id and lm.left_at is null)::int as member_count
 `;
 
 function mapLobby(row: Row): Lobby {
@@ -58,7 +58,7 @@ export function createLobbyRepo(db: Db) {
       const rows = await db.query(
         `select ${COLUNAS}
            from lobbies l
-           join lobby_members acesso on acesso.lobby_id = l.id and acesso.user_id = $2
+           join lobby_members acesso on acesso.lobby_id = l.id and acesso.user_id = $2 and acesso.left_at is null
           where l.invite_code = $1`,
         [normalized, userId],
       );
@@ -115,11 +115,14 @@ export function createLobbyRepo(db: Db) {
           throw new LobbyUnavailableError('esse convite expirou — pede um novo ao anfitrião');
         }
         const [membership] = await tx.query(
-          `select 1 from lobby_members where lobby_id = $1 and user_id = $2`,
+          `select left_at from lobby_members where lobby_id = $1 and user_id = $2`,
           [lobby.id, userId],
         );
         if (!membership) {
-          const [count] = await tx.query(`select count(*)::int as n from lobby_members where lobby_id = $1`, [lobby.id]);
+          const [count] = await tx.query(
+            `select count(*)::int as n from lobby_members where lobby_id = $1 and left_at is null`,
+            [lobby.id],
+          );
           if (Number(count?.n ?? 0) >= Number(lobby.max_players)) {
             throw new LobbyUnavailableError('esse lobby está cheio');
           }
@@ -129,7 +132,9 @@ export function createLobbyRepo(db: Db) {
           );
         } else {
           await tx.query(
-            `update lobby_members set last_seen_at = now() where lobby_id = $1 and user_id = $2`,
+            `update lobby_members
+                set last_seen_at = now(), left_at = null, ready = false
+              where lobby_id = $1 and user_id = $2`,
             [lobby.id, userId],
           );
         }
@@ -151,6 +156,32 @@ export function createLobbyRepo(db: Db) {
         [normalized, hostUserId],
       );
       if (!rows[0]) throw new LobbyUnavailableError('só o anfitrião pode começar esse lobby');
+    },
+
+    async markLeft(code: string, userId: string): Promise<void> {
+      const normalized = normalizarCodigoLobby(code);
+      const rows = await db.query(
+        `update lobby_members lm
+            set left_at = now(), ready = false, last_seen_at = now()
+           from lobbies l
+          where l.id = lm.lobby_id and l.invite_code = $1 and lm.user_id = $2
+                and lm.left_at is null
+          returning lm.user_id`,
+        [normalized, userId],
+      );
+      if (!rows[0]) throw new LobbyUnavailableError('você já saiu desse lobby');
+    },
+
+    async markFinished(code: string, hostUserId: string): Promise<void> {
+      const normalized = normalizarCodigoLobby(code);
+      const rows = await db.query(
+        `update lobbies
+            set phase = 'finished', updated_at = now()
+          where invite_code = $1 and host_user_id = $2 and phase in ('started', 'finished')
+          returning id`,
+        [normalized, hostUserId],
+      );
+      if (!rows[0]) throw new LobbyUnavailableError('só o anfitrião pode encerrar essa partida');
     },
   };
   return repo;

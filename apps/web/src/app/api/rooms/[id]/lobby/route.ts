@@ -6,7 +6,9 @@ import { createDb } from '@/server/db';
 import { PULSO, iniciarPulso } from '@/server/pulso';
 import {
   connectLobby,
+  finishLobby,
   getLobby,
+  leaveLobby,
   openLobby,
   setReady,
   startLobby,
@@ -62,7 +64,7 @@ export async function GET(
       persistent.fixtureId !== ctx.room.fixtureId ||
       persistent.treino !== ctx.room.treino ||
       persistent.expiresAt <= Date.now() ||
-      !['waiting', 'started'].includes(persistent.phase)
+      !['waiting', 'started', 'finished'].includes(persistent.phase)
     ) {
       return Response.json({ error: 'você não participa desse lobby' }, { status: 403 });
     }
@@ -76,7 +78,11 @@ export async function GET(
       teamA: fixture.p1,
       teamB: fixture.p2,
       hostId: persistent.hostUserId,
-      phase: persistent.phase === 'started' ? 'started' : 'waiting',
+      phase: persistent.phase === 'finished'
+        ? 'finished'
+        : persistent.phase === 'started'
+          ? 'started'
+          : 'waiting',
     });
     const enc = new TextEncoder();
     let disconnect = () => {};
@@ -156,6 +162,16 @@ export async function POST(
       const result = startLobby(lobby, user.id);
       if (!result.ok) return Response.json({ error: result.error }, { status: 409 });
       await createLobbyRepo(db).markStarted(ctx.partyId, user.id);
+      return Response.json({ ok: true });
+    }
+    if (body?.action === 'leave') {
+      await createLobbyRepo(db).markLeft(ctx.partyId, user.id);
+      leaveLobby(lobby, user.id);
+      return Response.json({ ok: true });
+    }
+    if (body?.action === 'finish') {
+      await createLobbyRepo(db).markFinished(ctx.partyId, user.id);
+      finishLobby(lobby);
       return Response.json({ ok: true });
     }
     return Response.json({ error: 'ação inválida' }, { status: 400 });

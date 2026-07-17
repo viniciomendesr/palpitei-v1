@@ -15,7 +15,7 @@
  * vale; se o servidor fechar antes, o POST volta 409 e o fã ouve a verdade.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SegTabs, Badge, Button } from '@/components/ds';
 import { Screen } from '@/components/Shell';
@@ -36,6 +36,7 @@ import { formataRelogio } from '@/lib/relogio';
 import { calcularResumoDaSala } from '@/lib/resumo';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { localizeTeamName } from '@/lib/team-names';
+import type { LobbyState } from '@/lib/api';
 
 type SalaTab = 'desafios' | 'lances' | 'stats' | 'chances' | 'ranking';
 
@@ -713,10 +714,18 @@ export function SalaReal({
   fixtureId,
   partyId,
   lobbyPlayerCount,
+  lobbyPlayers,
+  lobbyMeHost,
+  onLeaveLobby,
+  onFinishLobby,
 }: {
   fixtureId: string;
   partyId: string;
   lobbyPlayerCount: number;
+  lobbyPlayers: LobbyState['players'];
+  lobbyMeHost: boolean;
+  onLeaveLobby: () => Promise<void>;
+  onFinishLobby: () => Promise<void>;
 }) {
   const router = useRouter();
   const { t, fmt, lang } = useI18n();
@@ -753,6 +762,30 @@ export function SalaReal({
   // texto some); o toque abre o detalhe com veredito, leitura e números.
   const [detalhe, setDetalhe] = useState<SalaResultado | null>(null);
   const [resumoAberto, setResumoAberto] = useState(false);
+  const encerramentoEnviado = useRef(false);
+  const saidaEmAndamento = useRef(false);
+
+  useEffect(() => {
+    if (!state?.finished || !lobbyMeHost || encerramentoEnviado.current) return;
+    encerramentoEnviado.current = true;
+    void onFinishLobby().catch(() => {
+      // A tela continua utilizável; uma nova montagem tenta reconciliar de novo.
+      encerramentoEnviado.current = false;
+    });
+  }, [state?.finished, lobbyMeHost, onFinishLobby]);
+
+  const sairDaSala = async () => {
+    if (saidaEmAndamento.current) return;
+    saidaEmAndamento.current = true;
+    try {
+      if (state?.finished && lobbyMeHost) await onFinishLobby();
+      await onLeaveLobby();
+    } catch {
+      // Sair não pode prender o fã porque a confirmação do servidor caiu.
+    } finally {
+      router.push('/home');
+    }
+  };
 
   // A aba NÃO rouba mais o foco quando abre desafio. Quem chama o fã é o
   // OVERLAY: a janela dura ~96s de tempo real e ele não pode ter que procurar
@@ -765,6 +798,20 @@ export function SalaReal({
     () => (state ? linhasDeStats(state.totals, t.statKeys) : []),
     [state?.totals, t.statKeys],
   );
+  const rankingComPresenca = useMemo(() => {
+    const presencaPorNome = new Map(lobbyPlayers.map((player) => [player.name, player]));
+    const rows = ranking.map((row) => ({
+      ...row,
+      presence: presencaPorNome.get(row.name)?.presence ?? ('away' as const),
+    }));
+    const nomesNoRanking = new Set(ranking.map((row) => row.name));
+    for (const player of lobbyPlayers) {
+      if (!nomesNoRanking.has(player.name)) {
+        rows.push({ name: player.name, xp: 0, me: player.me, presence: player.presence });
+      }
+    }
+    return rows;
+  }, [lobbyPlayers, ranking]);
 
   const responder = async (questionId: string, optionId: string) => {
     if (enviando) return;
@@ -824,7 +871,7 @@ export function SalaReal({
         chancesCount={chances.length}
         stats={stats}
         onBack={() => setResumoAberto(false)}
-        onHome={() => router.push('/home')}
+        onHome={() => void sairDaSala()}
       />
     );
   }
@@ -841,7 +888,7 @@ export function SalaReal({
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button
-            onClick={() => (state.finished ? router.push('/home') : setConfirmandoSaida(true))}
+            onClick={() => (state.finished ? void sairDaSala() : setConfirmandoSaida(true))}
             aria-label={t.backHome}
             style={{
               all: 'unset',
@@ -1120,11 +1167,16 @@ export function SalaReal({
             <div style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)', marginBottom: 10 }}>
               {t.roomRanking}
             </div>
-            {/* Sem "N na sala": o servidor manda quem PONTUOU, não quem está
-                assistindo. Chamar uma coisa de outra é rótulo mentindo (G6). */}
+            {/* O XP continua vindo do motor. O lobby apenas completa quem ainda
+                está em 0 e acrescenta presença; ele nunca calcula pontuação. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {ranking.map((r, i) => {
+              {rankingComPresenca.map((r, i) => {
                 const pos = i + 1;
+                const presenceLabel = r.presence === 'watching'
+                  ? t.lobbyWatching
+                  : r.presence === 'left'
+                    ? t.lobbyLeft
+                    : t.lobbyAway;
                 return (
                   <div
                     key={`${r.name}-${i}`}
@@ -1153,7 +1205,10 @@ export function SalaReal({
                         color: r.me ? 'var(--lime)' : r.name ? 'var(--text-hi)' : 'var(--text-muted)',
                       }}
                     >
-                      {r.me ? t.you : r.name || t.salaNoHandle}
+                      <span style={{ display: 'block' }}>{r.me ? t.you : r.name || t.salaNoHandle}</span>
+                      <span style={{ display: 'block', marginTop: 2, fontSize: 10, fontStyle: 'normal', fontWeight: fw.medium, color: 'var(--text-muted)' }}>
+                        {presenceLabel}
+                      </span>
                     </span>
                     <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--gold)' }}>
                       {fmt(r.xp)} XP
@@ -1162,7 +1217,7 @@ export function SalaReal({
                 );
               })}
             </div>
-            {!ranking.length && (
+            {!rankingComPresenca.length && (
               <p style={{ textAlign: 'center', padding: 28, fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-muted)' }}>
                 {t.salaRankEmpty}
               </p>
@@ -1249,7 +1304,7 @@ export function SalaReal({
               <Button full onClick={() => setConfirmandoSaida(false)}>
                 {t.sairSalaFica}
               </Button>
-              <Button variant="ghost" full onClick={() => router.push('/home')}>
+              <Button variant="ghost" full onClick={() => void sairDaSala()}>
                 {t.sairSalaVai}
               </Button>
             </div>

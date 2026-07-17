@@ -94,10 +94,16 @@ export interface LobbyState {
   treino: boolean;
   teamA: string;
   teamB: string;
-  phase: 'waiting' | 'started';
+  phase: 'waiting' | 'started' | 'finished';
   meReady: boolean;
   meHost: boolean;
-  players: { name: string; ready: boolean; host: boolean }[];
+  players: {
+    name: string;
+    ready: boolean;
+    host: boolean;
+    me: boolean;
+    presence: 'watching' | 'away' | 'left';
+  }[];
 }
 
 export interface ApiLobbyPreview {
@@ -401,6 +407,18 @@ export const api = {
     request<{ ok: true }>(
       `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}`,
       { method: 'POST', body: JSON.stringify({ action: 'start' }) },
+    ),
+
+  lobbyLeave: (roomId: string, partyId: string) =>
+    request<{ ok: true }>(
+      `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}`,
+      { method: 'POST', body: JSON.stringify({ action: 'leave' }) },
+    ),
+
+  lobbyFinish: (roomId: string, partyId: string) =>
+    request<{ ok: true }>(
+      `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}`,
+      { method: 'POST', body: JSON.stringify({ action: 'finish' }) },
     ),
 
   joinRoom: (roomId: string) =>

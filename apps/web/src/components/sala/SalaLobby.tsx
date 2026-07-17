@@ -40,12 +40,16 @@ export function SalaComLobby({ roomId }: { roomId: string }) {
   const active = Boolean(partyId && session && privy.ready && privy.authenticated);
   const lobby = useLobby(roomId, partyId, active);
 
-  if (lobby.state?.phase === 'started') {
+  if (lobby.state?.phase === 'started' || lobby.state?.phase === 'finished') {
     return (
       <SalaReal
         fixtureId={roomId}
         partyId={partyId}
         lobbyPlayerCount={lobby.state.players.length}
+        lobbyPlayers={lobby.state.players}
+        lobbyMeHost={lobby.state.meHost}
+        onLeaveLobby={lobby.leave}
+        onFinishLobby={lobby.finish}
       />
     );
   }

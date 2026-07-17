@@ -12,10 +12,18 @@ export type LobbyMeta = {
   teamA: string;
   teamB: string;
   hostId?: string;
-  phase?: 'waiting' | 'started';
+  phase?: 'waiting' | 'started' | 'finished';
 };
 
-type Member = { userId: string; name: string; ready: boolean; connections: number };
+export type LobbyPresence = 'watching' | 'away' | 'left';
+
+type Member = {
+  userId: string;
+  name: string;
+  ready: boolean;
+  connections: number;
+  presence: LobbyPresence;
+};
 type Subscriber = { userId: string; send: (state: LobbyState) => void };
 
 export type LobbyState = {
@@ -26,14 +34,14 @@ export type LobbyState = {
   treino: boolean;
   teamA: string;
   teamB: string;
-  phase: 'waiting' | 'started';
+  phase: 'waiting' | 'started' | 'finished';
   meReady: boolean;
   meHost: boolean;
-  players: { name: string; ready: boolean; host: boolean }[];
+  players: { name: string; ready: boolean; host: boolean; me: boolean; presence: LobbyPresence }[];
 };
 
 export type Lobby = Omit<LobbyMeta, 'hostId' | 'phase'> & {
-  phase: 'waiting' | 'started';
+  phase: 'waiting' | 'started' | 'finished';
   hostId: string | null;
   members: Map<string, Member>;
   subscribers: Set<Subscriber>;
@@ -78,6 +86,8 @@ export function stateFor(lobby: Lobby, userId: string): LobbyState {
       name: member.name,
       ready: member.ready,
       host: lobby.hostId === member.userId,
+      me: member.userId === userId,
+      presence: member.presence,
     })),
   };
 }
@@ -100,6 +110,7 @@ export function connectLobby(
   const current = lobby.members.get(user.id);
   if (current) {
     current.connections++;
+    current.presence = 'watching';
     if (user.name) current.name = user.name;
   } else {
     lobby.members.set(user.id, {
@@ -107,6 +118,7 @@ export function connectLobby(
       name: user.name,
       ready: lobby.phase === 'started',
       connections: 1,
+      presence: 'watching',
     });
   }
   // Compatibilidade para lobbies efêmeros de teste/dev. Em produção o hostId
@@ -120,8 +132,9 @@ export function connectLobby(
     lobby.subscribers.delete(sub);
     const member = lobby.members.get(user.id);
     if (member) {
-      member.connections--;
+      member.connections = Math.max(0, member.connections - 1);
       if (member.connections <= 0 && lobby.phase === 'waiting') lobby.members.delete(user.id);
+      else if (member.connections <= 0 && member.presence !== 'left') member.presence = 'away';
     }
     if (lobby.phase === 'waiting' && lobby.members.size === 0) all().delete(lobby.key);
     else broadcast(lobby);
@@ -139,6 +152,7 @@ export function setReady(lobby: Lobby, userId: string, ready: boolean): boolean 
 
 export function startLobby(lobby: Lobby, userId: string): { ok: boolean; error?: string } {
   if (lobby.phase === 'started') return { ok: true };
+  if (lobby.phase === 'finished') return { ok: false, error: 'essa partida já terminou' };
   if (lobby.hostId !== userId) return { ok: false, error: 'só o anfitrião pode iniciar' };
   if (lobby.members.size === 0 || [...lobby.members.values()].some((m) => !m.ready)) {
     return { ok: false, error: 'espere todos ficarem prontos' };
@@ -146,6 +160,23 @@ export function startLobby(lobby: Lobby, userId: string): { ok: boolean; error?:
   lobby.phase = 'started';
   broadcast(lobby);
   return { ok: true };
+}
+
+/** Diferencia uma saída intencional de uma aba que apenas perdeu a conexão. */
+export function leaveLobby(lobby: Lobby, userId: string): boolean {
+  const member = lobby.members.get(userId);
+  if (!member) return false;
+  member.ready = false;
+  member.presence = 'left';
+  broadcast(lobby);
+  return true;
+}
+
+/** Encerramento idempotente: mantém ranking/presença visíveis até todos saírem. */
+export function finishLobby(lobby: Lobby): void {
+  if (lobby.phase === 'finished') return;
+  lobby.phase = 'finished';
+  broadcast(lobby);
 }
 
 /** A execução acabou e ficou vazia: o próximo grupo volta a passar pelo lobby. */

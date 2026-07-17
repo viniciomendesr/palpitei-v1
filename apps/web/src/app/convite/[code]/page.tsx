@@ -31,8 +31,9 @@ export default function ConvitePage({ params }: { params: Promise<{ code: string
   }, [code, t.lobbyInviteInvalid]);
 
   const login = () => {
-    setPendingReturnTo(`/convite/${encodeURIComponent(code)}`);
-    router.push('/');
+    const destination = `/convite/${encodeURIComponent(code)}`;
+    setPendingReturnTo(destination);
+    router.push(`/?returnTo=${encodeURIComponent(destination)}`);
   };
 
   const join = async () => {

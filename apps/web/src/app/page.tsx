@@ -21,7 +21,7 @@ import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { fw } from '@/lib/tokens';
-import { consumePendingReturnTo } from '@/lib/return-to';
+import { consumePendingReturnTo, returnToFromSearch, setPendingReturnTo } from '@/lib/return-to';
 
 const EASE = 'cubic-bezier(.2,.7,.3,1)';
 
@@ -38,6 +38,11 @@ export default function LoginPage() {
   // Muda a cada clique num botão de login — é o que permite TENTAR DE NOVO
   // depois de um /api/login que falhou (as outras deps não mudam nesse caso).
   const [tentativa, setTentativa] = useState(0);
+
+  useEffect(() => {
+    const destination = returnToFromSearch(window.location.search);
+    if (destination) setPendingReturnTo(destination);
+  }, []);
 
   const onDemo = () => {
     // O demo não pode carregar um convite real pendente para um login futuro.

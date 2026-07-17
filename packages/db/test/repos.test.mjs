@@ -46,6 +46,7 @@ const MIGRATIONS = [
   resolve(AQUI, '../../../supabase/migrations/0001_init.sql'),
   resolve(AQUI, '../../../supabase/migrations/0002_leagues.sql'),
   resolve(AQUI, '../../../supabase/migrations/0003_lobbies.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0004_lobby_presence.sql'),
 ];
 const PORTA = 5599;
 
@@ -977,4 +978,33 @@ test('convite expirado não aceita novo membro', async () => {
   const lobby = await p.lobbies.create(host.id, 910003, false);
   await p.db.query(`update lobbies set expires_at = now() - interval '1 minute' where id = $1`, [lobby.id]);
   await assert.rejects(() => p.lobbies.joinByCode(friend.id, lobby.inviteCode), LobbyUnavailableError);
+});
+
+test('sair do lobby revoga a URL antiga e aceitar o convite novamente restaura o vínculo', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-leave-host');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-leave-friend');
+  await p.matches.upsert({ fixtureId: 910004, p1: 'France', p2: 'England', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910004, false);
+  await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+
+  await p.lobbies.markLeft(lobby.inviteCode, friend.id);
+  assert.equal(await p.lobbies.findForMember(lobby.inviteCode, friend.id), null);
+  assert.equal((await p.lobbies.findByCode(lobby.inviteCode))?.memberCount, 1);
+
+  await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  assert.equal((await p.lobbies.findForMember(lobby.inviteCode, friend.id))?.memberCount, 2);
+});
+
+test('apenas o anfitrião encerra e o encerramento é idempotente', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-finish-host');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-finish-friend');
+  await p.matches.upsert({ fixtureId: 910005, p1: 'Brazil', p2: 'Portugal', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910005, false);
+  await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  await p.lobbies.markStarted(lobby.inviteCode, host.id);
+
+  await assert.rejects(() => p.lobbies.markFinished(lobby.inviteCode, friend.id), LobbyUnavailableError);
+  await p.lobbies.markFinished(lobby.inviteCode, host.id);
+  await p.lobbies.markFinished(lobby.inviteCode, host.id);
+  assert.equal((await p.lobbies.findByCode(lobby.inviteCode))?.phase, 'finished');
 });

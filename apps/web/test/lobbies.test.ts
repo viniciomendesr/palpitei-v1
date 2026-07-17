@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   connectLobby,
+  finishLobby,
+  leaveLobby,
   openLobby,
   resetLobby,
   setReady,
@@ -29,9 +31,33 @@ test('primeiro participante vira anfitrião e todos recebem presença/pronto', (
   assert.equal(stateFor(lobby, 'a').meHost, true);
   assert.equal(stateFor(lobby, 'b').meHost, false);
   assert.equal(stateFor(lobby, 'a').players.length, 2);
+  assert.equal(stateFor(lobby, 'a').players.find((p) => p.name === 'Ana')?.presence, 'watching');
   assert.equal(setReady(lobby, 'b', true), true);
   assert.equal(b.at(-1)?.meReady, true);
   leaveB();
+  leaveA();
+  resetLobby(lobby.key);
+});
+
+test('depois do início distingue aba fechada, retorno e saída intencional', () => {
+  const lobby = openLobby(meta('lobby-status'));
+  const leaveA = connectLobby(lobby, { id: 'a', name: 'Ana' }, () => {});
+  const disconnectB = connectLobby(lobby, { id: 'b', name: 'Beto' }, () => {});
+  setReady(lobby, 'a', true);
+  setReady(lobby, 'b', true);
+  startLobby(lobby, 'a');
+
+  disconnectB();
+  assert.equal(stateFor(lobby, 'a').players.find((p) => p.name === 'Beto')?.presence, 'away');
+  const reconnectB = connectLobby(lobby, { id: 'b', name: 'Beto' }, () => {});
+  assert.equal(stateFor(lobby, 'a').players.find((p) => p.name === 'Beto')?.presence, 'watching');
+  assert.equal(leaveLobby(lobby, 'b'), true);
+  assert.equal(stateFor(lobby, 'a').players.find((p) => p.name === 'Beto')?.presence, 'left');
+
+  finishLobby(lobby);
+  finishLobby(lobby);
+  assert.equal(lobby.phase, 'finished');
+  reconnectB();
   leaveA();
   resetLobby(lobby.key);
 });
