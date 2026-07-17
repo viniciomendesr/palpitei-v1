@@ -59,15 +59,29 @@ export default function LoginPage() {
     // onboarding por cima do nível 7 / 1.240 XP e, no perfil, "demo · carteira
     // simulada" para quem autenticou de verdade. A sessão do demo não pertence a
     // DID nenhum: diante de um login real ela cede.
+    // Conta nova: manda pro cadastro. A sessão do DEMO cede a um login real —
+    // ela não pertence a DID nenhum, e sem isto o jurado que testou o demo e
+    // depois entra com Google leva a conta de teste junto (nível 7, 1.240 XP).
     if (!session || session.authMethod === 'demo') {
       startOnboarding(privy.wallets[0]?.source === 'external' ? 'wallet' : 'google');
+      // replace, e não push: depois de entrar, o login não fica no histórico.
+      // Com push, o Voltar do onboarding caía em '/', o efeito disparava de novo
+      // e empurrava o fã pra frente — não dava pra voltar, e cada tentativa
+      // zerava o cadastro. Quem quer desfazer o login usa o botão do passo 0,
+      // que sai de verdade (derruba a Privy também).
+      router.replace('/onboarding');
+      return;
     }
-    // replace, e não push: depois de entrar, o login não fica no histórico. Com
-    // push, o Voltar do onboarding caía em '/', o efeito disparava de novo e
-    // empurrava o fã pra frente — não dava pra voltar, e cada tentativa zerava
-    // o cadastro. Quem quer desfazer o login usa o botão do passo 0, que sai de
-    // verdade (derruba a Privy também).
-    router.replace('/onboarding');
+
+    // Quem JÁ tem sessão não recomeça o cadastro. Este replace estava FORA do
+    // if, e o efeito era pior do que parece: todo retorno a '/' com a Privy
+    // autenticada empurrava pro onboarding — inclusive quem já tinha terminado.
+    // O fã via o "Bem-vindo, sua conta é nova" pela segunda vez, com apelido
+    // vazio, sem ser conta nova nenhuma.
+    //
+    // Sem apelido = ainda no meio do cadastro (o passo 1 é quem grava): deixa
+    // terminar. Com apelido, está dentro — vai pra casa.
+    router.replace(session.nickname.trim() ? '/home' : '/onboarding');
   }, [hydrated, session, privy.authenticated, privy.did, privy.wallets, startOnboarding, router]);
 
   const onSocial = async (method: 'google' | 'wallet') => {

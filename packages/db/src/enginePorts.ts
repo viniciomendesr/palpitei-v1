@@ -85,10 +85,15 @@ export interface EnginePorts {
   /** Extra: o mercado da prévia da v2. */
   saveMarket(m: Market): void;
   /**
-   * Aguarda as escritas em voo. Estoura se alguma falhou desde o último flush.
-   * É o que permite à rota HTTP contar a verdade para o fã.
+   * Aguarda as escritas em voo. Estoura se ALGUMA falhou desde o último flush —
+   * de qualquer fã. Numa sala com mais de um, prefira `flushDe`.
    */
   flush(): Promise<void>;
+  /**
+   * Aguarda as escritas e estoura só se a de `dono` falhou. É o que a rota do
+   * palpite usa para contar a verdade AO FÃ CERTO.
+   */
+  flushDe(dono: string): Promise<void>;
   /** Escritas ainda em voo — útil para teste e para o shutdown. */
   pendentes(): number;
 }
@@ -107,19 +112,43 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
   const emVoo = new Set<Promise<void>>();
   let primeiroErro: Error | null = null;
 
-  /** Dispara a escrita sem deixar a rejeição escapar para o process. */
-  function disparar(contexto: string, fn: () => Promise<unknown>): void {
+  /**
+   * A escrita de cada PERGUNTA, por id. O palpite espera por ela — ver
+   * `savePrediction`. Fica aqui e não some no `finally`: um palpite que chega
+   * depois da escrita terminar precisa achar a promise já resolvida, não nada.
+   */
+  const perguntaEmVoo = new Map<string, Promise<void>>();
+
+  /**
+   * O erro de cada escrita, pelo DONO dela (o id do palpite/aposta).
+   *
+   * Existe porque `primeiroErro` é um slot ÚNICO por sala, e quem chama `flush()`
+   * primeiro CONSOME o erro — de qualquer um. Medido numa sala com 3 fãs: o
+   * palpite de um falhou e a exceção saiu no POST de OUTRO. O fã inocente levou
+   * 500 por um palpite que estava bom, e o dono do erro ouviu "registrado" para
+   * um palpite que não existe. É a mentira que este arquivo diz existir para
+   * impedir, entregue ao fã errado.
+   */
+  const erroDoDono = new Map<string, Error>();
+
+  /**
+   * Dispara a escrita sem deixar a rejeição escapar para o process.
+   * `dono` = a quem este erro pertence, para o flush não julgar o palpite alheio.
+   */
+  function disparar(contexto: string, fn: () => Promise<unknown>, dono?: string): Promise<void> {
     const pr = fn()
       .then(() => undefined)
       .catch((e: unknown) => {
         const erro = e instanceof Error ? e : new Error(String(e));
         if (!primeiroErro) primeiroErro = erro;
+        if (dono) erroDoDono.set(dono, erro);
         onError(erro, contexto);
       })
       .finally(() => {
         emVoo.delete(pr);
       });
     emVoo.add(pr);
+    return pr;
   }
 
   return {
@@ -130,10 +159,35 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
       //   1) quando o fã palpita        -> result == null -> registra
       //   2) quando a pergunta resolve  -> result != null -> paga o XP, 1x só
       // O segundo caso passa pelo CAS do settle: replay não paga de novo.
-      disparar(`savePrediction(${p.id})`, () =>
-        p.result == null
-          ? predictions.place(p)
-          : predictions.settle(p.id, p.result, p.awardedXp ?? 0)
+      //
+      // ============================================================
+      // POR QUE ESPERA A PERGUNTA (e por que isto perdia palpite)
+      // ============================================================
+      // `predictions.question_id` referencia `questions.id`. O core chama
+      // `saveQuestion(q)` ao abrir e `savePrediction(p)` quando o fã responde —
+      // as duas fire-and-forget, sem ordem entre elas, e em CONEXÕES DIFERENTES
+      // do pool. Quem palpita rápido chega antes da pergunta existir e leva
+      // violação de FK (23503).
+      //
+      // E "rápido" não é caso raro: é JUSTO QUEM O BÔNUS DE 1.5x PREMIA. Medido
+      // numa partida: 4 palpites perdidos, e um fã terminou com 675 XP no
+      // ranking e 450 no banco — 225 XP que o motor pagou em memória e o
+      // Postgres nunca viu. Some calado: o `disparar` engole a rejeição (tem
+      // que engolir, senão derruba o processo), e o fã vê o XP na tela.
+      //
+      // O `.catch` no await é de propósito: se a ESCRITA DA PERGUNTA falhou, o
+      // erro é dela e já foi registrado — o palpite tenta assim mesmo e falha
+      // com o erro DELE, que é o que o fã precisa ouvir. Não herdamos culpa.
+      disparar(
+        `savePrediction(${p.id})`,
+        async () => {
+          if (p.result == null) {
+            await perguntaEmVoo.get(p.questionId)?.catch(() => {});
+            return predictions.place(p);
+          }
+          return predictions.settle(p.id, p.result, p.awardedXp ?? 0);
+        },
+        p.id,
       );
     },
 
@@ -147,7 +201,10 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
     },
 
     saveQuestion(q: Question): void {
-      disparar(`saveQuestion(${q.id})`, () => questions.save(q));
+      // Guarda a promise por id: é nela que `savePrediction` espera para não
+      // estourar a FK. Sem isto, o palpite rápido chega antes da pergunta existir.
+      const pr = disparar(`saveQuestion(${q.id})`, () => questions.save(q));
+      perguntaEmVoo.set(q.id, pr);
     },
 
     saveMarket(m: Market): void {
@@ -160,6 +217,30 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
         const e = primeiroErro;
         primeiroErro = null; // consumido: o próximo flush julga só o que vier depois
         throw e;
+      }
+    },
+
+    /**
+     * Espera as escritas e estoura SÓ se a de `dono` falhou. É o que a rota do
+     * palpite deve usar — `flush()` julga a sala inteira.
+     *
+     * O `flush()` sem dono tem um defeito que só aparece com mais de um fã: o
+     * `primeiroErro` é um slot único e quem chega primeiro CONSOME o erro de
+     * quem for. Medido: o palpite de um fã falhou e a exceção saiu no POST de
+     * outro — o inocente levou 500 por um palpite bom, e o dono do erro ouviu
+     * "registrado" para um palpite que não existe. Numa sala de um fã só isso
+     * não aparece; no France × England, com todo mundo palpitando junto, é o
+     * caso normal.
+     */
+    async flushDe(dono: string): Promise<void> {
+      while (emVoo.size > 0) await Promise.all([...emVoo]);
+      const erro = erroDoDono.get(dono);
+      if (erro) {
+        erroDoDono.delete(dono);
+        // O slot global também é limpo se o erro consumido for o mesmo objeto:
+        // senão o próximo `flush()` genérico ressuscita um erro já entregue.
+        if (primeiroErro === erro) primeiroErro = null;
+        throw erro;
       }
     },
 

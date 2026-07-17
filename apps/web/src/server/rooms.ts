@@ -46,6 +46,16 @@ export type RoomState = {
   finished: boolean;
   questions: Question[];
   feed: { minute: number | null; action: string; goals: { p1: number; p2: number } | null }[];
+  /**
+   * O bloco `Score.Total` acumulado, chave a chave. Vazio até o primeiro evento
+   * com Score — e vazio é a leitura honesta: a partida ainda não trouxe total
+   * nenhum. Quem preencher com zeros aqui inventa estatística (G6).
+   *
+   * O conjunto de chaves é DESTA partida, não uma lista fixa: medido no England
+   * × Argentina, o Total inteiro é `{ Goals, Corners, YellowCards }` — sem
+   * `Shots`, sem `Possession`. A UI mostra o que vier; nada mais.
+   */
+  totals: { p1: Record<string, number>; p2: Record<string, number> };
 };
 
 /**
@@ -108,6 +118,7 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     finished: false,
     questions: [],
     feed: [],
+    totals: { p1: {}, p2: {} },
   };
 
   const sala: Room = {
@@ -136,6 +147,11 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
         type: 'question_open',
         ts,
         questionId: q.id,
+        // O TIPO da pergunta (next_goal/hilo_corners/final_result). A tela usa
+        // como rótulo do card. Vai como `qtype` porque `type` já é o nome do
+        // EVENTO no envelope do §8 — dois `type` no mesmo objeto é confusão
+        // garantida na primeira leitura.
+        qtype: q.type,
         prompt: q.prompt,
         // `pct` vem do OddsExplainer, que esta sala ainda não roda. null é a
         // leitura honesta e é a MESMA do G8 ("a TxLINE não mandou preço"):
@@ -240,9 +256,49 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
       if (!ehScore(ev)) return;
       sala.engine.onScoreEvent(ev);
 
-      const mudou = ev.hasScore && (ev.goals.p1 !== state.score.p1 || ev.goals.p2 !== state.score.p2);
+      // `hasScore` NÃO basta para mover o placar, e a diferença é a distância
+      // entre 1 × 2 e 0 × 0 no meio do jogo.
+      //
+      // Medido nesta partida: 23 dos 47 eventos com `hasScore: true` trazem o
+      // bloco `Total` SEM a chave `Goals` — e, sem a chave, `ev.goals` vem
+      // {0,0} de placeholder. As chaves entram no Total DURANTE o jogo (a de
+      // `Goals` só aparece no 1º gol, seq 539); antes disso o Total vem vazio.
+      //
+      // Aqui o A4 entra pela porta do G7: dentro do Total, chave ausente É zero
+      // (G7) — mas um Total que não fala de gols não está dizendo "0 a 0", está
+      // calado. Confiar no `hasScore` sozinho faz o placar REGREDIR ao primeiro
+      // evento pós-gol cujo Total não cite `Goals`.
+      //
+      // Nesta partida isso não acontece (depois do seq 539 a chave nunca mais
+      // falta), e é por isso que o placar fecha 1 × 2. Isso é SORTE DESTA
+      // PARTIDA, não garantia — e o France × England é outra partida. Só move o
+      // placar quem realmente fala de gols.
+      const falaDeGols =
+        ev.totals?.p1?.Goals !== undefined || ev.totals?.p2?.Goals !== undefined;
+      const mudou =
+        ev.hasScore &&
+        falaDeGols &&
+        (ev.goals.p1 !== state.score.p1 || ev.goals.p2 !== state.score.p2);
       if (mudou) state.score = { p1: ev.goals.p1, p2: ev.goals.p2 };
       if (typeof ev.clockSeconds === 'number') state.minute = Math.floor(ev.clockSeconds / 60);
+
+      // Os totais só valem com o bloco Score (A4): sem ele não há Total nenhum,
+      // e sobrescrever aqui zeraria a aba inteira num evento de lineup.
+      //
+      // MERGE por chave, nunca `state.totals = ev.totals`. As chaves entram no
+      // Total ao longo do jogo, não no apito: medido nesta partida, `Goals` só
+      // aparece no 1º gol (seq 539) — dos 47 eventos com Score, 24 têm `Goals`,
+      // 46 têm `Corners` e o primeiro (seq 76) traz o Total VAZIO. Trocar o mapa
+      // inteiro faria a linha de Gols piscar e sumir a cada evento que não a
+      // trouxesse: é o G7 na tela ("chave ausente = zero → linhas somem"). Como
+      // são contadores acumulados do feed (medido: zero regressões), a última
+      // leitura de cada chave é a verdade dela.
+      if (ev.hasScore && ev.totals) {
+        state.totals = {
+          p1: { ...state.totals.p1, ...ev.totals.p1 },
+          p2: { ...state.totals.p2, ...ev.totals.p2 },
+        };
+      }
 
       if (ehLance(ev, mudou)) {
         const lance = {
@@ -261,6 +317,11 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
           scoreA: mudou ? state.score.p1 : null,
           scoreB: mudou ? state.score.p2 : null,
           lance,
+          // O ACUMULADO inteiro, não o delta — e é de propósito. Todo evento que
+          // mexe nos totais nesta partida também vira lance (medido: 0 exceções),
+          // mas se um dia não virar, o snapshot seguinte conserta a tela sozinho.
+          // Delta perdido no caminho ficaria errado para sempre.
+          totals: state.totals,
         });
       }
     },
@@ -328,8 +389,13 @@ export async function palpitar(
   const r = sala.engine.place(user, questionId, choice);
   if (!r.ok) return r;
   // `place` devolve ok ANTES de o INSERT terminar (as portas são
-  // fire-and-forget). Sem este flush o fã ouve "palpite registrado" e o palpite
+  // fire-and-forget). Sem esperar, o fã ouve "palpite registrado" e o palpite
   // pode não existir — mentir para o torcedor é pior que dar erro.
-  await sala.ports.flush();
+  //
+  // `flushDe` e não `flush`: o flush genérico julga a sala INTEIRA e entrega o
+  // erro do primeiro que falhou a quem chamar primeiro. Numa sala com vários
+  // fãs — que é o caso do France × England — isso faz um levar 500 pelo palpite
+  // do outro. Cada um espera pelo SEU.
+  await sala.ports.flushDe(r.prediction.id);
   return { ok: true };
 }
