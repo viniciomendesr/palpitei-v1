@@ -34,15 +34,47 @@ export default function OnboardingPage() {
 
   const [step, setStep] = useState(0);
   const [nameDraft, setNameDraft] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [erroNome, setErroNome] = useState<string | null>(null);
 
   if (!ready || !session) return null;
 
   const draft = nameDraft.trim();
   const nameInvalid = !isNicknameValid(nameDraft);
 
-  const next = () => {
+  const next = async () => {
     // O apelido só é gravado ao SAIR do passo 1, e só se for válido.
-    if (step === 1 && !nameInvalid) update({ nickname: draft });
+    //
+    // Grava no SERVIDOR primeiro, e só avança se ele aceitar. O `update` local
+    // sozinho pintava o apelido na tela e deixava `users.handle` NULL: o fã via
+    // o próprio nome no perfil e aparecia no ranking da sala como "sem apelido"
+    // — a tela mentindo sobre o que o servidor sabe.
+    //
+    // A ORDEM importa: local antes do POST deixaria o apelido na tela mesmo
+    // quando o 409 recusasse, que é o mesmo bug com passo extra.
+    if (step === 1) {
+      if (nameInvalid || salvando) return;
+      setSalvando(true);
+      setErroNome(null);
+      const { api, ApiError } = await import('@/lib/api');
+      try {
+        await api.setHandle(draft);
+      } catch (e) {
+        // 409 = o apelido já é de outra pessoa. O fã PRECISA ver isso: o apelido
+        // é público e é por ele que a sala inteira vai chamá-lo. A mensagem do
+        // ApiError é a do DOMÍNIO (pt-BR, sem culpar o fã) — reescrevê-la aqui
+        // criaria uma segunda verdade sobre a MESMA regra.
+        //
+        // Só o ApiError, porém: um `fetch` que nem saiu do browser estoura
+        // TypeError('Failed to fetch'), e despejar isso na tela é jogar erro de
+        // rede em inglês na cara de quem só queria escolher um apelido.
+        setErroNome(e instanceof ApiError ? e.message : t.nameSaveFailed);
+        return;
+      } finally {
+        setSalvando(false);
+      }
+      update({ nickname: draft });
+    }
     setStep((s) => s + 1);
   };
 
@@ -220,7 +252,16 @@ export default function OnboardingPage() {
             >
               {t.obNameBody}
             </p>
-            <NicknameInput value={nameDraft} onChange={setNameDraft} invalid={nameInvalid} />
+            <NicknameInput
+              value={nameDraft}
+              onChange={(v) => {
+                setNameDraft(v);
+                // O erro é sobre o apelido ANTERIOR: mantê-lo enquanto o fã
+                // digita outro acusa de repetido um apelido que ninguém checou.
+                setErroNome(null);
+              }}
+              invalid={nameInvalid}
+            />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
               <span
                 style={{
@@ -235,9 +276,24 @@ export default function OnboardingPage() {
                 {draft.length}/{MAX_NICK}
               </span>
             </div>
+            {erroNome && (
+              <p
+                role="alert"
+                style={{
+                  marginTop: 12,
+                  fontSize: 12.5,
+                  fontWeight: fw.bold,
+                  lineHeight: 'var(--leading-body)',
+                  color: 'var(--red)',
+                  textWrap: 'pretty',
+                }}
+              >
+                {erroNome}
+              </p>
+            )}
           </div>
           <div style={{ flex: 'none' }}>
-            <Button size="lg" full disabled={nameInvalid} onClick={next}>
+            <Button size="lg" full disabled={nameInvalid || salvando} onClick={next}>
               {t.obContinue}
             </Button>
           </div>

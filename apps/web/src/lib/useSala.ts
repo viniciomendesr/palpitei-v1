@@ -77,6 +77,15 @@ export type SalaState = {
   totals: SalaTotais;
 };
 
+/**
+ * Uma linha do ranking DA SALA (XP desta partida, não o global).
+ *
+ * `name` vazio = o fã ainda não escolheu apelido. É o que o servidor sabe, e a
+ * tela tem que dizer isso — nunca preencher com um nome inventado (E12).
+ * Não há userId aqui: o servidor não manda o id interno de terceiros.
+ */
+export type SalaRankRow = { name: string; xp: number; me?: boolean };
+
 export type SalaResultado = {
   questionId: string;
   prompt: string;
@@ -102,6 +111,7 @@ export function useSala(fixtureId: string, ativo: boolean) {
   const [state, setState] = useState<SalaState | null>(null);
   const [desafios, setDesafios] = useState<SalaDesafio[]>([]);
   const [resultados, setResultados] = useState<SalaResultado[]>([]);
+  const [ranking, setRanking] = useState<SalaRankRow[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   /** O enunciado de cada pergunta, para o resultado poder dizer do que se tratava. */
   const enunciados = useRef<Map<string, string>>(new Map());
@@ -248,6 +258,13 @@ export function useSala(fixtureId: string, ativo: boolean) {
             return;
           }
 
+          case 'ranking': {
+            // O servidor já ordenou e já marcou quem sou eu. A tela não soma XP
+            // nem reordena: quem conta o ranking é quem pagou o XP.
+            setRanking(msg.rows as SalaRankRow[]);
+            return;
+          }
+
           case 'game_end':
           case 'replay_done': {
             setState((p) => (p ? { ...p, finished: true } : p));
@@ -290,5 +307,5 @@ export function useSala(fixtureId: string, ativo: boolean) {
     [fixtureId],
   );
 
-  return { state, desafios, resultados, erro, palpitar };
+  return { state, desafios, resultados, ranking, erro, palpitar };
 }

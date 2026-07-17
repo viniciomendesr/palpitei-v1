@@ -71,6 +71,10 @@ const pt = {
   salaCorrectWas: 'A resposta certa era',
   salaVoid: 'Desafio anulado',
   salaVoidBody: 'O lance que resolvia chegou antes da janela fechar. Sem XP — e é justo: ninguém podia ter palpitado a tempo.',
+  salaRankEmpty: 'Ninguém pontuou ainda. Assim que o primeiro desafio for resolvido, a lista aparece aqui.',
+  // O fã que ainda não passou pelo passo do apelido. Dizer isso é o certo: o
+  // apelido é público e nunca sai do e-mail (E12), então não há nome pra mostrar.
+  salaNoHandle: 'sem apelido',
   lanceGoal: 'GOL',
   lanceKickoff: 'A bola rolou',
   lanceCorner: 'Escanteio',
@@ -245,7 +249,11 @@ const pt = {
   cancel: 'Cancelar',
   save: 'Salvar',
   nameHintShort: 'Mínimo de 3 caracteres',
-  nameHintOk: 'Apelido disponível',
+  // 'disponível' era promessa que esta tela não tem como cumprir: quem sabe se o
+  // apelido está livre é o UNIQUE do banco, e só quando o fã confirma. A dica é
+  // do que dá pra conferir aqui — o tamanho.
+  nameHintOk: 'Apelido válido',
+  nameSaveFailed: 'Não deu para salvar o apelido agora. Tenta de novo.',
   meSubYou: 'Resenha FC · você',
   fimTitle: 'FIM DE JOGO',
   fimScorers: 'Gols: Messi 23’ · Semedo 58’ · Álvarez 67’',
@@ -452,6 +460,8 @@ const en: Dict = {
   salaCorrectWas: 'The right answer was',
   salaVoid: 'Challenge voided',
   salaVoidBody: 'The deciding play landed before the window closed. No XP — and that is fair: nobody could have picked in time.',
+  salaRankEmpty: 'Nobody has scored yet. The list shows up here as soon as the first challenge is settled.',
+  salaNoHandle: 'no nickname',
   lanceGoal: 'GOAL',
   lanceKickoff: 'Kick-off',
   lanceCorner: 'Corner',
@@ -611,7 +621,8 @@ const en: Dict = {
   cancel: 'Cancel',
   save: 'Save',
   nameHintShort: 'At least 3 characters',
-  nameHintOk: 'Nickname available',
+  nameHintOk: 'Nickname looks good',
+  nameSaveFailed: "Couldn't save your nickname right now. Give it another go.",
   meSubYou: 'Resenha FC · you',
   fimTitle: 'FULL TIME',
   fimScorers: 'Goals: Messi 23’ · Semedo 58’ · Álvarez 67’',

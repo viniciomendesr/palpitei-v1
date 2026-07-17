@@ -26,7 +26,15 @@
  */
 
 import { QuestionEngine, XP_BASE, cursorClock, type ReplayCursor } from '@palpitei/core';
-import type { Fixture, NormEvent, Question, RoomMessage, ScoreEvent, User } from '@palpitei/core';
+import type {
+  Fixture,
+  NormEvent,
+  Question,
+  ResolvedResult,
+  RoomMessage,
+  ScoreEvent,
+  User,
+} from '@palpitei/core';
 import { ReplayRunner } from '@palpitei/txline';
 import { createDb, createEnginePorts, createEventRepo, createMatchRepo } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
@@ -78,6 +86,18 @@ type Room = {
   cursor: ReplayCursor;
   state: RoomState;
   subs: Set<Sub>;
+  /**
+   * O ranking DESTA sala: XP ganho nesta partida, por fã. Não é o global —
+   * `users.xp` é a soma da vida inteira e entrar numa sala no segundo tempo não
+   * pode parecer disputa perdida. Vive aqui, com a sala, e morre com ela.
+   */
+  xpDaSala: Map<string, number>;
+  /**
+   * O apelido de cada fã, como o motor o viu no palpite. É o ÚNICO nome que sai
+   * daqui para o browser (E12: o e-mail nunca vira apelido, e o userId interno
+   * não é da conta de terceiros).
+   */
+  apelidos: Map<string, string>;
   /** Timer da carência: sala vazia espera antes de morrer (um F5 não é adeus). */
   desligar: ReturnType<typeof setTimeout> | null;
   /** Quem desliga tudo quando o último fã sai ou o jogo acaba. */
@@ -128,6 +148,8 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     cursor,
     state,
     subs: new Set(),
+    xpDaSala: new Map(),
+    apelidos: new Map(),
     desligar: null,
     engine: null as unknown as QuestionEngine,
     runner: null as unknown as ReplayRunner,
@@ -220,6 +242,35 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     }
   };
 
+  /**
+   * Acumula no ranking da sala o que o MOTOR pagou. `awardedXp` é o veredito
+   * dele — aqui não se recalcula nada: recontar o bônus de velocidade a partir
+   * do `result` daria uma segunda tabela de XP, e duas tabelas divergem.
+   *
+   * Anulada (`void`) também entra, com 0: quem palpitou está na sala e some do
+   * ranking seria mentira por omissão. 0 XP é a verdade, não é ausência.
+   */
+  const registrarNoRanking = (results: ResolvedResult[]) => {
+    for (const r of results) {
+      sala.xpDaSala.set(r.userId, (sala.xpDaSala.get(r.userId) ?? 0) + r.awardedXp);
+      // O motor manda '' quando o fã ainda não escolheu apelido (paraCore não
+      // coage NULL) e '?' quando não achou o fã. Nenhum dos dois pode APAGAR um
+      // apelido que já conhecíamos — e nenhum dos dois vira nome na tela.
+      if (r.handle && r.handle !== '?') sala.apelidos.set(r.userId, r.handle);
+    }
+  };
+
+  /** O ranking, por assinante — porque `me` é escrito na primeira pessoa (§8). */
+  const publicarRanking = () => {
+    for (const sub of sala.subs) {
+      try {
+        sub.enviar(rankingDaSala(sala, sub.userId));
+      } catch {
+        // idem
+      }
+    }
+  };
+
   sala.engine = new QuestionEngine({
     fixture,
     clock,
@@ -240,7 +291,16 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
       }
       if (msg.type === 'game_end') state.finished = true;
       state.questions = sala.engine.allQuestions();
+      // O ranking se move ANTES de o evento sair: quem receber o
+      // `question_resolved` e pedir o ranking no mesmo tick tem que ver o XP
+      // que acabou de ganhar já contado.
+      if (msg.type === 'question_resolved' || msg.type === 'question_void') {
+        registrarNoRanking((msg.results ?? []) as ResolvedResult[]);
+      }
       publicar(msg);
+      if (msg.type === 'question_resolved' || msg.type === 'question_void') {
+        publicarRanking();
+      }
     },
   });
 
@@ -351,6 +411,32 @@ export async function abrirSala(fixtureId: number): Promise<Room | null> {
 
 export function estadoDaSala(sala: Room): RoomState {
   return { ...sala.state, questions: sala.engine.openQuestions() };
+}
+
+/**
+ * O ranking desta sala NA VOZ DESTE FÃ — o evento `ranking` do §8.
+ *
+ * Repare no que NÃO atravessa: o `userId` interno. Ele é a chave da conta de
+ * outra pessoa e o browser não tem o que fazer com ele; a única coisa que o fã
+ * precisa saber sobre os outros é o apelido (que é público de propósito) e o XP.
+ * `me` é calculado aqui, por assinante, pelo mesmo motivo que o `gained` do
+ * `question_resolved`: o contrato é escrito na primeira pessoa.
+ *
+ * `name: ''` diz "ainda não escolheu apelido" e é a leitura HONESTA — quem
+ * renderizar tem que dizer isso ao fã. Inventar um nome aqui (ou, pior, sacar um
+ * do e-mail) é o E12 com outra roupa.
+ */
+export function rankingDaSala(sala: Room, userId: string | null): RoomMessage {
+  const rows = [...sala.xpDaSala.entries()]
+    .map(([id, xp]) => ({
+      name: sala.apelidos.get(id) ?? '',
+      xp,
+      me: userId !== null && id === userId,
+    }))
+    // Empate mantém quem pontuou primeiro na frente: o sort do JS é estável e o
+    // Map itera na ordem de inserção.
+    .sort((a, b) => b.xp - a.xp);
+  return { type: 'ranking', ts: sala.cursor.matchTs, rows };
 }
 
 /**

@@ -12,7 +12,7 @@
 
 import { PrivyClient } from '@privy-io/server-auth';
 import { createDb, createUserRepo } from '@palpitei/db';
-import { abrirSala, assinar, estadoDaSala } from '@/server/rooms';
+import { abrirSala, assinar, estadoDaSala, rankingDaSala } from '@/server/rooms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,6 +88,10 @@ export async function GET(
       // O primeiro pacote é o estado INTEIRO. Sem isto quem chega no minuto 60
       // vê 0 × 0 até o próximo lance — e o placar mentiria por omissão.
       mandar({ type: 'room_state', state: estadoDaSala(sala) });
+      // Pelo mesmo motivo, o ranking de agora: ele só é republicado quando uma
+      // pergunta resolve, e sem este pacote quem chega no minuto 60 vê a aba
+      // vazia — "ninguém pontuou" — até o próximo desafio cair.
+      mandar(rankingDaSala(sala, userId));
       desassinar = assinar(sala, { userId, enviar: mandar });
 
       // O abort do cliente é o único sinal confiável de que ele foi embora.

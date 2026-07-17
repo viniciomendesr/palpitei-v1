@@ -227,8 +227,9 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
   // Espera a ilha ficar pronta ANTES de abrir o stream. O React roda efeitos de
   // baixo pra cima: no primeiro mount, o efeito desta tela corre antes de o
   // PrivyIsland (mãe) registrar o authTokenProvider — o token sai null, o SSE vai
-  // sem Bearer e o fã LOGADO lê "sem sessão verificada".
-  const { state, desafios, resultados, erro, palpitar } = useSala(
+  // sem Bearer e o fã LOGADO lê "sem sessão verificada". É a mesma corrida que
+  // derrubou a home; a lição é a mesma.
+  const { state, desafios, resultados, ranking, erro, palpitar } = useSala(
     fixtureId,
     privy.ready && privy.authenticated,
   );
@@ -489,15 +490,61 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
               {t.salaStatsWaiting}
             </p>
           ))}
-
-        {/* O ranking desta sala ainda não tem fonte real: o ranking dos palpites
-            vive no servidor e não está exposto. Preferimos dizer isso a mostrar o
-            mock por cima do dado real — que é o G6 que este projeto evita. */}
         {tab === 'ranking' && (
-          <p style={{ textAlign: 'center', padding: 28, fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-muted)' }}>
-            {t.salaEmBreve}
-          </p>
+          <>
+            <div style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)', marginBottom: 10 }}>
+              {t.roomRanking}
+            </div>
+            {/* Sem "N na sala": o servidor manda quem PONTUOU, não quem está
+                assistindo. Chamar uma coisa de outra é rótulo mentindo (G6). */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {ranking.map((r, i) => {
+                const pos = i + 1;
+                return (
+                  <div
+                    key={`${r.name}-${i}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: 'var(--r-lg)',
+                      background: r.me ? 'var(--lime-a10)' : 'var(--surface-1)',
+                      border: `1px solid ${r.me ? 'var(--lime-line)' : 'var(--border-1)'}`,
+                    }}
+                  >
+                    <span style={{ fontWeight: fw.black, fontSize: 13, color: pos <= 3 ? 'var(--gold)' : 'var(--text-muted)', minWidth: 20 }}>
+                      {pos}
+                    </span>
+                    <span
+                      style={{
+                        flex: 1,
+                        fontWeight: fw.bold,
+                        fontSize: 14,
+                        // Apelido vazio = o fã não passou pelo passo do apelido.
+                        // Dizer "sem apelido" é a leitura honesta; inventar um
+                        // nome (ou sacar do e-mail) é o E12 (§4).
+                        fontStyle: r.name ? 'normal' : 'italic',
+                        color: r.me ? 'var(--lime)' : r.name ? 'var(--text-hi)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {r.me ? t.you : r.name || t.salaNoHandle}
+                    </span>
+                    <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--gold)' }}>
+                      {fmt(r.xp)} XP
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {!ranking.length && (
+              <p style={{ textAlign: 'center', padding: 28, fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-muted)' }}>
+                {t.salaRankEmpty}
+              </p>
+            )}
+          </>
         )}
+
       </Screen>
 
       {/* O DESAFIO, POR CIMA DE TUDO.
