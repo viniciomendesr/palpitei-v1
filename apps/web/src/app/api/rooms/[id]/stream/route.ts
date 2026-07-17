@@ -12,6 +12,7 @@
 
 import { PrivyClient } from '@privy-io/server-auth';
 import { createDb, createUserRepo } from '@palpitei/db';
+import { PULSO, iniciarPulso } from '@/server/pulso';
 import {
   abrirSala,
   assinar,
@@ -92,6 +93,7 @@ export async function GET(
 
   const enc = new TextEncoder();
   let desassinar = () => {};
+  let pararPulso = () => {};
 
   const stream = new ReadableStream({
     start(controller) {
@@ -114,8 +116,15 @@ export async function GET(
       mandar(rankingDaSala(sala, userId));
       desassinar = assinar(sala, { userId, enviar: mandar });
 
+      // O pulso: comentário SSE a cada ~20s. O stream só fala quando há lance,
+      // e AO VIVO há minutos de silêncio — proxy (o edge do Railway incluído)
+      // derruba conexão SSE ociosa. Ver src/server/pulso.ts. O enqueue em
+      // conexão morta lança, e o iniciarPulso engole: o abort abaixo limpa.
+      pararPulso = iniciarPulso(() => controller.enqueue(enc.encode(PULSO)));
+
       // O abort do cliente é o único sinal confiável de que ele foi embora.
       req.signal.addEventListener('abort', () => {
+        pararPulso();
         desassinar();
         try {
           controller.close();
@@ -125,6 +134,7 @@ export async function GET(
       });
     },
     cancel() {
+      pararPulso();
       desassinar();
     },
   });

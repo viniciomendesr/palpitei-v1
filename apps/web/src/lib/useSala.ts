@@ -25,6 +25,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { esperaDeReconexao } from '@/lib/reconexao';
 
 export type SalaOpcao = { id: string; label: string; pct: number | null };
 
@@ -150,19 +151,60 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     if (!ativo) return;
     let vivo = true;
     let es: EventSource | null = null;
+    /** O timer da PRÓXIMA tentativa — no máximo um; dois abririam duas conexões. */
+    let proxima: ReturnType<typeof setTimeout> | null = null;
+    let tentativa = 0;
+    /** Já chegou room_state? Decide se queda vira tela de erro ou reconexão muda. */
+    let temEstado = false;
+    /** Trava contra conectar() em paralelo (queda e volta do background juntas). */
+    let conectando = false;
 
-    (async () => {
-      const { getAuthToken } = await import('@/lib/api');
-      const token = await getAuthToken();
+    const agendar = () => {
+      if (!vivo || proxima) return;
+      const espera = esperaDeReconexao(tentativa);
+      tentativa += 1;
+      proxima = setTimeout(() => {
+        proxima = null;
+        void conectar();
+      }, espera);
+    };
+
+    /**
+     * Reconexão MANUAL, nunca a automática do EventSource — por causa do token.
+     * O Bearer vai na URL (EventSource não manda header) e o auto-reconnect
+     * reusa a MESMA URL: com o token da Privy vencido (~1h), a primeira queda
+     * depois disso reconecta num 401 — e status ≠ 200 encerra o EventSource DE
+     * VEZ, sem nova tentativa. Com estado na tela, o onerror antigo não dizia
+     * nada: a sala congelava em silêncio, placar parado com cara de saudável.
+     * Aqui toda conexão nasce com token FRESCO de getAuthToken() (a Privy
+     * renova por baixo) e a queda agenda outra tentativa, com backoff.
+     */
+    const conectar = async () => {
+      if (!vivo || conectando) return;
+      conectando = true;
+      es?.close();
+      es = null;
+      // Rejeição (a ilha reidratando na volta do background) vira null — e
+      // null reagenda, não desiste.
+      const token = await import('@/lib/api')
+        .then((m) => m.getAuthToken())
+        .catch(() => null);
+      conectando = false;
       if (!vivo) return;
       if (!token) {
-        setErro('sem sessão verificada');
+        if (!temEstado) setErro('sem sessão verificada');
+        agendar();
         return;
       }
 
       es = new EventSource(
         `/api/rooms/${encodeURIComponent(fixtureId)}/stream?token=${encodeURIComponent(token)}`,
       );
+
+      es.onopen = () => {
+        // Conexão de pé: a próxima queda recomeça o backoff do zero.
+        tentativa = 0;
+      };
 
       const tirar = (id: string) => setDesafios((ds) => ds.filter((d) => d.questionId !== id));
 
@@ -172,6 +214,12 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
 
         switch (msg.type) {
           case 'room_state': {
+            // Chegou estado: daqui em diante uma queda não vira tela de erro,
+            // vira reconexão calada — e é ESTE pacote que ressemeia a volta.
+            // Tudo abaixo SUBSTITUI (setState/setDesafios/setResultados montam
+            // listas novas; os Maps são set por id): reconectar não duplica.
+            temEstado = true;
+            setErro(null);
             const s = msg.state as SalaState & { questions?: QuestionDoServidor[] };
             setTreino(Boolean(msg.treino));
             setTreinoDaSala(Boolean(msg.treinoDaSala));
@@ -336,13 +384,46 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
       };
 
       es.onerror = () => {
-        // O EventSource reconecta sozinho. Só reclama se nunca chegou estado.
-        if (vivo) setState((p) => (p ? p : (setErro('a conexão com a sala caiu'), p)));
+        // Fecha e recria com token FRESCO em vez de confiar no auto-reconnect
+        // (o porquê está no comentário do conectar). Erro de tela só se NUNCA
+        // chegou estado; com a sala desenhada, a reconexão é calada — e o
+        // room_state do reencontro ressemeia tudo (substitui, não duplica).
+        es?.close();
+        es = null;
+        if (!vivo) return;
+        if (!temEstado) setErro('a conexão com a sala caiu');
+        agendar();
       };
-    })();
+    };
+
+    /**
+     * A volta do background. Safari/Chrome mobile matam o EventSource da aba
+     * de fundo, e o timer de reconexão dorme junto com ela: sem isto o fã
+     * voltava para uma sala parada — dados velhos, ou conexão morta — até o
+     * timer acordar, se acordasse. Se a conexão não está viva, reconecta JÁ,
+     * com token fresco e backoff zerado.
+     */
+    const aoVoltar = () => {
+      if (!vivo || conectando || document.visibilityState !== 'visible') return;
+      // CONNECTING e OPEN seguem seu curso; só CLOSED (ou nenhum) precisa de ajuda.
+      if (es && es.readyState !== EventSource.CLOSED) return;
+      if (proxima) {
+        clearTimeout(proxima);
+        proxima = null;
+      }
+      tentativa = 0;
+      void conectar();
+    };
+
+    void conectar();
+    document.addEventListener('visibilitychange', aoVoltar);
+    window.addEventListener('pageshow', aoVoltar);
 
     return () => {
       vivo = false;
+      document.removeEventListener('visibilitychange', aoVoltar);
+      window.removeEventListener('pageshow', aoVoltar);
+      if (proxima) clearTimeout(proxima);
       es?.close();
     };
   }, [fixtureId, ativo]);
