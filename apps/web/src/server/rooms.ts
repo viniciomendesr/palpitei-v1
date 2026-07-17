@@ -212,7 +212,14 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
       // O core NÃO conhece a porta saveQuestion (o contrato dele tem só
       // uid/savePrediction/saveBet). Sem gravar a pergunta aqui, o primeiro
       // palpite estoura FK: predictions referencia questions.
-      if (msg.type === 'question_open' && msg.question) {
+      //
+      // E tem que gravar de novo ao RESOLVER/ANULAR. Gravar só na abertura
+      // deixava `questions.state` em 'open' para sempre: medido, 101 perguntas
+      // no banco e nenhuma fora de 'open', com a partida terminada e os palpites
+      // já liquidados. O `correct` e o `voidReason` também nunca chegavam. Quem
+      // lesse a tabela veria uma partida inteira "em aberto" — e é dela que o
+      // ranking e o histórico vão sair.
+      if (msg.question && (msg.type === 'question_open' || msg.type === 'question_resolved' || msg.type === 'question_void')) {
         ports.saveQuestion(msg.question as Question);
       }
       if (msg.type === 'game_end') state.finished = true;
