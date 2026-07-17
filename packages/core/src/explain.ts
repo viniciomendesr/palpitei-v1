@@ -25,7 +25,13 @@ function fmtPct(x: number): string {
 export class OddsExplainer {
   private fixture: Fixture;
   private emit: EngineEmit;
-  private lastPcts = new Map<string, number>(); // `${mercado}|${priceName}` -> pct
+  /**
+   * A referência da ÚLTIMA leitura que chegou à tela, por opção. Não é o
+   * último tick bruto: a TxLINE frequentemente reparte uma mudança relevante
+   * em dezenas de ajustes de décimos. Comparar só ticks vizinhos faz a chance
+   * andar o primeiro tempo inteiro sem nunca virar leitura.
+   */
+  private lastExplainedPcts = new Map<string, number>(); // `${mercado}|${priceName}` -> pct
   private lastAction: { action: string; ts: number } | null = null;
 
   constructor(opts: { fixture: Fixture; emit: EngineEmit }) {
@@ -41,12 +47,18 @@ export class OddsExplainer {
     const marketKey = `${ev.marketType}|${ev.marketPeriod ?? ""}|${ev.line ?? ""}`;
     for (const price of ev.prices) {
       const key = `${marketKey}|${price.name}`;
-      const prev = this.lastPcts.get(key);
-      this.lastPcts.set(key, price.pct); // cache atualiza SEMPRE, mesmo sem emitir
-      if (prev === undefined) continue;
+      const prev = this.lastExplainedPcts.get(key);
+      // A primeira cotação só estabelece a referência. Depois, ela só avança
+      // quando uma leitura é publicada: assim pequenos ajustes consecutivos
+      // acumulam até o limiar sem transformar cada microvariação em ruído.
+      if (prev === undefined) {
+        this.lastExplainedPcts.set(key, price.pct);
+        continue;
+      }
 
       const delta = price.pct - prev;
       if (Math.abs(delta) < DELTA_THRESHOLD_PP) continue;
+      this.lastExplainedPcts.set(key, price.pct);
 
       let contexto = "";
       let contextAction: string | undefined;

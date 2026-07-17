@@ -61,18 +61,37 @@ test("a mensagem carrega o CONTEXTO estruturado (contextAction) para a tela redi
   assert.equal(em2[0].contextAction, undefined);
 });
 
-test("delta abaixo de 3 p.p. não emite, mas atualiza o cache", () => {
+test("pequenas variações acumulam desde a última leitura publicada", () => {
   const { ex, emitted } = makeExplainer();
 
   ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
   ex.onOddsEvent(odds(T0 + 1000, [{ name: "over", odds: 2.0, pct: 50.0 }])); // +2.0
   assert.equal(emitted.length, 0);
 
-  // +3.2 em relação ao ÚLTIMO valor (50.0), não ao primeiro
+  // +3.2 em relação ao último tick não bastaria no bug do replay: ele
+  // atualizava a referência a cada tick. A referência fica em 48.0 até a
+  // mudança publicada, então os +5.2 acumulados viram uma leitura real.
   ex.onOddsEvent(odds(T0 + 2000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
   assert.equal(emitted.length, 1);
-  assert.equal(emitted[0].fromPct, 50.0);
+  assert.equal(emitted[0].fromPct, 48.0);
   assert.equal(emitted[0].toPct, 53.2);
+});
+
+test("replay não precisa de uma oscilação isolada de 3 p.p. para mostrar o primeiro tempo", () => {
+  const { ex, emitted } = makeExplainer();
+
+  // Reprodução reduzida da série real: cada tick do primeiro tempo é menor
+  // que 3 p.p., mas a mudança total é material. Antes, a aba Chances só
+  // acordava no primeiro gol do segundo tempo, quando veio um salto enorme.
+  ex.onOddsEvent(odds(T0, [{ name: "1", odds: 2.78, pct: 35.945 }]));
+  ex.onOddsEvent(odds(T0 + 1_000, [{ name: "1", odds: 2.88, pct: 34.722 }]));
+  ex.onOddsEvent(odds(T0 + 2_000, [{ name: "1", odds: 2.95, pct: 33.898 }]));
+  assert.equal(emitted.length, 0);
+
+  ex.onOddsEvent(odds(T0 + 3_000, [{ name: "1", odds: 3.038, pct: 32.916 }]));
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].fromPct, 35.945);
+  assert.equal(emitted[0].toPct, 32.916);
 });
 
 test("delta >= 3 p.p. emite explicação com linha do mercado e contexto do gol", () => {

@@ -488,6 +488,25 @@ regras opostas do mesmo feed. O que esta medição acrescenta é que **elas se e
 a leitura certa do G7 produz o dado que dispara o A4. Conferir cada regra isolada não
 basta — **o bug mora na interação entre as duas**.
 
+### Chances do primeiro tempo não podem depender de um salto isolado
+
+Medido em **17/07** no replay real England × Argentina (`18241006`) no Postgres de
+produção: havia **1.761** cotações 1X2 antes do intervalo. Mesmo assim, a aba Chances
+só tinha leituras a partir de 46': nenhuma variação entre dois ticks consecutivos do
+primeiro tempo chegava a 3 p.p.; o primeiro salto isolado grande foi o pós-gol no segundo
+tempo.
+
+O erro não era ausência de odds, ordem da timeline nem filtro de mercado. Era a régua do
+explicador: ela atualizava a referência em **todo** tick, então dezenas de mudanças reais
+de décimos nunca acumulavam até o limiar. A referência agora é a última leitura publicada
+para aquela opção/mercado: os microajustes seguem silenciosos, mas uma variação acumulada
+de 3 p.p. vira leitura e reinicia a referência. Na própria série, isso produz **6** leituras
+no primeiro tempo (a primeira `part2` 31,201% → 28,169%).
+
+Reproduz consultando `match_odds` da produção para a fixture e comparando `Pct` por
+`PriceName` desde a última leitura emitida; o teste de regressão está em
+`packages/core/test/explain.test.ts` (`replay não precisa de uma oscilação isolada…`).
+
 ### `REPLAY_SPEED=60` fazia a regra de justiça anular quase tudo
 
 Aritmética, que é o argumento — não gosto:
