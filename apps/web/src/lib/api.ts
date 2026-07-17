@@ -169,6 +169,57 @@ export interface PredictionRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Palpite pré-jogo
+// ---------------------------------------------------------------------------
+
+/** O corpo do POST: só os mercados que o fã mexeu (o resto fica de fora). */
+export interface PregamePickRequest {
+  result?: 'home' | 'draw' | 'away' | null;
+  scoreA?: number;
+  scoreB?: number;
+  scoreSet?: boolean;
+  goals?: 'over' | 'under' | null;
+  corners?: 'over' | 'under' | null;
+}
+
+/** O palpite como o banco o guarda (tempos em epoch ms; correções só após liquidar). */
+export interface PregamePick {
+  id: string;
+  userId: string;
+  fixtureId: number;
+  result: 'home' | 'draw' | 'away' | null;
+  scoreA: number;
+  scoreB: number;
+  scoreSet: boolean;
+  goals: 'over' | 'under' | null;
+  corners: 'over' | 'under' | null;
+  submittedAt: number | null;
+  settledAt: number | null;
+  resultCorrect: boolean | null;
+  scoreCorrect: boolean | null;
+  goalsCorrect: boolean | null;
+  cornersCorrect: boolean | null;
+  awardedXp: number | null;
+}
+
+export interface PregameView {
+  match: {
+    fixtureId: number;
+    teamA: string;
+    teamB: string;
+    startTs: number | null;
+    competition: string | null;
+    state: 'scheduled' | 'live' | 'finished' | 'cancelled';
+  };
+  pick: PregamePick | null;
+  /** true quando o apito passou (ou a partida saiu de "agendada"): a tela trava. */
+  locked: boolean;
+  finished: boolean;
+  /** Placar e escanteios finais — presentes só quando a partida encerrou. */
+  final: { goalsA: number; goalsB: number; cornersTotal: number } | null;
+}
+
+// ---------------------------------------------------------------------------
 // Eventos do WS /ws
 // ---------------------------------------------------------------------------
 
@@ -381,6 +432,16 @@ export const api = {
     request<{ ok: true }>(`/api/leagues/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   fixtures: () => request<{ fixtures: ApiFixture[] }>('/api/fixtures'),
+
+  /** Palpite pré-jogo: ler o estado (partida + meu palpite + trava) e salvar. */
+  pregame: {
+    get: (fixtureId: number) => request<PregameView>(`/api/pregame/${fixtureId}`),
+    save: (fixtureId: number, body: PregamePickRequest) =>
+      request<{ ok: true; pick: PregamePick; xpEmJogo: number }>(`/api/pregame/${fixtureId}`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  },
 
   createLobby: (roomId: string) =>
     request<{ ok: true; lobby: ApiLobbyPreview }>('/api/lobbies', {
