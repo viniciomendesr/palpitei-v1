@@ -651,6 +651,13 @@ O CAS em `settled_at` continua sendo obrigatório: reenvio SSE ou a liquidação
 leitura posterior não pagam XP duas vezes. Quando o evento terminal não traz `Score`,
 `totaisFinais` conserva a última chave conhecida (A4/G7) antes de calcular o gabarito.
 
+**17/07 — duas janelas, um único ingest.** `LIVE_FIXTURE_IDS` aceita uma lista separada
+por vírgula; o processo abre **um** par de streams SSE e cria uma fila/persistência/bus
+por fixture. Isso evita trocar configuração entre France × England (`18257865`) e Spain
+× Argentina (`18257739`), sem abrir conexões duplicadas. `LIVE_FIXTURE_ID` continua
+aceito apenas para o runbook antigo. O painel `/api/live/status` lista cada fixture e
+suas contagens de banco separadamente.
+
 Verificação local em 17/07:
 
 ```bash
