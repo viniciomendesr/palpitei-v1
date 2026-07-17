@@ -11,7 +11,8 @@
 //    handicap asiático. O filtro é aqui, na ingestão, e ele CONTA o que
 //    descartou: filtro que descarta em silêncio é como o bug fica escondido.
 
-import type { Db } from '../pool.js';
+import type { Db, Row } from '../pool.js';
+import type { OddsEvent } from '../types.js';
 
 /** O mercado que a v1 consome. */
 export const MERCADO_1X2 = '1X2_PARTICIPANT_RESULT';
@@ -51,6 +52,52 @@ export function chaveDaCotacao(raw: Record<string, any>): string {
   const ts = raw.Ts ?? raw.ts;
   const prices = raw.Prices ?? raw.prices;
   return `${ts}:${prices}`;
+}
+
+function numero(v: unknown): number | undefined {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Projeta as colunas normalizadas do cache diretamente no contrato do replay.
+ * O payload `raw` continua no banco para auditoria, mas não cruza a rede no
+ * caminho interativo de abertura da sala.
+ */
+function mapReplayOdds(r: Row): OddsEvent | null {
+  const names = r.price_names;
+  const priceInts = r.prices;
+  const pcts = r.pct;
+  if (!Array.isArray(names) || !Array.isArray(priceInts) || priceInts.length === 0) return null;
+  if (names.length !== priceInts.length) return null;
+  if (Array.isArray(pcts) && pcts.length !== names.length) return null;
+
+  const prices: OddsEvent['prices'] = [];
+  for (let i = 0; i < names.length; i++) {
+    const raw1000 = numero(priceInts[i]);
+    if (raw1000 === undefined || raw1000 <= 0) continue;
+    const odds = raw1000 / 1000;
+    let pct = Number.parseFloat(String(Array.isArray(pcts) ? pcts[i] : ''));
+    if (!Number.isFinite(pct)) pct = Number(((1 / odds) * 100).toFixed(3));
+    prices.push({ name: String(names[i]), odds, pct });
+  }
+  if (prices.length === 0) return null;
+
+  const ev: OddsEvent = {
+    kind: 'odds',
+    fixtureId: Number(r.fixture_id),
+    ts: Number(r.ts),
+    messageId: String(r.message_id),
+    marketType: String(r.market_type),
+    prices,
+    // A projeção compacta não transporta o payload de auditoria.
+    raw: null,
+  };
+  if (r.market_period != null) ev.marketPeriod = String(r.market_period);
+  if (r.line != null) ev.line = Number(r.line);
+  if (r.in_running != null) ev.inRunning = Boolean(r.in_running);
+  if (r.bookmaker != null) ev.bookmaker = String(r.bookmaker);
+  return ev;
 }
 
 export function createOddsRepo(db: Db) {
@@ -141,6 +188,29 @@ export function createOddsRepo(db: Db) {
         [fixtureId]
       );
       return rows.map((r) => r.raw);
+    },
+
+    /**
+     * Projeção compacta para abrir a sala: usa somente os campos consumidos
+     * pelo OddsExplainer e pelos percentuais 1X2, sem carregar `raw`.
+     */
+    async listReplayByFixture(fixtureId: number): Promise<OddsEvent[]> {
+      const rows = await db.query(
+        `select message_id, fixture_id, ts, market_type, market_period, line,
+                in_running, bookmaker, price_names, prices, pct
+           from match_odds
+          where fixture_id = $1
+            and market_type = $2
+            and market_period is null
+          order by ts, message_id`,
+        [fixtureId, MERCADO_1X2]
+      );
+      const events: OddsEvent[] = [];
+      for (const row of rows) {
+        const ev = mapReplayOdds(row);
+        if (ev) events.push(ev);
+      }
+      return events;
     },
 
     async count(fixtureId: number): Promise<number> {

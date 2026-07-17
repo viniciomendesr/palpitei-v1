@@ -84,6 +84,7 @@ test('atualizarPct1x2 guarda a última leitura por opção e ignora nomes estran
 test('registrarLeitura põe a mais recente PRIMEIRO e respeita o cap', () => {
   const chances: LeituraDeChance[] = [];
   const leitura = (ts: number): LeituraDeChance => ({
+    id: `odds-${ts}:part1`,
     ts,
     minute: null,
     priceName: 'part1',

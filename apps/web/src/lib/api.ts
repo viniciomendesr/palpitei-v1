@@ -175,6 +175,8 @@ export interface OddsEvent extends WsBase {
  */
 export interface OddsExplainEvent extends WsBase {
   type: 'odds_explain';
+  /** MessageId da TxLINE + opção, estável mesmo quando dois eventos têm o mesmo ts. */
+  id: string;
   minute: number | null;
   priceName: string;
   fromPct: number;

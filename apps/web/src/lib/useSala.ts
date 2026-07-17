@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { esperaDeReconexao } from '@/lib/reconexao';
 import { segundoDoReplay } from '@/lib/relogio';
+import { idDaOpcaoChance } from '@/lib/chances';
 
 /** Cap do contrato para a lista de leituras de chance — o mesmo do servidor. */
 const CAP_DE_CHANCES = 60;
@@ -78,6 +79,7 @@ export type SalaTotais = { p1: Record<string, number>; p2: Record<string, number
  * frase sai SEM causa, nunca com uma inventada (G6).
  */
 export type SalaChance = {
+  id: string;
   ts: number;
   minute: number | null;
   priceName: string;
@@ -396,6 +398,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
             // reconexão, e a mesma leitura duas vezes é contador subindo à toa
             // — o odds_explain:125 do v0 começou assim.
             const nova: SalaChance = {
+              id: String(msg.id ?? `${String(msg.ts)}:${String(msg.priceName)}:${String(msg.fromPct)}:${String(msg.toPct)}`),
               ts: msg.ts as number,
               minute: (msg.minute as number | null) ?? null,
               priceName: msg.priceName as string,
@@ -404,8 +407,25 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
               contextAction: msg.contextAction as string | undefined,
               text: (msg.text as string) ?? '',
             };
+            // A mesma variação relevante que alimenta a aba também mantém o
+            // percentual da pergunta final vivo, sem transmitir as 3.758 odds.
+            const optionId = idDaOpcaoChance(nova.priceName);
+            if (optionId) {
+              setDesafios((ds) =>
+                ds.map((d) =>
+                  d.type === 'final_result'
+                    ? {
+                        ...d,
+                        options: d.options.map((o) =>
+                          o.id === optionId ? { ...o, pct: nova.toPct } : o,
+                        ),
+                      }
+                    : d,
+                ),
+              );
+            }
             setChances((cs) =>
-              cs.some((c) => c.ts === nova.ts && c.priceName === nova.priceName)
+              cs.some((c) => c.id === nova.id)
                 ? cs
                 : [nova, ...cs].slice(0, CAP_DE_CHANCES),
             );

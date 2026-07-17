@@ -50,7 +50,8 @@ export class OddsExplainer {
 
       let contexto = "";
       let contextAction: string | undefined;
-      if (this.lastAction && Math.abs(ev.ts - this.lastAction.ts) <= CONTEXT_WINDOW_MS) {
+      const desdeOContexto = this.lastAction ? ev.ts - this.lastAction.ts : null;
+      if (this.lastAction && desdeOContexto !== null && desdeOContexto >= 0 && desdeOContexto <= CONTEXT_WINDOW_MS) {
         const acao = ACTION_PT[this.lastAction.action];
         if (acao) {
           contexto = ` depois ${acao}`;
@@ -69,6 +70,7 @@ export class OddsExplainer {
         fixtureId: this.fixture.fixtureId,
         text,
         marketType: ev.marketType,
+        messageId: ev.messageId,
         priceName: price.name,
         fromPct: prev,
         toPct: price.pct,

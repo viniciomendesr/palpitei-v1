@@ -418,6 +418,18 @@ test('message_id é STRING: ids que Number() colapsaria continuam sendo registro
   assert.equal(await p.odds.count(900002), 2);
 });
 
+test('replay de odds é compacto, normalizado e preserva o MessageId opaco', async () => {
+  const lidos = await p.odds.listReplayByFixture(900002);
+  const alvo = lidos.find((e) => e.messageId === '1837922149:00003:000572-10021-stab');
+  assert.ok(alvo);
+  assert.equal(alvo.raw, null, 'payload de auditoria não cruza o caminho interativo');
+  assert.deepEqual(alvo.prices, [
+    { name: 'part1', odds: 2.076, pct: 48.1 },
+    { name: 'draw', odds: 3.2, pct: 31.2 },
+    { name: 'part2', odds: 4.1, pct: 24.3 },
+  ]);
+});
+
 test('a ingestão filtra ao mercado da v1 e CONTA o que descartou', async () => {
   const r = await p.odds.upsertManyRaw([
     { FixtureId: 900002, MessageId: 'ou-1', Ts: 3, SuperOddsType: 'OVERUNDER_PARTICIPANT_GOALS', PriceNames: ['over'], Prices: [1900] },

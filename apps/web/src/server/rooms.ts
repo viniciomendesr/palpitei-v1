@@ -30,7 +30,6 @@ import {
   QuestionEngine,
   XP_BASE,
   cursorClock,
-  normalizeOdds,
   type Clock,
   type ReplayCursor,
 } from '@palpitei/core';
@@ -51,7 +50,6 @@ import {
   createMatchRepo,
   createOddsRepo,
   createPredictionRepo,
-  eh1x2JogoInteiro,
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
 import { criarFiltroDeLances } from './lances';
@@ -240,19 +238,10 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     return null;
   }
 
-  // A série de cotações do cache, para o explicador e o pct da final_result.
-  // O upsert já filtra ao 1X2 de jogo inteiro, mas o filtro se repete aqui de
-  // propósito: `listRaw` devolve o que estiver na tabela, e a sala só pode
-  // consumir o mercado que conhece. O normalize descarta o ilegível — inclusive
-  // Prices vazio, que é dado REAL (G8: mercado sem cotação no momento, 26 nesta
-  // fixture) e sem preço não há o que explicar nem que pct atualizar.
-  const oddsCruas = await createOddsRepo(db).listRaw(fixtureId);
-  const odds: OddsEvent[] = [];
-  for (const raw of oddsCruas) {
-    if (!eh1x2JogoInteiro(raw)) continue;
-    const ev = normalizeOdds(raw);
-    if (ev) odds.push(ev);
-  }
+  // A série 1X2 vem numa projeção normalizada compacta: o `raw` permanece no
+  // banco para auditoria e reprocessamento, sem penalizar a abertura da sala.
+  // O mapper preserva G8 (Prices vazio/desalinhado é ausente, nunca zero).
+  const odds: OddsEvent[] = await createOddsRepo(db).listReplayByFixture(fixtureId);
   // Uma linha do tempo só: no empate de ts o lance vem ANTES da cotação — o
   // explicador precisa do contexto ("depois do gol") já registrado quando ela
   // passar por ele.
@@ -425,6 +414,7 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     emit: (msg) => {
       if (msg.type !== 'odds_explain') return;
       const leitura: LeituraDeChance = {
+        id: `${String(msg.messageId ?? msg.ts)}:${String(msg.priceName)}`,
         ts: msg.ts as number,
         minute: state.minute,
         priceName: msg.priceName as string,

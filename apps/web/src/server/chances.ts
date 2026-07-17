@@ -14,6 +14,8 @@ import type { NormEvent, OddsEvent, ScoreEvent } from '@palpitei/core';
  * bilíngue pelos campos estruturados.
  */
 export type LeituraDeChance = {
+  /** Identidade estável do evento+opção; evita colisão em reconexões SSE. */
+  id: string;
   ts: number;
   minute: number | null;
   priceName: string;

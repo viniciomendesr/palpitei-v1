@@ -24,6 +24,15 @@ import type { SalaChance } from './useSala';
 /** O pedaço do dicionário que o redator usa — as telas passam o `t` inteiro. */
 export type DicionarioDeChance = Pick<Dict, 'chanceUp' | 'chanceDown' | 'chanceDraw' | 'chanceCtx'>;
 
+/** Nome do preço 1X2 do feed → id usado nas opções da pergunta final. */
+export function idDaOpcaoChance(priceName: string): 'p1' | 'draw' | 'p2' | null {
+  const n = priceName.toLowerCase();
+  if (n === 'part1' || n === '1' || n === 'home') return 'p1';
+  if (n === 'x' || n === 'draw') return 'draw';
+  if (n === 'part2' || n === '2' || n === 'away') return 'p2';
+  return null;
+}
+
 /**
  * Mapa de nomes do feed → nome na tela (contrato):
  * part1|1|home → teamA · part2|2|away → teamB · x|draw → empate/draw.

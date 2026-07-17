@@ -80,14 +80,24 @@ test("delta >= 3 p.p. emite explicação com linha do mercado e contexto do gol"
 
   ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
   ex.onScoreEvent(goal(T0 + 30_000));
-  ex.onOddsEvent(odds(T0 + 60_000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
+  ex.onOddsEvent(odds(T0 + 60_000, [{ name: "over", odds: 1.88, pct: 53.2 }], { messageId: "odds-2" }));
 
   assert.equal(emitted.length, 1);
   const m = emitted[0];
   assert.equal(m.type, "odds_explain");
+  assert.equal(m.messageId, "odds-2");
   assert.ok(m.text.includes("mais de 1.5 gols"), `texto: ${m.text}`);
   assert.ok(m.text.includes("subiu de 48.0% para 53.2%"), `texto: ${m.text}`);
   assert.ok(m.text.includes("depois do gol"), `texto: ${m.text}`);
+});
+
+test("um lance com ts posterior à cotação nunca vira contexto do passado", () => {
+  const { ex, emitted } = makeExplainer();
+  ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
+  ex.onScoreEvent(goal(T0 + 60_000));
+  ex.onOddsEvent(odds(T0 + 30_000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].contextAction, undefined);
 });
 
 test("sem lance recente (>180s) não anexa contexto; queda usa 'caiu'", () => {

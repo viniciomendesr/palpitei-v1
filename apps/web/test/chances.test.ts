@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { redigeChance } from '../src/lib/chances.ts';
+import { idDaOpcaoChance, redigeChance } from '../src/lib/chances.ts';
 
 // O redator é PURO e recebe o dicionário: aqui entram os MESMOS templates dos
 // dois dicionários de i18n.tsx (que este teste não pode importar — o arquivo
@@ -37,7 +37,14 @@ const enDic = {
   } as Record<string, string>,
 };
 
-const base = { ts: 1_000, minute: 34, text: 'frase do core (fallback)' };
+const base = { id: 'odds-1:part1', ts: 1_000, minute: 34, text: 'frase do core (fallback)' };
+
+test('idDaOpcaoChance usa o mesmo contrato 1X2 das opções da pergunta final', () => {
+  assert.equal(idDaOpcaoChance('part1'), 'p1');
+  assert.equal(idDaOpcaoChance('X'), 'draw');
+  assert.equal(idDaOpcaoChance('away'), 'p2');
+  assert.equal(idDaOpcaoChance('over'), null);
+});
 
 test('pt: subida com causa — nome do time no lugar do priceName do feed', () => {
   assert.equal(
