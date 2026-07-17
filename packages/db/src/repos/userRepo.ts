@@ -13,7 +13,7 @@ import type { User, WalletSource } from '../types.js';
 import { HandleInvalidError, HandleTakenError, UserNotFoundError, isUniqueViolation } from '../errors.js';
 
 const COLS = `
-  u.id, u.privy_did, u.handle, u.wallet_pubkey, u.wallet_source, u.favorite_team,
+  u.id, u.privy_did, u.handle, u.wallet_pubkey, u.wallet_source,
   u.is_premium, u.xp, u.level, u.current_streak, u.best_streak, u.balance_cents,
   extract(epoch from u.created_at) * 1000 as created_ms,
   coalesce(
@@ -36,7 +36,6 @@ function mapUser(r: Row): User {
     // Quem precisa de carteira checa por NULL; não há origem padrão.
     walletSource: (r.wallet_source as WalletSource | null) ?? null,
     privyId: String(r.privy_did),
-    favoriteTeam: (r.favorite_team as string | null) ?? null,
     isPremium: Boolean(r.is_premium),
     xp: Number(r.xp),
     level: Number(r.level),
@@ -148,17 +147,6 @@ export function createUserRepo(db: Db) {
         if (isUniqueViolation(e)) throw new HandleTakenError(limpo);
         throw e;
       }
-      const user = await repo.findById(userId);
-      if (!user) throw new UserNotFoundError(userId);
-      return user;
-    },
-
-    async setFavoriteTeam(userId: string, team: string | null): Promise<User> {
-      const rows = await db.query(
-        `update users set favorite_team = $2, updated_at = now() where id = $1 returning id`,
-        [userId, team]
-      );
-      if (!rows[0]) throw new UserNotFoundError(userId);
       const user = await repo.findById(userId);
       if (!user) throw new UserNotFoundError(userId);
       return user;

@@ -38,7 +38,6 @@ export interface SessionState {
   authMethod: AuthMethod;
   accountType: AccountType;
   nickname: string;
-  favTeam: string | null;
   level: number;
   xp: number;
   streak: number;
@@ -55,7 +54,6 @@ const DEMO_ACCOUNT = { nickname: 'você.craque', level: 7, xp: 1240, streak: 5 }
 
 const BASE: Omit<SessionState, 'authMethod' | 'accountType'> = {
   nickname: '',
-  favTeam: null,
   level: 1,
   xp: 0,
   streak: 0,
@@ -121,7 +119,14 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem(STORAGE_KEY);
-      if (raw) setSession(JSON.parse(raw) as SessionState);
+      if (raw) {
+        // Versões anteriores guardavam uma preferência de time que nunca era
+        // consumida pelo produto. Descartamos a chave ao hidratar para ela não
+        // sobreviver no cache local depois de o onboarding removê-la.
+        const stored = JSON.parse(raw) as SessionState & { favTeam?: unknown };
+        const { favTeam: _legacyFavTeam, ...rest } = stored;
+        setSession(rest);
+      }
     } catch {
       // storage bloqueado (aba privada) — segue sem sessão, o login resolve.
     }
@@ -161,7 +166,6 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       level: user.level,
       xp: user.xp,
       streak: user.streak,
-      favTeam: user.favTeam ?? null,
     });
   }, []);
 
@@ -207,7 +211,6 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
           level: estado.user.level,
           xp: estado.user.xp,
           streak: estado.user.streak,
-          favTeam: estado.user.favTeam ?? null,
           leaguesCount: estado.leaguesCount,
           isPremium: estado.isPremium,
         };

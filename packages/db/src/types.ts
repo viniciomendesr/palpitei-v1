@@ -29,7 +29,6 @@ export type User = {
   // "sign up through Solana".
   walletSource: WalletSource | null;
   privyId: string; // DID: 'did:privy:...' ou 'demo:...' no modo demo
-  favoriteTeam: string | null;
   isPremium: boolean;
   xp: number;
   level: number; // derivado do xp pelo banco — leitura apenas

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * ONBOARDING — 0 boas-vindas · 1 apelido · 2 time do coração · 3 pronto.
+ * ONBOARDING — 0 boas-vindas · 1 apelido · 2 pronto.
  *
  * O passo do APELIDO é requisito, não enfeite: o apelido é público (aparece no
  * ranking e nas ligas) e derivá-lo do e-mail vaza o endereço da pessoa (E12 do
@@ -20,17 +20,15 @@ import { ChevronLeft, Check } from '@/components/Icons';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { fw } from '@/lib/tokens';
-import { TEAMS } from '@/lib/mock';
 import { useRequireSession } from '@/lib/guard';
 import { NicknameInput, MAX_NICK, isNicknameValid } from '@/components/NicknameInput';
-import { localizeTeamName } from '@/lib/team-names';
 import { consumePendingReturnTo } from '@/lib/return-to';
 
 const EASE = 'cubic-bezier(.2,.7,.3,1)';
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const { session, update, logout } = useSession();
   const ready = useRequireSession();
 
@@ -38,8 +36,6 @@ export default function OnboardingPage() {
   const [nameDraft, setNameDraft] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erroNome, setErroNome] = useState<string | null>(null);
-  const [salvandoTime, setSalvandoTime] = useState(false);
-  const [erroTime, setErroTime] = useState<string | null>(null);
 
   if (!ready || !session) return null;
 
@@ -82,31 +78,6 @@ export default function OnboardingPage() {
     setStep((s) => s + 1);
   };
 
-  /**
-   * Sai do passo 2 gravando o time no SERVIDOR — a mesma ordem do apelido, pelo
-   * mesmo motivo: o `setFavoriteTeam` existia no repo e ninguém o chamava, então
-   * o escudo ficava pintado na tela com `favorite_team` NULL no banco. A escolha
-   * morria no próximo login. `null` também grava: "pulei" é uma resposta.
-   *
-   * Recebe o time por PARÂMETRO em vez de ler `session.favTeam`: o botão de
-   * pular faz `update({favTeam: null})` no mesmo tick, e o estado do React ainda
-   * não assentou quando esta função roda.
-   */
-  const salvarTime = async (team: string | null) => {
-    if (salvandoTime) return;
-    setSalvandoTime(true);
-    setErroTime(null);
-    const { api } = await import('@/lib/api');
-    try {
-      await api.setFavoriteTeam(team);
-      setStep(3);
-    } catch {
-      setErroTime(t.teamSaveFailed);
-    } finally {
-      setSalvandoTime(false);
-    }
-  };
-
   const back = async () => {
     // No passo 0 não há pra onde voltar dentro do fluxo: desfaz o login.
     // (O protótipo travava em 0; aqui existe rota de verdade e sair é o certo.)
@@ -124,8 +95,8 @@ export default function OnboardingPage() {
 
   const finish = () => router.replace(consumePendingReturnTo());
 
-  const pct = Math.round(Math.min(step, 3) / 3 * 100);
-  const stepLabel = `${t.obStep} ${Math.min(step + 1, 3)} ${t.obOf} 3`;
+  const pct = Math.round(Math.min(step, 2) / 2 * 100);
+  const stepLabel = `${t.obStep} ${Math.min(step + 1, 2)} ${t.obOf} 2`;
   const isWallet = session.authMethod === 'wallet';
 
   return (
@@ -329,101 +300,8 @@ export default function OnboardingPage() {
         </>
       )}
 
-      {/* passo 2 — time do coração */}
+      {/* passo 2 — pronto */}
       {step === 2 && (
-        <>
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              animation: `fadeUp .45s ${EASE} both`,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: fw.black,
-                fontStyle: 'italic',
-                fontSize: 26,
-                letterSpacing: -0.6,
-                marginTop: 8,
-                textWrap: 'pretty',
-              }}
-            >
-              {t.obTeamTitle}
-            </div>
-            <p
-              style={{
-                fontSize: 14,
-                lineHeight: 'var(--leading-body)',
-                fontWeight: fw.medium,
-                color: 'var(--text-2)',
-                marginTop: 10,
-                textWrap: 'pretty',
-              }}
-            >
-              {t.obTeamBody}
-            </p>
-            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', marginTop: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {TEAMS.map((team) => {
-                  const on = session.favTeam === team;
-                  return (
-                    <button
-                      key={team}
-                      onClick={() => update({ favTeam: team })}
-                      aria-pressed={on}
-                      style={{
-                        all: 'unset',
-                        boxSizing: 'border-box',
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                        padding: '14px 8px',
-                        borderRadius: 'var(--r-xl)',
-                        fontWeight: fw.heavy,
-                        fontSize: 14,
-                        background: on ? 'var(--lime-a14)' : 'var(--surface-1)',
-                        border: `1.5px solid ${on ? 'var(--lime)' : 'var(--border-1)'}`,
-                        color: on ? 'var(--text-hi)' : 'var(--text-1)',
-                      }}
-                    >
-                      {localizeTeamName(team, lang)}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-          <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-            {erroTime && (
-              <p
-                role="alert"
-                style={{ fontSize: 12, fontWeight: fw.bold, color: 'var(--red)', textAlign: 'center' }}
-              >
-                {erroTime}
-              </p>
-            )}
-            <Button size="lg" full disabled={salvandoTime} onClick={() => void salvarTime(session.favTeam)}>
-              {t.obContinue}
-            </Button>
-            <Button
-              variant="ghost"
-              full
-              disabled={salvandoTime}
-              onClick={() => {
-                update({ favTeam: null });
-                void salvarTime(null);
-              }}
-            >
-              {t.obSkip}
-            </Button>
-          </div>
-        </>
-      )}
-
-      {/* passo 3 — pronto */}
-      {step === 3 && (
         <>
           <div
             style={{

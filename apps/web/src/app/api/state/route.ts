@@ -1,6 +1,6 @@
 /**
  * GET /api/state — o fã como o BANCO o conhece: apelido, XP, nível, sequência,
- * time do coração, aproveitamento dos palpites e as ligas.
+ * aproveitamento dos palpites e as ligas.
  *
  * É a rota que faltava para a sessão local parar de mentir: o apelido e o XP
  * sempre foram persistidos (o motor liquida no Postgres, o onboarding grava o
@@ -46,7 +46,6 @@ export async function GET(req: Request): Promise<NextResponse> {
         level: user.level,
         xp: user.xp,
         streak: user.currentStreak,
-        favTeam: user.favoriteTeam,
         // null aqui é a regressão E2 visível: entrou e não ganhou carteira
         // Solana. Espelha o /api/login — a resposta não esconde.
         wallet: user.wallet,
