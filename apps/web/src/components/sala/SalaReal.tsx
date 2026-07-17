@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SegTabs, Badge, Button } from '@/components/ds';
 import { Screen } from '@/components/Shell';
-import { ChevronLeft, Star } from '@/components/Icons';
+import { ChevronLeft, ChevronRight, Star } from '@/components/Icons';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { fw } from '@/lib/tokens';
@@ -148,6 +148,211 @@ function explicacaoDoResultado(
     default:
       return null;
   }
+}
+
+/** Uma dupla de barras no estilo da aba Estatísticas — reusada na tela cheia. */
+function BarraDupla({ label, a, b }: { label: string; a: number; b: number }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontWeight: fw.black, fontSize: 14, color: 'var(--lime)' }}>{a}</span>
+        <span style={{ fontSize: 11, fontWeight: fw.heavy, letterSpacing: 0.5, color: 'var(--text-muted)' }}>{label}</span>
+        <span style={{ fontWeight: fw.black, fontSize: 14, color: 'var(--text-1)' }}>{b}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, height: 8 }}>
+        <div style={{ flex: Math.max(a, 0.4), background: 'var(--lime)', borderRadius: '99px 4px 4px 99px' }} />
+        <div style={{ flex: Math.max(b, 0.4), background: 'var(--surface-2)', borderRadius: '4px 99px 99px 4px' }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A TELA CHEIA de um desafio liquidado — o card da lista é só a manchete; o
+ * toque abre isto, na dinâmica do protótipo. Tudo aqui é dado REAL: veredito,
+ * o que você disse × o que o jogo disse, e a leitura com os números do
+ * instante da liquidação. Nada de porcentagem inventada — o explicador de
+ * odds não roda nesta sala, e % de mentira é o G6 (a razão de o app existir).
+ */
+function DetalheDoResultado({
+  r,
+  teamA,
+  teamB,
+  onVoltar,
+}: {
+  r: SalaResultado;
+  teamA: string;
+  teamB: string;
+  onVoltar: () => void;
+}) {
+  const { t } = useI18n();
+  const acertou =
+    !r.voidReason && r.correctOptionId !== undefined && r.minhaEscolha === r.correctOptionId;
+  const minha =
+    r.minhaEscolha !== null ? rotuloDaOpcao(r.minhaEscolha, t, teamA, teamB, r.options) : null;
+  const certa =
+    r.correctOptionId !== undefined
+      ? rotuloDaOpcao(r.correctOptionId, t, teamA, teamB, r.options)
+      : null;
+  const leitura = explicacaoDoResultado(r, t, teamA, teamB);
+  const titulo = r.voidReason ? t.salaVoid : acertou ? t.salaHit : t.salaMiss;
+  const corTitulo = r.voidReason ? 'var(--text-muted)' : acertou ? 'var(--lime)' : 'var(--text-hi)';
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'var(--bg-app)',
+        display: 'flex',
+        flexDirection: 'column',
+        animation: 'fadeUp .25s cubic-bezier(.2,.7,.3,1) both',
+      }}
+    >
+      <div style={{ flex: 'none', padding: '12px 18px 0' }}>
+        <button
+          onClick={onVoltar}
+          aria-label={t.voltarAoJogo}
+          style={{
+            all: 'unset',
+            cursor: 'pointer',
+            width: 34,
+            height: 34,
+            borderRadius: 'var(--r-md)',
+            background: 'var(--surface-1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ChevronLeft size={18} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 22px 24px' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontWeight: fw.black, fontStyle: 'italic', fontSize: 30, letterSpacing: -1, color: corTitulo, textWrap: 'pretty' }}>
+            {titulo}
+          </div>
+          {/* O pill do XP conta a verdade inteira: pago, treino, ou nada. */}
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: 12,
+              padding: '6px 14px',
+              borderRadius: 'var(--r-pill)',
+              border: `1px solid ${r.gained > 0 ? 'var(--lime-line)' : 'var(--border-2)'}`,
+              fontSize: 12.5,
+              fontWeight: fw.black,
+              color: r.gained > 0 ? 'var(--gold)' : acertou ? 'var(--orange)' : 'var(--text-muted)',
+            }}
+          >
+            {r.gained > 0 ? (
+              <>
+                <Star />
+                {`+${r.gained} XP`}
+              </>
+            ) : acertou ? (
+              t.treinoSelo
+            ) : (
+              t.resSemXp
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 20,
+            padding: '14px 16px',
+            borderRadius: 'var(--r-xl)',
+            background: 'var(--surface-1)',
+            border: `1px solid ${acertou ? 'var(--lime-line)' : 'var(--border-1)'}`,
+          }}
+        >
+          <p style={{ fontSize: 15.5, fontWeight: fw.heavy, textWrap: 'pretty' }}>
+            {r.qtype ? textoDaPergunta(r.qtype, r.prompt, t, teamA, teamB) : r.prompt}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+            {minha && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: fw.black, letterSpacing: 0.8, color: 'var(--text-muted)' }}>
+                  {t.youPick}
+                </span>
+                <span style={{ fontSize: 13.5, fontWeight: fw.heavy }}>{minha}</span>
+              </div>
+            )}
+            {certa && !r.voidReason && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: fw.black, letterSpacing: 0.8, color: 'var(--text-muted)' }}>
+                  {t.rightPick}
+                </span>
+                <span style={{ fontSize: 13.5, fontWeight: fw.heavy, color: 'var(--lime)' }}>{certa}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* A leitura do jogo — só FATOS do feed no instante da liquidação. */}
+        {(leitura || r.voidReason || r.facts) && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '14px 16px',
+              borderRadius: 'var(--r-xl)',
+              background: 'var(--surface-1)',
+              border: '1px solid var(--border-1)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 10.5, fontWeight: fw.black, letterSpacing: 1, color: 'var(--lime)' }}>
+                {t.resReadingHdr}
+              </span>
+              {r.facts?.minute !== null && r.facts?.minute !== undefined && (
+                <span style={{ fontSize: 11, fontWeight: fw.black, color: 'var(--text-muted)' }}>
+                  {r.facts.minute}’
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: 13.5, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-1)', marginTop: 8, textWrap: 'pretty' }}>
+              {r.voidReason ? t.salaVoidBody : leitura}
+            </p>
+
+            {r.facts && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: fw.heavy, fontSize: 12, color: 'var(--text-1)' }}>{teamA}</span>
+                  <span style={{ fontSize: 9.5, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)' }}>
+                    {t.resMomento}
+                  </span>
+                  <span style={{ fontWeight: fw.heavy, fontSize: 12, color: 'var(--text-1)' }}>{teamB}</span>
+                </div>
+                <BarraDupla
+                  label={t.statKeys['Goals'] ?? 'Goals'}
+                  a={r.facts.score.p1}
+                  b={r.facts.score.p2}
+                />
+                {r.facts.corners && (
+                  <BarraDupla
+                    label={t.statKeys['Corners'] ?? 'Corners'}
+                    a={r.facts.corners.p1}
+                    b={r.facts.corners.p2}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ flex: 'none', padding: '0 18px 18px' }}>
+        <Button size="lg" full onClick={onVoltar}>
+          {t.voltarAoJogo}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 type LinhaDeStat = { chave: string; label: string; a: number; b: number; aFlex: number; bFlex: number };
@@ -351,6 +556,9 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
   // Sair tem preço (sala vazia por 30s morre e o replay recomeça do zero):
   // o fã confirma SABENDO, num painel da tela. Jogo encerrado sai direto.
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
+  // O resultado ABERTO em tela cheia. A lista é só manchete (pergunta some,
+  // texto some); o toque abre o detalhe com veredito, leitura e números.
+  const [detalhe, setDetalhe] = useState<SalaResultado | null>(null);
 
   // A aba NÃO rouba mais o foco quando abre desafio. Quem chama o fã é o
   // OVERLAY: a janela dura ~96s de tempo real e ele não pode ter que procurar
@@ -530,83 +738,59 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
                     !r.voidReason &&
                     r.correctOptionId !== undefined &&
                     r.minhaEscolha === r.correctOptionId;
-                  const minha =
-                    r.minhaEscolha !== null
-                      ? rotuloDaOpcao(r.minhaEscolha, t, state.teamA, state.teamB, r.options)
-                      : null;
-                  const certa =
-                    r.correctOptionId !== undefined
-                      ? rotuloDaOpcao(r.correctOptionId, t, state.teamA, state.teamB, r.options)
-                      : null;
-                  const explicacao = explicacaoDoResultado(r, t, state.teamA, state.teamB);
+                  const rotuloTipo: Record<string, string> = {
+                    next_goal: t.qNextGoal,
+                    hilo_corners: t.qHiloCorners,
+                    final_result: t.qFinalResult,
+                  };
                   return (
-                    <div
+                    // Só a MANCHETE: tipo + veredito. O toque abre a tela cheia
+                    // com pergunta, leitura e números — texto acumulado no card
+                    // vira parede que ninguém lê.
+                    <button
                       key={r.questionId}
+                      onClick={() => setDetalhe(r)}
                       style={{
+                        all: 'unset',
+                        cursor: 'pointer',
+                        boxSizing: 'border-box',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        width: '100%',
                         padding: '12px 14px',
                         borderRadius: 'var(--r-lg)',
                         background: acertou ? 'var(--lime-a06)' : 'var(--surface-1)',
                         border: `1px solid ${acertou ? 'var(--lime-line)' : 'var(--border-1)'}`,
                       }}
                     >
-                      <div style={{ fontSize: 13, fontWeight: fw.medium, color: 'var(--text-2)', textWrap: 'pretty' }}>
-                        {r.qtype
-                          ? textoDaPergunta(r.qtype, r.prompt, t, state.teamA, state.teamB)
-                          : r.prompt}
-                      </div>
-
-                      {/* O que EU disse × o que o jogo disse. Sem isto o card
-                          julgava sem mostrar as provas. */}
-                      {(minha || (certa && !r.voidReason)) && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 8 }}>
-                          {minha && (
-                            <span style={{ fontSize: 11.5, fontWeight: fw.bold, color: 'var(--text-muted)' }}>
-                              {t.youPick}{' '}
-                              <span style={{ color: 'var(--text-1)', fontWeight: fw.heavy }}>{minha}</span>
-                            </span>
-                          )}
-                          {certa && !r.voidReason && (
-                            <span style={{ fontSize: 11.5, fontWeight: fw.bold, color: 'var(--text-muted)' }}>
-                              {t.rightPick}{' '}
-                              <span style={{ color: 'var(--lime)', fontWeight: fw.heavy }}>{certa}</span>
-                            </span>
-                          )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-muted)' }}>
+                          {(r.qtype && rotuloTipo[r.qtype]) ?? t.salaChallenge}
                         </div>
-                      )}
-
-                      {r.voidReason ? (
-                        <>
-                          <div style={{ fontSize: 13.5, fontWeight: fw.black, marginTop: 6 }}>{t.salaVoid}</div>
-                          <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 2, textWrap: 'pretty' }}>
-                            {t.salaVoidBody}
-                          </div>
-                        </>
-                      ) : (
                         <div
                           style={{
-                            fontSize: 14,
+                            fontSize: 13.5,
                             fontWeight: fw.black,
-                            marginTop: 8,
-                            color: acertou ? 'var(--lime)' : 'var(--text-1)',
+                            marginTop: 3,
+                            color: r.voidReason
+                              ? 'var(--text-muted)'
+                              : acertou
+                                ? 'var(--lime)'
+                                : 'var(--text-1)',
                           }}
                         >
-                          {acertou
-                            ? r.gained > 0
-                              ? `${t.salaHit} +${r.gained} XP`
-                              : t.salaHitTreino
-                            : t.salaMiss}
+                          {r.voidReason
+                            ? t.salaVoid
+                            : acertou
+                              ? r.gained > 0
+                                ? `${t.salaHit} +${r.gained} XP`
+                                : t.salaHitTreino
+                              : t.salaMiss}
                         </div>
-                      )}
-
-                      {/* A LEITURA DO LANCE: fato do feed no instante em que o
-                          desafio liquidou. Sem fatos, sem frase — explicação
-                          inventada é o G6 dentro do resultado. */}
-                      {explicacao && (
-                        <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 6, textWrap: 'pretty' }}>
-                          {explicacao}
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                      <ChevronRight />
+                    </button>
                   );
                 })}
               </>
@@ -760,6 +944,16 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
             onResponder={(o) => responder(noOverlay.questionId, o)}
           />
         </div>
+      )}
+
+      {/* O DETALHE DO RESULTADO, em tela cheia — aberto pelo toque na manchete. */}
+      {detalhe && (
+        <DetalheDoResultado
+          r={detalhe}
+          teamA={state.teamA}
+          teamB={state.teamB}
+          onVoltar={() => setDetalhe(null)}
+        />
       )}
 
       {/* SAIR TEM PREÇO: sala vazia por 30s morre e o replay recomeça do zero.
