@@ -1,5 +1,27 @@
 # Handoff para a v1 — leia isto primeiro
 
+> ## ⚠ DOCUMENTO HISTÓRICO — congelado em 16/07/2026
+>
+> **Não comece por aqui. Comece pelo [CONTEXT.md](CONTEXT.md).** Este arquivo é o
+> retrato do que o v0 entregou **naquele dia**, e vale como registro do que foi
+> aprendido — não como estado atual. A v1 já andou por cima dele.
+>
+> **O que este arquivo diz e JÁ NÃO VALE** (verificado em 17/07 — detalhes no CONTEXT):
+>
+> | Onde | O que dizia | Estado em 17/07 |
+> |---|---|---|
+> | §6 | `PRIVY_APP_SECRET` "não foi rotacionado" | **Feito.** App nova (`cmrnum7sz…`) com segredo novo — hash difere do v0 |
+> | §6 | "A app Privy é Dev" | **Feito.** A v1 roda em app própria |
+> | §5 / §2 | "Corrija a linha da Privy na tabela 2.4 antes de submeter" (E15) | **Feito** no `.docx`: a 2.4 já diz "iframe **OU** enclave, depende do modo da sua app" |
+> | §7 | Fontes de replay sem `txline-updates` | **Errado.** É justamente o que o cache grava. Lista certa no CONTEXT §8 |
+> | §2 | **E7**: "PrivyProvider renderiza `null`" → tela branca | **Contradito** por medição: a tela renderiza e o watchdog de 8s dispara; o que falta é o `ready`. O achado fica registrado (pode ser outro modo de falha) — ver CONTEXT §3 |
+> | §4 / §8 | "Cache em disco (`.cache/`)" | Na v1 o cache é **Postgres** (§7 do T&C: nada de payload versionado) |
+> | §8 | "Como rodar" (`npm start`, porta 4100, `build:auth`) | É o **v0**. Para rodar a v1, veja o [README](../README.md) |
+>
+> **O que este arquivo diz e CONTINUA valendo, com hora marcada:** o §5 — *o caminho ao
+> vivo nunca processou um evento real* (A7). Segue verdade em 17/07: `startLiveIngest`
+> **não tem chamador**. Janela: **18/07 21:00 UTC**. Ver **CONTEXT §10**.
+
 **Se você é a sessão/pessoa que vai construir a v1: comece por aqui.**
 
 O v0 é uma bancada de integração. Ele não existe para virar produto — existe para
@@ -185,9 +207,13 @@ explicador fora de jogo (A6).
   O token da Privy tem de ser o único caminho.
 - 🔴 **O `PRIVY_APP_SECRET` atual** — passou pelo campo de credencial do Google
   (E10) e não foi rotacionado. **Gere um novo na app de produção; não herde.**
+  → ✅ **FEITO (17/07):** a v1 tem app própria e segredo próprio; o hash difere do v0.
 - 🔴 **A app Privy é Dev.** Produção precisa de app nova — e as credenciais
   próprias da Apple, se for usar Apple, têm de entrar **antes do primeiro
   usuário** (E8, porta de mão única).
+  → ✅ **FEITO (17/07):** app `cmrnum7sz00ft0cjruc4dtkj2`. Apple segue fora, de propósito.
+  ⚠ **Aberto:** as 5 Allowed origins de hoje são de dev (localhost/LAN) — o **domínio de
+  produção precisa entrar antes do deploy**.
 - 🔴 **`.cache/` não pode ser versionado** — T&C §7 licencia os dados da TxLINE
   só para o hackathon e proíbe redistribuição. Em produção: rodar
   `cache:match` no deploy, ou (melhor) tabela no Postgres.
@@ -223,6 +249,13 @@ as duas primeiras cumprem "sign up through Solana" (Opções A e B da doc 2.4).
 Fontes de replay: `txline-cache | txline-historical | txline-snapshot | synthetic`.
 O **sintético é opt-in e dev-only** — a regra do hackathon exige TxLINE como
 fonte primária (A8). Com o cache, ele deixou de ser necessário.
+
+> **SUPERADO em 17/07 — esta lista está errada e não pode ser copiada.** Falta
+> `txline-updates`, que é **o valor que o cache realmente grava** (medido: a partida
+> `18241006` está no Postgres com `cache_source = 'txline-updates'`), e `txline-live`.
+> Com o vocabulário acima, a única forma de rotular a partida gravada era chamá-la de
+> `txline-cache` — **rótulo de proveniência mentindo, o G6 na letra**. Lista correta e
+> os três tipos que a espelham: **CONTEXT §8**.
 
 ---
 

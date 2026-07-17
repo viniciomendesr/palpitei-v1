@@ -65,8 +65,11 @@ https://172.20.10.2:3000
 Importante: `localhost` no smartphone e o proprio smartphone, nao o Mac. Por
 isso a URL precisa usar o IP do Mac.
 
-Se a tela ficar branca ou a Privy nao inicializar, adicione tambem essa origem
-no painel da Privy em Allowed origins:
+Se a Privy nao inicializar, adicione essa origem no painel da Privy em Allowed
+origins. O sintoma nao e tela branca: medido em 17/07, com a origem nao liberada
+a tela de login **renderiza normal** e quem avisa e o **watchdog de 8s** (alerta
+na tela + `console.error`). O que nao vem e o `ready` — a falha e silenciosa, nao
+visivel. Confira as origens liberadas com `npm run privy:doctor`.
 
 ```text
 http://localhost:3000
@@ -103,8 +106,9 @@ e Authorized redirect URIs do Google sao configuracoes diferentes.
 
 | Arquivo | O quê |
 |---|---|
-| **[docs/CONTEXT.md](docs/CONTEXT.md)** | **Comece aqui.** As armadilhas silenciosas herdadas da bancada v0, as regras do hackathon que restringem o código e as decisões já tomadas. |
-| [docs/handoff-v0-para-v1.md](docs/handoff-v0-para-v1.md) | O handoff da bancada de integração: o que já está provado, o que dói, o que segue em aberto. |
+| **[docs/CONTEXT.md](docs/CONTEXT.md)** | **Comece aqui.** As armadilhas silenciosas (as herdadas da bancada v0 e as medidas nesta v1), as regras do hackathon que restringem o código e as decisões já tomadas. |
+| [CLAUDE.md](CLAUDE.md) | O mapa curto: o projeto, o prazo, as 4 regras que custam a submissão e como rodar. |
+| [docs/handoff-v0-para-v1.md](docs/handoff-v0-para-v1.md) | O handoff da bancada de integração — **documento histórico de 16/07**: o que já estava provado, o que doía, o que seguia em aberto. Vários itens já foram resolvidos; o CONTEXT é quem está atualizado. |
 | [packages/ds/CONVENTIONS.md](packages/ds/CONVENTIONS.md) | O contrato do design. Leia antes de fazer UI. |
 
 ## Uma nota sobre o dado
