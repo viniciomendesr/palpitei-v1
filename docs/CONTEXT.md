@@ -395,6 +395,14 @@ E, assim que a partida acabar: **`npm run cache:match 18257865`**. O dataset rot
 > (O `.gitignore` cobre `.cache/`, então o §7 está protegido mesmo no fallback — o
 > problema aqui não é vazar payload, é **achar que gravou**.)
 
+> **Atualização 17/07 (~17h BRT, branch `claude/live-architecture`):** o chamador
+> existe — `apps/web/src/server/live.ts` + `instrumentation.ts`, com uma 3ª trava
+> ('true' literal + `LIVE_FIXTURE_ID`). Dry-run contra a devnet real: streams
+> `open`, fixture 18257865 semeada, e **o A7 do caminho de ODDS morreu** — a devnet
+> manda odds pré-jogo ~26h antes do apito e 4 linhas 1X2 da 18257865 já estão no
+> Postgres, gravadas pelo caminho ao vivo. O A7 de SCORE só morre no apito de
+> amanhã. Arquitetura, medições e runbook: **docs/live-architecture.md**.
+
 ---
 
 ## 11. Armadilhas medidas NESTA v1 (16–17/07)

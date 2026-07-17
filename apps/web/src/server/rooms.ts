@@ -51,7 +51,8 @@ import {
   createOddsRepo,
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
-import { criarFiltroDeLances } from './lances';
+import { criarDedupeDeKickoff, criarFiltroDeLances } from './lances';
+import { assinarCanalAoVivo, fixtureDoCanal } from './live';
 import {
   atualizarPct1x2,
   mesclarLinhaDoTempo,
@@ -141,7 +142,8 @@ type Room = {
    */
   pct1x2: Pct1x2;
   engine: QuestionEngine;
-  runner: ReplayRunner;
+  /** null na sala AO VIVO: o alimentador é o canal (live.ts), não o runner. */
+  runner: ReplayRunner | null;
   ports: EnginePorts;
   db: Db;
   cursor: ReplayCursor;
@@ -207,13 +209,29 @@ function portsDeTreino(): EnginePorts {
 
 async function criarSala(fixtureId: number, treino: boolean, partyId: string): Promise<Room | null> {
   const db = createDb();
+
+  // O ramo AO VIVO: a mesma sala, o mesmo motor — muda o alimentador (o canal
+  // de live.ts em vez do ReplayRunner) e a velocidade (1×). Decidido pelo canal
+  // ATIVO, não pelo env cru: as três travas moram em live-regras.ts.
+  const aoVivo = fixtureDoCanal() === fixtureId;
+
+  // Assinar ANTES de ler o banco: o que chegar durante a leitura fica no buffer
+  // e entra depois do catch-up, dedupado por seq/messageId. Assinar depois
+  // deixaria um vão entre a foto do banco e o primeiro evento roteado.
+  const bufferDoCatchUp: NormEvent[] = [];
+  let entregar: (ev: NormEvent) => void = (ev) => bufferDoCatchUp.push(ev);
+  const desassinar = aoVivo ? assinarCanalAoVivo(fixtureId, (ev) => entregar(ev)) : null;
+
   const fixture: Fixture | null = await createMatchRepo(db).findById(fixtureId);
   if (!fixture) {
+    desassinar?.();
     await db.close?.();
     return null;
   }
   const eventos = await createEventRepo(db).listReplayByFixture(fixtureId);
-  if (!eventos.length) {
+  // No replay, timeline vazia é 404 honesto. Ao vivo é o ESPERADO no apito
+  // inicial: a sala nasce vazia e espera o feed — nunca inventa dado (regra 4).
+  if (!eventos.length && !aoVivo) {
     await db.close?.();
     return null;
   }
@@ -233,19 +251,32 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
   // replay valendo persiste e paga, mesmo que este fã já tenha jogado a fixture.
   const politica = politicaDaSala(treino);
   const ports = politica.persiste ? createEnginePorts(db) : portsDeTreino();
-  const cursor: ReplayCursor = { matchTs: linhaDoTempo[0]!.ts, realAt: Date.now() };
-  const clock = cursorClock(cursor, REPLAY_SPEED);
-  const kickoff = eventos.find((e) => e.action === 'kickoff') ?? eventos[0]!;
+  // Âncora do relógio: no replay, o primeiro evento da timeline. Ao vivo, antes
+  // do primeiro evento, o start_ts da fixture semeada — explícito para nunca
+  // virar NaN calado (clock.now() = NaN quebraria as janelas do motor SEM
+  // erro). O primeiro evento real re-ancora, como sempre.
+  const cursor: ReplayCursor = {
+    matchTs: linhaDoTempo.length ? linhaDoTempo[0]!.ts : fixture.startTime ?? Date.now(),
+    realAt: Date.now(),
+  };
+  // Ao vivo a speed é a CONSTANTE 1 — nunca a env: o default 60 vivo em dois
+  // lugares independentes é a armadilha já paga do §11.
+  const clock = cursorClock(cursor, aoVivo ? 1 : REPLAY_SPEED);
 
   const state: RoomState = {
     fixtureId,
     teamA: fixture.p1,
     teamB: fixture.p2,
-    source: (fixture as { cacheSource?: string }).cacheSource ?? 'txline-cache',
+    // Ao vivo o selo é EXPLÍCITO, não herdado do cache_source: cinto-e-
+    // suspensório contra escrita futura por cima (o cache:match pós-jogo grava
+    // 'txline-updates' via coalesce) — rótulo de proveniência que mente é o G6.
+    source: aoVivo
+      ? 'txline-live'
+      : (fixture as { cacheSource?: string }).cacheSource ?? 'txline-cache',
     score: { p1: 0, p2: 0 },
     minute: null,
     clockSeconds: null,
-    replaySpeed: REPLAY_SPEED,
+    replaySpeed: aoVivo ? 1 : REPLAY_SPEED,
     finished: false,
     questions: [],
     feed: [],
@@ -269,7 +300,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     apelidos: new Map(),
     desligar: null,
     engine: null as unknown as QuestionEngine,
-    runner: null as unknown as ReplayRunner,
+    runner: null,
     encerrar: () => {},
   };
 
@@ -483,6 +514,19 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       if (msg.type === 'question_resolved' || msg.type === 'question_void') {
         publicarRanking();
       }
+      // Ao vivo não há runner com onDone: o fim vem do próprio feed
+      // (game_finalised → game_end no motor). `replay_done` continua sendo o
+      // evento que encerra a tela (§8) — renomear contrato a 24h do jogo é
+      // risco gratuito. Depois do publicar: no replay o game_end também chega
+      // antes do replay_done.
+      if (msg.type === 'game_end' && aoVivo) {
+        publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
+        void createMatchRepo(db)
+          .setState(fixtureId, 'finished')
+          .catch((e) =>
+            console.warn(`[sala ${fixtureId}] setState finished falhou:`, e?.message ?? e),
+          );
+      }
     },
   });
 
@@ -589,22 +633,51 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     }
   };
 
-  sala.runner = new ReplayRunner(linhaDoTempo, REPLAY_SPEED, processarEvento, () => {
-    state.finished = true;
-    publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
-  });
+  if (!aoVivo) {
+    sala.runner = new ReplayRunner(linhaDoTempo, REPLAY_SPEED, processarEvento, () => {
+      state.finished = true;
+      publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
+    });
+  }
 
   sala.encerrar = () => {
     if (sala.desligar) clearTimeout(sala.desligar);
     sala.desligar = null;
-    sala.runner.stop();
+    sala.runner?.stop();
+    desassinar?.();
     const key = chaveDaSala(fixtureId, treino, partyId);
     salas.delete(key);
     resetLobby(key);
     void ports.flush().catch(() => {}).finally(() => void db.close?.());
   };
 
-  sala.runner.start();
+  if (aoVivo) {
+    // Catch-up SÍNCRONO pela foto do banco, no MESMO processarEvento (fast-
+    // forward: o engine abre/fecha/resolve pelos ts dos eventos, como no
+    // replay) — com o dedupe de kickoff na frente: o feed manda o kickoff em
+    // par e, a 1×, o par fecharia a final_result ~3s depois de abrir (o guard
+    // de janela mínima do motor é inerte a speed <= 1). Ver lances.ts.
+    const ehKickoffDuplicado = criarDedupeDeKickoff();
+    const aoEvento = (ev: NormEvent): void => {
+      if (ev.kind === 'score' && ehKickoffDuplicado(ev)) return;
+      processarEvento(ev);
+    };
+    for (const ev of linhaDoTempo) aoEvento(ev);
+    // O que chegou do canal durante a leitura do banco, sem repetir o que a
+    // foto já tinha: score dedupa por seq, odds por messageId.
+    const ultimoSeq = eventos.length ? eventos[eventos.length - 1]!.seq : -1;
+    const oddsVistas = new Set(odds.map((o) => o.messageId).filter(Boolean));
+    for (const ev of bufferDoCatchUp) {
+      if (ev.kind === 'score' && ev.seq <= ultimoSeq) continue;
+      if (ev.kind === 'odds' && ev.messageId && oddsVistas.has(ev.messageId)) continue;
+      aoEvento(ev);
+    }
+    bufferDoCatchUp.length = 0;
+    // Daqui em diante o canal entrega direto — o vão está fechado.
+    entregar = aoEvento;
+  } else {
+    sala.runner!.start();
+  }
   salas.set(chaveDaSala(fixtureId, treino, partyId), sala);
   return sala;
 }

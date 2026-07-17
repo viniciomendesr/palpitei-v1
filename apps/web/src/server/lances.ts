@@ -67,6 +67,30 @@ const CONTADORES: Record<string, string> = {
 export type FiltroDeLances = (ev: ScoreEvent, mudouPlacar: boolean) => boolean;
 
 /**
+ * O kickoff vem EM PAR (medido na 18241006: seq 15 e 17, Δ2,8s; 2º tempo idem,
+ * seq 428/430). No feed da tela o filtro abaixo já o dedupa; no MOTOR, a 12× o
+ * guard de janela mínima ignora o segundo — mas a 1× (ao vivo) o guard
+ * `teveTempoMinimoNoReplay` é sempre true e o par fecharia a final_result ~3s
+ * depois de abrir. O ramo live dedupa o kickoff ANTES do motor, com a MESMA
+ * régua do filtro de lances (`${action}:${clockSeconds ?? ts}`) — a regra mora
+ * aqui para não nascer uma segunda cópia dela.
+ *
+ * Devolve true quando ESTE evento é um kickoff repetido no mesmo instante de
+ * jogo. Só kickoff: qualquer outra ação passa reto (o resto do dedupe da tela
+ * continua no filtro de lances; o motor quer ver tudo que não é kickoff duplicado).
+ */
+export function criarDedupeDeKickoff(): (ev: ScoreEvent) => boolean {
+  const vistos = new Set<string>();
+  return (ev) => {
+    if (ev.action !== 'kickoff') return false;
+    const id = `${ev.action}:${ev.clockSeconds ?? ev.ts}`;
+    if (vistos.has(id)) return true;
+    vistos.add(id);
+    return false;
+  };
+}
+
+/**
  * Um filtro com memória: guarda a régua de cada contador. Cada sala/replay cria
  * o seu — a régua é da partida, não do processo.
  */

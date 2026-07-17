@@ -107,7 +107,7 @@ onde `CtxDaSala` carrega o que hoje é capturado pelo closure (`explicador`, `eh
 - **Catch-up com dedupe:** a sala (a) registra o handler no barramento **antes** de ler o banco, bufferizando o que chegar; (b) lê `listReplayByFixture` + `oddsRepo.listReplayByFixture` e passa tudo **sincronamente** por `processarEvento` (sem runner — é fast-forward: o engine abre/fecha/resolve pelas `ts` dos eventos, exatamente como faz no replay); (c) drena o buffer descartando score com `seq <= últimoSeq` do catch-up e odds com `messageId` já visto no catch-up. Quem entra no minuto 60 vê placar, totais e feed reconstruídos — é o mesmo mecanismo que o `room_state` do replay já explora.
 - **Sem `ReplayRunner`** no ramo live: `sala.runner` vira opcional (ou um objeto nulo com `stop()` vazio) — `encerrar()` chama `runner.stop()` hoje.
 - **Fim de jogo (gap 11):** não há `onDone` de runner. O fio já existe no motor: `QuestionEngine.onScoreEvent` trata `game_finalised` (ou `statusId===100 && period===100`, `questions.ts:109-110`) e emite `game_end`, que o `emit` da sala já usa para `state.finished = true`. No ramo live, ao ver `game_end`, publicar também `replay_done` com `source: 'txline-live'` (é o evento que a tela usa para encerrar; manter o nome do §8 — renomear contrato a 24h do jogo é risco gratuito) e chamar `matchRepo.setState(fixtureId, 'finished')`.
-- **Estado `live` no banco (gap 9):** no **primeiro evento normalizado** da fixture, `live.ts` chama `matchRepo.setState(18257865, 'live')` (uma vez). A aba "Ao Vivo" da home já marca `live: fx.gameState === 2` a partir do snapshot da devnet (`fixtures/route.ts`) — **não verificado** se a devnet muda `gameState` para 2 durante o jogo; o `setState` no banco é o cinto de segurança para a listagem do cache. O fluxo de lobby é o mesmo do replay (criar lobby, host inicia, `phase='started'` libera o stream) — nada a mudar ali, apenas ensaiar o caminho no dry-run.
+- **Estado `live` no banco (gap 9):** no **primeiro evento DE SCORE** da fixture, `live.ts` chama `matchRepo.setState(18257865, 'live')` (uma vez). Score, não "qualquer evento normalizado" como a primeira versão dizia — **medido no dry-run de 17/07**: a devnet manda odds pré-jogo **~26h antes do apito**, e a versão por-qualquer-evento marcou como "ao vivo" uma partida que só começa amanhã (revertido no banco em seguida). Score só existe com jogo rolando. A aba "Ao Vivo" da home já marca `live: fx.gameState === 2` a partir do snapshot da devnet (`fixtures/route.ts`) — **não verificado** se a devnet muda `gameState` para 2 durante o jogo; o `setState` no banco é o cinto de segurança para a listagem do cache. O fluxo de lobby é o mesmo do replay (criar lobby, host inicia, `phase='started'` libera o stream) — nada a mudar ali, apenas ensaiar o caminho no dry-run.
 
 ---
 
@@ -225,7 +225,7 @@ select anterior + 1 as de, seq - 1 as ate, seq - anterior - 1 as faltam
 |---|---|---|
 | **18:00** | Deploy final no Railway. `curl https://palpitei-v1-production.up.railway.app/api/live/status` (rota pública, sem token — §6) → live desligado, replay ok. | Demo de replay intacta (é o plano B do vídeo). |
 | **20:00** | Setar no Railway `TXLINE_LIVE_INGEST=true`, `LIVE_FIXTURE_ID=18257865` → redeploy. `railway logs`: "ingestor ao vivo: abrindo streams SSE". | `scores=open`, `odds=open` no `/api/live/status`. Fixture semeada: `select fixture_id, start_ts, state, cache_source from matches where fixture_id=18257865;` → linha com **`start_ts` não nulo** (é a âncora do relógio do §2.4). |
-| **20:15–20:55** | Vigiar `/api/live/status` a cada ~5 min. Pré-jogo pode trazer odds/escalações antes do apito (não verificado — a devnet nunca foi vista ao vivo). Criar lobby da 18257865 com a conta do vídeo, **não** iniciar ainda. | Se `normalizados > 0` antes das 21:00: A7 já está morto, comemorar nos logs. `count(*)` de `match_odds` subindo confirma persistência; `foraDoMercado` subindo junto é normal (~9× mais mercados que o roteado). |
+| **20:15–20:55** | Vigiar `/api/live/status` a cada ~5 min. Pré-jogo TRAZ odds antes do apito — **medido 17/07**: o stream entregou 1X2 e handicap da devnet ~26h antes do jogo, e 4 linhas 1X2 da 18257865 já estão persistidas. Criar lobby da 18257865 com a conta do vídeo, **não** iniciar ainda. | Se `normalizados > 0` antes das 21:00: A7 já está morto, comemorar nos logs. `count(*)` de `match_odds` subindo confirma persistência; `foraDoMercado` subindo junto é normal (~9× mais mercados que o roteado). |
 | **21:00** | Apito. Vigiar o marco `PRIMEIRO evento ao vivo recebido` e o primeiro `roteadosParaSala`. Host inicia o lobby; abrir a sala. | Placar/feed reagindo; `question_open` de `next_goal`/`hilo` com `closesInRealMs` na casa de minuto (se vier ÷12, o speed do ramo live está errado). **`final_result`: conferir que ela segue ABERTA ~1 min após o kickoff** — se fechou em segundos, o par de kickoff passou pelo dedupe do §4.3 (padrão de feed diferente do medido); anotar e seguir: as demais perguntas não dependem dele. |
 | **21:10 — GO/NO-GO** | **GO:** `scores.normalizados > 0` e sala reagindo → gravar o vídeo ao vivo (~21:15–21:50, tempo de pegar 1–2 perguntas resolvendo e o ranking mexendo). **NO-GO:** `normalizados == 0` com `recebidos == 0` (feed mudo) ou `descartados` subindo sozinho (payload divergente — ler as 3 amostras cruas no log; hotfix de normalize só se for trivialidade óbvia) → gravar o vídeo no **replay da 18241006 com selo honesto `txline-cache`**, sem fingir live. | A decisão é pelos contadores, não por esperança. "Open/0" às 21:10 = NO-GO. |
 | **21:45–22:00 (intervalo)** | Rodar a **SQL de buracos acima** no banco. Se houver buraco: rodar `npm run cache:match 18257865` **agora** (idempotente, repõe no banco). | Sem buraco, ou buraco reposto. |
@@ -246,7 +246,40 @@ select anterior + 1 as de, seq - 1 as ate, seq - anterior - 1 as faltam
 - **Modo "vai sair pênalti?"** e qualquer pergunta nova dependente de payload nunca observado.
 - **Mudanças no motor** (`questions.ts`, `lances.ts`, `clock.ts`) — **zero**. O que a primeira versão deste doc afirmou a mais — "as constantes rodam no regime de projeto sem nenhuma ressalva" — foi refutado com medição (§4.3): o regime de projeto a 1× só existe **com** o dedupe de kickoff e o filtro de mercado no adaptador. As duas regras do adaptador são o preço, documentado, de manter o motor intocado.
 
-## 10. Ordem de implementação (horas, não dias)
+## 10. Dry-run executado (17/07, ~17:00–17:30 BRT) — o que ficou PROVADO
+
+Implementação dos §§2–6 completa (branch `claude/live-architecture`), build de
+produção + `next start` local contra a devnet e o Postgres reais:
+
+- **Travas fechadas = no-op limpo**: `/api/live/status` → `ativo: false`, home 200,
+  replay intacto. `instrumentation.ts` roda com a config atual (o "não verificado"
+  do §2.2 caiu).
+- **Travas abertas**: streams `scores/odds = open`, fixture **semeada** no banco
+  (`start_ts 1784408400000` = 18/07 21:00 UTC — a âncora do §2.4 existe).
+- **O A7 do caminho de odds MORREU**: eventos reais chegaram pré-jogo (~26h antes
+  do apito) e **4 linhas 1X2 de jogo inteiro da 18257865 foram persistidas** pelo
+  caminho stream → normalize → filtro → `upsertManyRaw` → Postgres. O filtro de
+  mercado segurou handicaps; o de fixture segurou a 18257739. `scores` segue
+  0 eventos — esperado até o apito; o A7 de score só morre amanhã.
+- **Consequência boa para o §4.3**: com odds 1X2 pré-jogo reais, o `pct1x2` da
+  sala live nasce alimentado antes do kickoff e a `final_result` abre com janela
+  pré-jogo de verdade.
+- **Armadilha nova, medida e corrigida — os DOIS BUNDLES do Next**: o Next
+  empacota `instrumentation.ts` e as rotas separadamente; `@palpitei/txline`
+  (transpilado como fonte) vira duas instâncias de módulo, e o `liveStatus`
+  importado pela rota **não** é o do bundle onde os streams vivem (log dizia
+  "ABERTO", rota dizia "off"). Correção: o canal (que mora em `globalThis`,
+  compartilhado) captura as funções de status do bundle que ligou o ingest
+  (`canal.txline` em `live.ts`). O barramento não sofre disso: os handlers
+  atravessam pelo próprio objeto do canal.
+- **Correção de projeto pega no ato**: o `setState('live')` disparava em
+  QUALQUER primeiro evento da fixture — as odds pré-jogo marcaram "ao vivo" uma
+  partida de amanhã (revertido no banco; código corrigido para score-somente).
+
+Pendências que SÓ o jogo responde: A7 de score, dedupe de kickoff sob feed real,
+volume/latência em jogo, `Last-Event-ID` com eventos reais.
+
+## 11. Ordem de implementação (horas, não dias)
 
 1. Extrair `processarEvento` de `criarSala` e religar o `ReplayRunner` a ela — **sem mudança de comportamento**; rodar a suíte e um replay manual da 18241006 como regressão (~1,5h).
 2. `apps/web/src/server/live.ts`: trava tripla, semeadura da fixture, filtro de fixture, **filtro de mercado (§2.1)**, persistência, barramento, contadores (~2h).
