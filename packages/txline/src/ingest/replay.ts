@@ -271,6 +271,26 @@ export function gapTetoMs(speed: number, jogoComecou: boolean): number {
 }
 
 /**
+ * Duração de parede que o mesmo agendador abaixo usará. É uma estimativa
+ * determinística para o watchdog da sala: se um timer do runtime dormir além
+ * disso, o servidor pode drenar os eventos reais restantes em vez de manter um
+ * replay zumbi.
+ */
+export function duracaoDoReplayMs(events: NormEvent[], requestedSpeed: number): number {
+  let total = 0;
+  let jogoComecou = false;
+  for (let i = 0; i < events.length - 1; i++) {
+    const current = events[i]!;
+    if (emJogo(current)) jogoComecou = true;
+    const escolhida = Math.max(requestedSpeed, 0.001);
+    const speed = jogoComecou ? escolhida : Math.max(escolhida, VELOCIDADE_PRE_JOGO);
+    const gapMs = (events[i + 1]!.ts - current.ts) / speed;
+    total += Math.min(Math.max(gapMs, 0), gapTetoMs(requestedSpeed, jogoComecou));
+  }
+  return total;
+}
+
+/**
  * Reagenda os eventos comprimindo a linha do tempo: delay real entre eventos =
  * (Δts do jogo) / speed, com teto (ver gapTetoMs) para os buracos de pré-jogo e
  * intervalo não travarem o replay. Um único setTimeout ativo por vez.
@@ -289,6 +309,7 @@ export class ReplayRunner {
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private started = false;
+  private done = false;
   private _startedAtMatchTs: number | null = null;
   // Trava: uma vez que o relógio da partida correu, não volta atrás (o feed tem
   // eventos sem clock no meio do jogo — suspend, comment — e eles não podem
@@ -313,14 +334,18 @@ export class ReplayRunner {
   }
 
   get emAndamento(): boolean {
-    return this.started && !this.stopped && this.idx < this.events.length;
+    return this.started && !this.stopped && !this.done && this.idx < this.events.length;
+  }
+
+  get estimatedDurationMs(): number {
+    return duracaoDoReplayMs(this.events, this.speed);
   }
 
   start(): void {
     if (this.started || this.stopped) return;
     this.started = true;
     if (this.events.length === 0) {
-      this.onDone();
+      this.complete();
       return;
     }
     this._startedAtMatchTs = this.events[0]!.ts;
@@ -333,6 +358,30 @@ export class ReplayRunner {
     this.timer = null;
   }
 
+  /**
+   * Consome imediatamente apenas os eventos REAIS que ainda faltam e conclui
+   * uma vez. Usado quando todos abandonam o replay ou o watchdog vence: placar
+   * e vereditos continuam vindo da TxLINE, sem fabricar um apito final.
+   */
+  finishNow(): void {
+    if (!this.started || this.stopped || this.done) return;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    while (this.idx < this.events.length && !this.stopped) {
+      const ev = this.events[this.idx++]!;
+      if (emJogo(ev)) this.jogoComecou = true;
+      this.onEvent(ev);
+    }
+    if (!this.stopped) this.complete();
+  }
+
+  private complete(): void {
+    if (this.done || this.stopped) return;
+    this.done = true;
+    this.timer = null;
+    this.onDone();
+  }
+
   private fire(): void {
     if (this.stopped) return;
     const ev = this.events[this.idx++]!;
@@ -340,8 +389,7 @@ export class ReplayRunner {
     this.onEvent(ev);
 
     if (this.idx >= this.events.length) {
-      this.timer = null;
-      this.onDone();
+      this.complete();
       return;
     }
 

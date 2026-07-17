@@ -1008,3 +1008,14 @@ test('apenas o anfitrião encerra e o encerramento é idempotente', async () => 
   await p.lobbies.markFinished(lobby.inviteCode, host.id);
   assert.equal((await p.lobbies.findByCode(lobby.inviteCode))?.phase, 'finished');
 });
+
+test('o runner consegue encerrar o lobby quando todos fecharam o navegador', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-system-finish');
+  await p.matches.upsert({ fixtureId: 910006, p1: 'England', p2: 'Argentina', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910006, true);
+  await p.lobbies.markStarted(lobby.inviteCode, host.id);
+
+  await p.lobbies.markFinishedBySystem(lobby.inviteCode);
+  await p.lobbies.markFinishedBySystem(lobby.inviteCode);
+  assert.equal((await p.lobbies.findByCode(lobby.inviteCode))?.phase, 'finished');
+});

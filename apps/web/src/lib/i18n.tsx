@@ -84,6 +84,8 @@ const pt = {
   lobbyJoining: 'Entrando…',
   lobbyLoginToJoin: 'Entrar com uma conta para participar',
   lobbyJoinError: 'Não deu para entrar nesse lobby agora.',
+  lobbyFinishedTitle: 'ESSA PARTIDA JÁ TERMINOU',
+  lobbyFinishedBody: 'A sessão foi encerrada. Volte para escolher a partida e começar um novo replay.',
   summaryOpen: 'Ver resumo da partida',
   summaryTitle: 'RESUMO DA PARTIDA',
   summaryPicks: 'palpites feitos',
@@ -135,7 +137,7 @@ const pt = {
   // zero) — o fã decide SABENDO, num painel da tela. Nunca window.confirm.
   sairSalaTitulo: 'Sair da sala?',
   sairSalaAviso:
-    'Se a sala ficar vazia, o replay recomeça do zero — e os desafios abertos vão junto.',
+    'Se todos saírem, o servidor conclui esta partida e guarda o resultado. Ela não recomeça do zero quando você voltar.',
   sairSalaFica: 'Ficar na sala',
   sairSalaVai: 'Sair mesmo assim',
   voltarAoJogo: 'Voltar ao jogo',
@@ -576,6 +578,8 @@ const en: Dict = {
   lobbyJoining: 'Joining…',
   lobbyLoginToJoin: 'Sign in with an account to join',
   lobbyJoinError: "Couldn't join this lobby right now.",
+  lobbyFinishedTitle: 'THIS MATCH HAS ENDED',
+  lobbyFinishedBody: 'This session is over. Go back to choose the match and start a new replay.',
   summaryOpen: 'View match summary',
   summaryTitle: 'MATCH SUMMARY',
   summaryPicks: 'picks made',
@@ -620,7 +624,7 @@ const en: Dict = {
   salaNoHandle: 'no nickname',
   sairSalaTitulo: 'Leave the room?',
   sairSalaAviso:
-    'If the room empties out, the replay restarts from scratch — open challenges go with it.',
+    'If everyone leaves, the server completes this match and keeps the result. It will not restart from zero when you return.',
   sairSalaFica: 'Stay in the room',
   sairSalaVai: 'Leave anyway',
   voltarAoJogo: 'Back to the match',

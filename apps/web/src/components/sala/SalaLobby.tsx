@@ -24,6 +24,7 @@ export function SalaComLobby({ roomId }: { roomId: string }) {
   });
   const [createError, setCreateError] = useState<string | null>(null);
   const creating = useRef(false);
+  const entrouNaPartida = useRef(false);
 
   useEffect(() => {
     if (partyId || !session || !privy.ready || !privy.authenticated || creating.current) return;
@@ -40,6 +41,12 @@ export function SalaComLobby({ roomId }: { roomId: string }) {
   const active = Boolean(partyId && session && privy.ready && privy.authenticated);
   const lobby = useLobby(roomId, partyId, active);
 
+  if (lobby.state?.phase === 'started') entrouNaPartida.current = true;
+
+  if (lobby.state?.phase === 'finished' && !entrouNaPartida.current) {
+    return <LobbyFinishedView />;
+  }
+
   if (lobby.state?.phase === 'started' || lobby.state?.phase === 'finished') {
     return (
       <SalaReal
@@ -47,14 +54,27 @@ export function SalaComLobby({ roomId }: { roomId: string }) {
         partyId={partyId}
         lobbyPlayerCount={lobby.state.players.length}
         lobbyPlayers={lobby.state.players}
-        lobbyMeHost={lobby.state.meHost}
         onLeaveLobby={lobby.leave}
-        onFinishLobby={lobby.finish}
       />
     );
   }
 
   return <LobbyView roomId={roomId} partyId={partyId} createError={createError} {...lobby} />;
+}
+
+function LobbyFinishedView() {
+  const router = useRouter();
+  const { t } = useI18n();
+  return (
+    <Screen padding="24px 22px" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
+      <Badge tone="neutral">{t.lanceEnd}</Badge>
+      <h1 style={{ margin: '18px 0 0', fontSize: 25, fontWeight: fw.black }}>{t.lobbyFinishedTitle}</h1>
+      <p style={{ margin: '10px auto 22px', maxWidth: 320, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.55 }}>
+        {t.lobbyFinishedBody}
+      </p>
+      <Button full size="lg" onClick={() => router.replace('/home')}>{t.backHome}</Button>
+    </Screen>
+  );
 }
 
 function LobbyView({

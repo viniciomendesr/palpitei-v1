@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formataRelogio, minutoDoReplay, segundoDoReplay } from '../src/lib/relogio.ts';
+import { formataRelogio, limitarSegundoDoReplay, minutoDoReplay, segundoDoReplay } from '../src/lib/relogio.ts';
 
 // A âncora é o ÚLTIMO evento do feed (B2): o relógio de parede só preenche o
 // intervalo até o próximo lance, que re-ancora tudo. Nunca o contrário.
@@ -44,4 +44,10 @@ test('formataRelogio escreve MM:SS como cronômetro de partida', () => {
   assert.equal(formataRelogio(0), '00:00');
   assert.equal(formataRelogio(392), '06:32');
   assert.equal(formataRelogio(5_407), '90:07');
+});
+
+test('relógio interpolado não passa do último segundo real da TxLINE', () => {
+  assert.equal(limitarSegundoDoReplay(6_245, 6_103), 6_103);
+  assert.equal(limitarSegundoDoReplay(5_900, 6_103), 5_900);
+  assert.equal(limitarSegundoDoReplay(6_245, null), 6_245);
 });

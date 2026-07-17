@@ -183,6 +183,17 @@ export function createLobbyRepo(db: Db) {
       );
       if (!rows[0]) throw new LobbyUnavailableError('só o anfitrião pode encerrar essa partida');
     },
+
+    /** Encerramento autoritativo do runner — não é uma ação exposta ao fã. */
+    async markFinishedBySystem(code: string): Promise<void> {
+      const normalized = normalizarCodigoLobby(code);
+      await db.query(
+        `update lobbies
+            set phase = 'finished', updated_at = now()
+          where invite_code = $1 and phase in ('started', 'finished')`,
+        [normalized],
+      );
+    },
   };
   return repo;
 }

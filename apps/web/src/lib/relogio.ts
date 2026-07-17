@@ -30,6 +30,11 @@ export function segundoDoReplay(
   return Math.floor(ancoraGameSeconds + decorridoRealS * speed);
 }
 
+/** Nunca extrapola além do último relógio que realmente existe na timeline. */
+export function limitarSegundoDoReplay(interpolado: number, maximoReal: number | null): number {
+  return maximoReal === null ? interpolado : Math.min(interpolado, maximoReal);
+}
+
 /** `MM:SS`, como cronômetro de transmissão. Só formata — quem conta é o de cima. */
 export function formataRelogio(totalGameSeconds: number): string {
   const s = Math.max(0, totalGameSeconds);

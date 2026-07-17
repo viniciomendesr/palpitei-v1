@@ -26,7 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { esperaDeReconexao } from '@/lib/reconexao';
-import { segundoDoReplay } from '@/lib/relogio';
+import { limitarSegundoDoReplay, segundoDoReplay } from '@/lib/relogio';
 import { idDaOpcaoChance } from '@/lib/chances';
 
 /** Cap do contrato para a lista de leituras de chance — o mesmo do servidor. */
@@ -100,6 +100,8 @@ export type SalaState = {
   clockSeconds?: number | null;
   /** Minutos de jogo por segundo real — 12 no replay padrão, 1 ao vivo. */
   replaySpeed?: number;
+  /** Último relógio real da timeline; impede extrapolação depois do feed. */
+  clockMaxSeconds?: number | null;
   finished: boolean;
   feed: SalaLance[];
   /** Vazio = a partida ainda não mandou total nenhum. Não é "tudo zero". */
@@ -196,6 +198,7 @@ export function useSala(
   const [segundosVivos, setSegundosVivos] = useState<number | null>(null);
   const ancora = useRef<{ game: number; realAt: number } | null>(null);
   const speedRef = useRef<number | null>(null);
+  const clockMaxRef = useRef<number | null>(null);
   const acabouRef = useRef(false);
   /** O enunciado de cada pergunta, para o resultado poder dizer do que se tratava. */
   const enunciados = useRef<Map<string, string>>(new Map());
@@ -290,6 +293,7 @@ export function useSala(
               ancora.current = { game: s.clockSeconds, realAt: Date.now() };
             }
             if (typeof s.replaySpeed === 'number') speedRef.current = s.replaySpeed;
+            clockMaxRef.current = typeof s.clockMaxSeconds === 'number' ? s.clockMaxSeconds : null;
             acabouRef.current = s.finished;
             setState({
               fixtureId: s.fixtureId,
@@ -561,12 +565,13 @@ export function useSala(
     if (!ativo) return;
     const tick = () => {
       if (acabouRef.current || !ancora.current || speedRef.current === null) return;
-      const s = segundoDoReplay(
+      const interpolado = segundoDoReplay(
         ancora.current.game,
         ancora.current.realAt,
         speedRef.current,
         Date.now(),
       );
+      const s = limitarSegundoDoReplay(interpolado, clockMaxRef.current);
       setSegundosVivos((antes) => (antes === s ? antes : s));
     };
     tick();

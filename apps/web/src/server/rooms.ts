@@ -47,6 +47,7 @@ import { ReplayRunner } from '@palpitei/txline';
 import {
   createEnginePorts,
   createEventRepo,
+  createLobbyRepo,
   createMatchRepo,
   createOddsRepo,
 } from '@palpitei/db';
@@ -63,6 +64,12 @@ import {
 import { createDb } from './db';
 import { resetLobby } from './lobbies';
 import { chaveDaSala, politicaDaSala } from './room-id';
+import {
+  WATCHDOG_MARGIN_MS,
+  agendarEncerramentoSeVazia,
+  agendarLimpezaFinal,
+  cancelarEncerramento,
+} from './room-lifecycle';
 
 export { chaveDaSala, parsePartyId, parseRoomId } from './room-id';
 
@@ -86,6 +93,8 @@ export type RoomState = {
   clockSeconds: number | null;
   /** Minutos de jogo por segundo real (12 no replay padrão; 1 ao vivo). */
   replaySpeed: number;
+  /** Último relógio REAL conhecido na timeline; a UI nunca interpola além. */
+  clockMaxSeconds: number | null;
   finished: boolean;
   questions: Question[];
   feed: { minute: number | null; action: string; goals: { p1: number; p2: number } | null }[];
@@ -166,6 +175,8 @@ type Room = {
   apelidos: Map<string, string>;
   /** Timer da carência: sala vazia espera antes de morrer (um F5 não é adeus). */
   desligar: ReturnType<typeof setTimeout> | null;
+  /** Limite contra timer adormecido/processo zumbi. */
+  watchdog: ReturnType<typeof setTimeout> | null;
   /** Quem desliga tudo quando o último fã sai ou o jogo acaba. */
   encerrar: () => void;
 };
@@ -262,6 +273,12 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
   // Ao vivo a speed é a CONSTANTE 1 — nunca a env: o default 60 vivo em dois
   // lugares independentes é a armadilha já paga do §11.
   const clock = cursorClock(cursor, aoVivo ? 1 : REPLAY_SPEED);
+  // No replay, impede a interpolação do browser de ultrapassar o último
+  // relógio REAL da TxLINE. Ao vivo fica sem teto: eventos futuros ainda virão.
+  const clockMaxSeconds = eventos.reduce<number | null>(
+    (max, event) => typeof event.clockSeconds === 'number' ? Math.max(max ?? 0, event.clockSeconds) : max,
+    null,
+  );
 
   const state: RoomState = {
     fixtureId,
@@ -277,6 +294,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     minute: null,
     clockSeconds: null,
     replaySpeed: aoVivo ? 1 : REPLAY_SPEED,
+    clockMaxSeconds: aoVivo ? null : clockMaxSeconds,
     finished: false,
     questions: [],
     feed: [],
@@ -299,6 +317,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     xpDaSala: new Map(),
     apelidos: new Map(),
     desligar: null,
+    watchdog: null,
     engine: null as unknown as QuestionEngine,
     runner: null,
     encerrar: () => {},
@@ -414,6 +433,20 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     }
   };
 
+  let encerramentoPublicado = false;
+  const finalizarSala = () => {
+    if (encerramentoPublicado) return;
+    encerramentoPublicado = true;
+    state.finished = true;
+    if (sala.watchdog) clearTimeout(sala.watchdog);
+    sala.watchdog = null;
+    publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
+    // O servidor fecha o lobby mesmo sem a aba do anfitrião conectada.
+    void createLobbyRepo(db).markFinishedBySystem(partyId).catch(() => {});
+    void ports.flush().catch(() => {});
+    if (sala.subs.size === 0) agendarLimpezaFinal(sala);
+  };
+
   /**
    * O explicador de cotação (core, determinístico): só fala quando a chance
    * MOVEU de verdade (limiar de 3 p.p.) — é ele o dono do limiar, não a sala.
@@ -520,7 +553,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       // risco gratuito. Depois do publicar: no replay o game_end também chega
       // antes do replay_done.
       if (msg.type === 'game_end' && aoVivo) {
-        publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
+        finalizarSala();
         void createMatchRepo(db)
           .setState(fixtureId, 'finished')
           .catch((e) =>
@@ -635,14 +668,15 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
 
   if (!aoVivo) {
     sala.runner = new ReplayRunner(linhaDoTempo, REPLAY_SPEED, processarEvento, () => {
-      state.finished = true;
-      publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
+      finalizarSala();
     });
   }
 
   sala.encerrar = () => {
     if (sala.desligar) clearTimeout(sala.desligar);
     sala.desligar = null;
+    if (sala.watchdog) clearTimeout(sala.watchdog);
+    sala.watchdog = null;
     sala.runner?.stop();
     desassinar?.();
     const key = chaveDaSala(fixtureId, treino, partyId);
@@ -676,7 +710,12 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     // Daqui em diante o canal entrega direto — o vão está fechado.
     entregar = aoEvento;
   } else {
-    sala.runner!.start();
+    const runner = sala.runner!;
+    runner.start();
+    sala.watchdog = setTimeout(
+      () => runner.finishNow(),
+      Math.max(30_000, runner.estimatedDurationMs + WATCHDOG_MARGIN_MS),
+    );
   }
   salas.set(chaveDaSala(fixtureId, treino, partyId), sala);
   return sala;
@@ -826,23 +865,15 @@ export function rankingDaSala(sala: Room, userId: string | null): RoomMessage {
  * perguntas novas. Pior: o palpite que o fã acabou de dar aponta para um
  * questionId que não existe mais, e ele ouve "pergunta não existe". Medido.
  */
-const CARENCIA_MS = 30_000;
-
 export function assinar(sala: Room, sub: Sub): () => void {
   sala.subs.add(sub);
-  if (sala.desligar) {
-    clearTimeout(sala.desligar);
-    sala.desligar = null;
-  }
+  cancelarEncerramento(sala);
   return () => {
     sala.subs.delete(sub);
-    // Sala sem ninguém não fica queimando timer e conexão de banco — mas espera
-    // um pouco: quase sempre é um reload, não um adeus.
-    if (sala.subs.size === 0 && !sala.desligar) {
-      sala.desligar = setTimeout(() => {
-        if (sala.subs.size === 0) sala.encerrar();
-      }, CARENCIA_MS);
-    }
+    // Um F5 tem 30s para voltar. Se ninguém voltar, o runner termina usando os
+    // eventos reais restantes; destruir a sala aqui faria o mesmo convite
+    // recomeçar do zero na próxima abertura.
+    agendarEncerramentoSeVazia(sala);
   };
 }
 

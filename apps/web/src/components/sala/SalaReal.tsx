@@ -715,17 +715,13 @@ export function SalaReal({
   partyId,
   lobbyPlayerCount,
   lobbyPlayers,
-  lobbyMeHost,
   onLeaveLobby,
-  onFinishLobby,
 }: {
   fixtureId: string;
   partyId: string;
   lobbyPlayerCount: number;
   lobbyPlayers: LobbyState['players'];
-  lobbyMeHost: boolean;
   onLeaveLobby: () => Promise<void>;
-  onFinishLobby: () => Promise<void>;
 }) {
   const router = useRouter();
   const { t, fmt, lang } = useI18n();
@@ -755,30 +751,19 @@ export function SalaReal({
   const [tab, setTab] = useState<SalaTab>('desafios');
   const [enviando, setEnviando] = useState<string | null>(null);
   const [recusa, setRecusa] = useState<Record<string, string>>({});
-  // Sair tem preço (sala vazia por 30s morre e o replay recomeça do zero):
-  // o fã confirma SABENDO, num painel da tela. Jogo encerrado sai direto.
+  // Se todos saírem, o servidor conclui a timeline real e guarda o resumo.
+  // O fã confirma SABENDO, num painel da tela. Jogo encerrado sai direto.
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   // O resultado ABERTO em tela cheia. A lista é só manchete (pergunta some,
   // texto some); o toque abre o detalhe com veredito, leitura e números.
   const [detalhe, setDetalhe] = useState<SalaResultado | null>(null);
   const [resumoAberto, setResumoAberto] = useState(false);
-  const encerramentoEnviado = useRef(false);
   const saidaEmAndamento = useRef(false);
-
-  useEffect(() => {
-    if (!state?.finished || !lobbyMeHost || encerramentoEnviado.current) return;
-    encerramentoEnviado.current = true;
-    void onFinishLobby().catch(() => {
-      // A tela continua utilizável; uma nova montagem tenta reconciliar de novo.
-      encerramentoEnviado.current = false;
-    });
-  }, [state?.finished, lobbyMeHost, onFinishLobby]);
 
   const sairDaSala = async () => {
     if (saidaEmAndamento.current) return;
     saidaEmAndamento.current = true;
     try {
-      if (state?.finished && lobbyMeHost) await onFinishLobby();
       await onLeaveLobby();
     } catch {
       // Sair não pode prender o fã porque a confirmação do servidor caiu.
@@ -1269,10 +1254,8 @@ export function SalaReal({
         />
       )}
 
-      {/* SAIR TEM PREÇO: sala vazia por 30s morre e o replay recomeça do zero.
-          O painel diz isso ANTES — sair sem saber e voltar para um 0×0 novo
-          é a tela quebrando a confiança. Ficar é o caminho fácil (primeiro e
-          em destaque); sair é escolha informada. */}
+      {/* Se todos saírem, o servidor conclui a timeline e preserva o resumo.
+          O painel diz isso antes; um F5 ainda usa a carência de 30 segundos. */}
       {confirmandoSaida && (
         <div
           style={{

@@ -6,7 +6,7 @@ process.env.TXLINE_LOG_SILENT = "true";
 import type { Fixture, NormEvent } from "@palpitei/core";
 import { createInMemoryMatchCacheStore } from "../src/cache.ts";
 import { generateDemoEvents } from "../src/ingest/demo.ts";
-import { ReplayRunner, emJogo, gapTetoMs, hasRealMatchContent, loadReplayEvents } from "../src/ingest/replay.ts";
+import { ReplayRunner, duracaoDoReplayMs, emJogo, gapTetoMs, hasRealMatchContent, loadReplayEvents } from "../src/ingest/replay.ts";
 
 const FIXTURE: Fixture = {
   fixtureId: 18241006,
@@ -111,6 +111,35 @@ test("ReplayRunner com lista vazia chama onDone e não trava", async () => {
   }).start();
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(pronto, true);
+});
+
+test("finishNow drena eventos reais restantes e conclui uma única vez", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const events = [
+    score(0, { clockRunning: true }),
+    score(60_000, { clockRunning: true }),
+    score(120_000, { clockRunning: true, action: "game_finalised" }),
+  ];
+  const vistos: number[] = [];
+  let finais = 0;
+  const runner = new ReplayRunner(events, 1, (e) => vistos.push(e.ts), () => finais++);
+  runner.start();
+  t.mock.timers.tick(0);
+  runner.finishNow();
+  runner.finishNow();
+
+  assert.deepEqual(vistos, [0, 60_000, 120_000]);
+  assert.equal(finais, 1);
+  assert.equal(runner.emAndamento, false);
+});
+
+test("estimativa usa exatamente os mesmos tetos do runner", () => {
+  const events = [
+    score(0),
+    score(6_000, { clockRunning: true }),
+    score(606_000, { clockRunning: true }),
+  ];
+  assert.equal(duracaoDoReplayMs(events, 60), 2_010);
 });
 
 // ---------------------------------------------------------------------------
