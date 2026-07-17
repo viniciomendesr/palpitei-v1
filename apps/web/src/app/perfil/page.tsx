@@ -18,8 +18,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Toggle, ProgressBar, ListRow, Button } from '@/components/ds';
 import { Screen } from '@/components/Shell';
-import { ChevronRight, Pencil, Crown, Layers } from '@/components/Icons';
+import { ChevronRight, Pencil, Crown, Layers, Copy } from '@/components/Icons';
 import { NicknameInput, isNicknameValid, MAX_NICK } from '@/components/NicknameInput';
+import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { useI18n, type Lang } from '@/lib/i18n';
 import { useSession, initialsOf } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
@@ -29,12 +30,14 @@ export default function PerfilPage() {
   const router = useRouter();
   const { t, fmt, lang, setLang } = useI18n();
   const { session, update, logout, refreshState, serverStats } = useSession();
+  const privy = usePrivyAuth();
   const ready = useRequireSession();
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erroNome, setErroNome] = useState<string | null>(null);
+  const [carteiraCopiada, setCarteiraCopiada] = useState(false);
 
   // Os números desta tela são do BANCO (o motor liquida XP lá): realinha o
   // cache local ao entrar. Para o demo é no-op — a conta de teste é local (§5.1).
@@ -53,6 +56,25 @@ export default function PerfilPage() {
       : session.authMethod === 'wallet'
         ? '7xKq…9fPz · Solana'
         : t.walletDemo;
+
+  // Nome/e-mail são dados privados para o próprio fã reconhecer a conta. O
+  // apelido público continua sendo o que ele escolheu — nunca derivamos um do
+  // outro (E12). No demo não há Privy nem carteira real para exibir.
+  const mostrarDadosPrivy = session.authMethod !== 'demo' && privy.ready && privy.authenticated;
+  const enderecoCarteira = privy.wallets[0]?.address ?? null;
+
+  const copiarCarteira = async () => {
+    if (!enderecoCarteira) return;
+    try {
+      await navigator.clipboard.writeText(enderecoCarteira);
+      setCarteiraCopiada(true);
+      window.setTimeout(() => setCarteiraCopiada(false), 2_000);
+    } catch {
+      // Clipboard pode estar bloqueado por permissão do navegador. Não fingimos
+      // cópia concluída; o endereço segue visível para seleção manual.
+      setCarteiraCopiada(false);
+    }
+  };
 
   const openEdit = () => {
     setDraft(session.nickname);
@@ -190,6 +212,52 @@ export default function PerfilPage() {
           </div>
         </div>
       </div>
+
+      {mostrarDadosPrivy && (
+        <section aria-labelledby="dados-da-conta" style={{ marginTop: 'var(--sp-5)' }}>
+          <h2
+            id="dados-da-conta"
+            style={{
+              margin: '0 0 var(--sp-3)',
+              fontSize: 'var(--micro)',
+              fontWeight: fw.black,
+              letterSpacing: 'var(--tracking-label)',
+              color: 'var(--text-faint)',
+            }}
+          >
+            {t.profileDataTitle}
+          </h2>
+          <div
+            style={{
+              background: 'var(--surface-1)',
+              border: '1px solid var(--border-1)',
+              borderRadius: 'var(--r-2xl)',
+              overflow: 'hidden',
+            }}
+          >
+            <AccountDataRow label={t.profileNameLabel} value={privy.profile.name ?? t.profileNotProvided} />
+            <AccountDataRow label={t.profileEmailLabel} value={privy.profile.email ?? t.profileNotProvided} divider />
+            <AccountDataRow
+              label={t.profileWalletLabel}
+              value={enderecoCarteira ?? t.profileWalletUnavailable}
+              wallet
+              onCopy={enderecoCarteira ? copiarCarteira : undefined}
+              copyLabel={carteiraCopiada ? t.profileWalletCopied : t.profileCopyWallet}
+            />
+          </div>
+          <p
+            style={{
+              margin: 'var(--sp-3) 0 0',
+              fontSize: 'var(--caption)',
+              fontWeight: fw.medium,
+              color: 'var(--text-muted)',
+              lineHeight: 'var(--leading-body)',
+            }}
+          >
+            {t.profileWalletDisclaimer}
+          </p>
+        </section>
+      )}
 
       {/* editar apelido */}
       {editing && (
@@ -421,6 +489,80 @@ export default function PerfilPage() {
         {t.signout}
       </button>
     </Screen>
+  );
+}
+
+function AccountDataRow({
+  label,
+  value,
+  divider = false,
+  wallet = false,
+  onCopy,
+  copyLabel,
+}: {
+  label: string;
+  value: string;
+  divider?: boolean;
+  wallet?: boolean;
+  onCopy?: () => void;
+  copyLabel?: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: 'var(--sp-4)',
+        ...(divider ? { borderBottom: '1px solid var(--border-1)' } : {}),
+      }}
+    >
+      <div
+        style={{
+          fontSize: 'var(--micro)',
+          fontWeight: fw.black,
+          letterSpacing: 'var(--tracking-label)',
+          color: 'var(--text-faint)',
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginTop: 'var(--sp-2)' }}>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflowWrap: 'anywhere',
+            fontFamily: 'var(--font-sans)',
+            fontSize: 'var(--caption)',
+            fontWeight: fw.bold,
+            color: wallet ? 'var(--lime)' : 'var(--text-1)',
+          }}
+        >
+          {value}
+        </span>
+        {onCopy && copyLabel && (
+          <button
+            type="button"
+            onClick={() => void onCopy()}
+            aria-label={copyLabel}
+            title={copyLabel}
+            style={{
+              all: 'unset',
+              cursor: 'pointer',
+              flex: 'none',
+              width: 'var(--tap-min)',
+              height: 'var(--tap-min)',
+              borderRadius: 'var(--r-md)',
+              background: 'var(--lime-a06)',
+              border: '1px solid var(--lime-line)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Copy />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

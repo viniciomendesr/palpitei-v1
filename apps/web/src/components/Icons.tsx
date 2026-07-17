@@ -306,6 +306,26 @@ export function Pencil({ size = 14, color = 'var(--lime)' }: IconProps) {
   );
 }
 
+/** Dois quadrados sobrepostos — copiar um dado, como a chave pública da carteira. */
+export function Copy({ size = 18, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+    </svg>
+  );
+}
+
 export function Lock({ size = 12, color = 'var(--text-muted)' }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} aria-hidden="true">

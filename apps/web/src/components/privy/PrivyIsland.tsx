@@ -43,12 +43,20 @@ export interface PrivyWallet {
   source: 'privy_embedded' | 'external';
 }
 
+/** Dados privados de exibição fornecidos pela conta Privy no cliente. */
+export interface PrivyProfile {
+  name: string | null;
+  email: string | null;
+}
+
 export interface PrivyAuth {
   /** false enquanto o SDK não inicializa. Use pra segurar a tela — e o watchdog. */
   ready: boolean;
   authenticated: boolean;
   /** O DID verificado. É ESTA a identidade do fã — nunca a carteira, nunca o e-mail. */
   did: string | null;
+  /** Metadados para a tela de perfil; não são identidade nem vão para o banco. */
+  profile: PrivyProfile;
   wallets: PrivyWallet[];
   /** true quando o SDK não subiu em 8s: origem não liberada, appId errado, rede fora. */
   stuck: boolean;
@@ -76,6 +84,7 @@ const desligada: PrivyAuth = {
   ready: true,
   authenticated: false,
   did: null,
+  profile: { name: null, email: null },
   wallets: [],
   stuck: false,
   enabled: false,
@@ -127,6 +136,22 @@ function carteirasSolana(user: ReturnType<typeof usePrivy>['user']): {
   return { embedded, externas, tambemNoPhantom };
 }
 
+/**
+ * Nome/e-mail servem somente para o fã reconhecer a própria conta no perfil.
+ * O apelido público continua sendo escolhido no onboarding (E12), e o DID
+ * continua sendo a única identidade da aplicação.
+ */
+function perfilDaConta(user: ReturnType<typeof usePrivy>['user']): PrivyProfile {
+  const contas = user?.linkedAccounts ?? [];
+  const google = contas.find((account) => account.type === 'google_oauth');
+  const email = contas.find((account) => account.type === 'email');
+
+  return {
+    name: google?.name ?? null,
+    email: google?.email ?? email?.address ?? null,
+  };
+}
+
 function Ponte({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, getAccessToken, logout } = usePrivy();
   const { login } = useLogin();
@@ -134,6 +159,7 @@ function Ponte({ children }: { children: ReactNode }) {
   const [stuck, setStuck] = useState(false);
 
   const { embedded, externas, tambemNoPhantom } = carteirasSolana(user);
+  const profile = perfilDaConta(user);
 
   // Watchdog: com origem não liberada, appId errado ou rede fora, o
   // PrivyProvider fica em branco e calado PARA SEMPRE (E7). Sem isto ninguém
@@ -206,6 +232,7 @@ function Ponte({ children }: { children: ReactNode }) {
       ready,
       authenticated,
       did: user?.id ?? null,
+      profile,
       // `stuck` só vale enquanto a Privy NÃO subiu. O timer é de mão única
       // (setStuck(true) e nunca false), então numa conexão lenta a ilha ficava
       // pronta em 9s, o login funcionava — e o alerta vermelho continuava na
@@ -237,6 +264,8 @@ function Ponte({ children }: { children: ReactNode }) {
       ready,
       authenticated,
       user?.id,
+      profile.name,
+      profile.email,
       stuck,
       tambemNoPhantom,
       embedded?.address,
