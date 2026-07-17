@@ -486,109 +486,113 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     },
   });
 
-  sala.runner = new ReplayRunner(
-    linhaDoTempo,
-    REPLAY_SPEED,
-    (ev) => {
-      // A ÂNCORA. Tem que ser atualizada ANTES de o motor rodar: é ela que
-      // define o "agora" da partida para abrir e fechar janelas.
-      cursor.matchTs = ev.ts;
-      cursor.realAt = Date.now();
+  /**
+   * O corpo por evento da sala — UMA regra, dois alimentadores: o ReplayRunner
+   * (replay) e o barramento do canal ao vivo (live). Extraído do closure do
+   * runner de propósito: a alternativa (copiar o handler para o caminho live)
+   * é o bug nº 1 do projeto — a regra do lance já divergiu uma vez entre dois
+   * lugares, e `lances.ts` existe por causa disso.
+   */
+  const processarEvento = (ev: NormEvent): void => {
+    // A ÂNCORA. Tem que ser atualizada ANTES de o motor rodar: é ela que
+    // define o "agora" da partida para abrir e fechar janelas.
+    cursor.matchTs = ev.ts;
+    cursor.realAt = Date.now();
 
-      // Cotação alimenta o explicador e o pct da final_result — e NADA MAIS:
-      // não passa pelo motor de perguntas, nem pelo filtro de lances, nem
-      // encosta em placar/totais. Odds movem chance; quem move jogo é o placar.
-      if (ev.kind === 'odds') {
-        atualizarPct1x2(sala.pct1x2, ev);
-        explicador.onOddsEvent(ev);
-        return;
-      }
+    // Cotação alimenta o explicador e o pct da final_result — e NADA MAIS:
+    // não passa pelo motor de perguntas, nem pelo filtro de lances, nem
+    // encosta em placar/totais. Odds movem chance; quem move jogo é o placar.
+    if (ev.kind === 'odds') {
+      atualizarPct1x2(sala.pct1x2, ev);
+      explicador.onOddsEvent(ev);
+      return;
+    }
 
-      if (!ehScore(ev)) return;
-      sala.engine.onScoreEvent(ev);
-      // O explicador só guarda o ÚLTIMO lance como contexto ("depois do gol").
-      explicador.onScoreEvent(ev);
+    if (!ehScore(ev)) return;
+    sala.engine.onScoreEvent(ev);
+    // O explicador só guarda o ÚLTIMO lance como contexto ("depois do gol").
+    explicador.onScoreEvent(ev);
 
-      // `hasScore` NÃO basta para mover o placar, e a diferença é a distância
-      // entre 1 × 2 e 0 × 0 no meio do jogo.
-      //
-      // Medido nesta partida: 23 dos 47 eventos com `hasScore: true` trazem o
-      // bloco `Total` SEM a chave `Goals` — e, sem a chave, `ev.goals` vem
-      // {0,0} de placeholder. As chaves entram no Total DURANTE o jogo (a de
-      // `Goals` só aparece no 1º gol, seq 539); antes disso o Total vem vazio.
-      //
-      // Aqui o A4 entra pela porta do G7: dentro do Total, chave ausente É zero
-      // (G7) — mas um Total que não fala de gols não está dizendo "0 a 0", está
-      // calado. Confiar no `hasScore` sozinho faz o placar REGREDIR ao primeiro
-      // evento pós-gol cujo Total não cite `Goals`.
-      //
-      // Nesta partida isso não acontece (depois do seq 539 a chave nunca mais
-      // falta), e é por isso que o placar fecha 1 × 2. Isso é SORTE DESTA
-      // PARTIDA, não garantia — e o France × England é outra partida. Só move o
-      // placar quem realmente fala de gols.
-      const falaDeGols =
-        ev.totals?.p1?.Goals !== undefined || ev.totals?.p2?.Goals !== undefined;
-      const mudou =
-        ev.hasScore &&
-        falaDeGols &&
-        (ev.goals.p1 !== state.score.p1 || ev.goals.p2 !== state.score.p2);
-      if (mudou) state.score = { p1: ev.goals.p1, p2: ev.goals.p2 };
-      if (typeof ev.clockSeconds === 'number') {
-        state.minute = Math.floor(ev.clockSeconds / 60);
-        state.clockSeconds = ev.clockSeconds;
-      }
+    // `hasScore` NÃO basta para mover o placar, e a diferença é a distância
+    // entre 1 × 2 e 0 × 0 no meio do jogo.
+    //
+    // Medido nesta partida: 23 dos 47 eventos com `hasScore: true` trazem o
+    // bloco `Total` SEM a chave `Goals` — e, sem a chave, `ev.goals` vem
+    // {0,0} de placeholder. As chaves entram no Total DURANTE o jogo (a de
+    // `Goals` só aparece no 1º gol, seq 539); antes disso o Total vem vazio.
+    //
+    // Aqui o A4 entra pela porta do G7: dentro do Total, chave ausente É zero
+    // (G7) — mas um Total que não fala de gols não está dizendo "0 a 0", está
+    // calado. Confiar no `hasScore` sozinho faz o placar REGREDIR ao primeiro
+    // evento pós-gol cujo Total não cite `Goals`.
+    //
+    // Nesta partida isso não acontece (depois do seq 539 a chave nunca mais
+    // falta), e é por isso que o placar fecha 1 × 2. Isso é SORTE DESTA
+    // PARTIDA, não garantia — e o France × England é outra partida. Só move o
+    // placar quem realmente fala de gols.
+    const falaDeGols =
+      ev.totals?.p1?.Goals !== undefined || ev.totals?.p2?.Goals !== undefined;
+    const mudou =
+      ev.hasScore &&
+      falaDeGols &&
+      (ev.goals.p1 !== state.score.p1 || ev.goals.p2 !== state.score.p2);
+    if (mudou) state.score = { p1: ev.goals.p1, p2: ev.goals.p2 };
+    if (typeof ev.clockSeconds === 'number') {
+      state.minute = Math.floor(ev.clockSeconds / 60);
+      state.clockSeconds = ev.clockSeconds;
+    }
 
-      // Os totais só valem com o bloco Score (A4): sem ele não há Total nenhum,
-      // e sobrescrever aqui zeraria a aba inteira num evento de lineup.
-      //
-      // MERGE por chave, nunca `state.totals = ev.totals`. As chaves entram no
-      // Total ao longo do jogo, não no apito: medido nesta partida, `Goals` só
-      // aparece no 1º gol (seq 539) — dos 47 eventos com Score, 24 têm `Goals`,
-      // 46 têm `Corners` e o primeiro (seq 76) traz o Total VAZIO. Trocar o mapa
-      // inteiro faria a linha de Gols piscar e sumir a cada evento que não a
-      // trouxesse: é o G7 na tela ("chave ausente = zero → linhas somem"). Como
-      // são contadores acumulados do feed (medido: zero regressões), a última
-      // leitura de cada chave é a verdade dela.
-      if (ev.hasScore && ev.totals) {
-        state.totals = {
-          p1: { ...state.totals.p1, ...ev.totals.p1 },
-          p2: { ...state.totals.p2, ...ev.totals.p2 },
-        };
-      }
+    // Os totais só valem com o bloco Score (A4): sem ele não há Total nenhum,
+    // e sobrescrever aqui zeraria a aba inteira num evento de lineup.
+    //
+    // MERGE por chave, nunca `state.totals = ev.totals`. As chaves entram no
+    // Total ao longo do jogo, não no apito: medido nesta partida, `Goals` só
+    // aparece no 1º gol (seq 539) — dos 47 eventos com Score, 24 têm `Goals`,
+    // 46 têm `Corners` e o primeiro (seq 76) traz o Total VAZIO. Trocar o mapa
+    // inteiro faria a linha de Gols piscar e sumir a cada evento que não a
+    // trouxesse: é o G7 na tela ("chave ausente = zero → linhas somem"). Como
+    // são contadores acumulados do feed (medido: zero regressões), a última
+    // leitura de cada chave é a verdade dela.
+    if (ev.hasScore && ev.totals) {
+      state.totals = {
+        p1: { ...state.totals.p1, ...ev.totals.p1 },
+        p2: { ...state.totals.p2, ...ev.totals.p2 },
+      };
+    }
 
-      if (ehLance(ev, mudou)) {
-        const lance = {
-          minute: state.minute,
-          action: ev.action,
-          goals: mudou ? { ...state.score } : null,
-        };
-        state.feed.unshift(lance);
-        if (state.feed.length > 40) state.feed.pop();
-        publicarBruto({
-          type: 'score_event',
-          ts: ev.ts,
-          minute: state.minute,
-          // A âncora nova do relógio da tela — null quando ESTE evento não
-          // trouxe relógio (a âncora anterior continua valendo lá).
-          clockSeconds: typeof ev.clockSeconds === 'number' ? ev.clockSeconds : null,
-          // Ausente NAO e zero (A4): so mando placar quando o bloco Score veio.
-          // null diz "nao mudou"; quem renderizar `?? 0` da gol fantasma.
-          scoreA: mudou ? state.score.p1 : null,
-          scoreB: mudou ? state.score.p2 : null,
-          lance,
-          // O ACUMULADO inteiro, não o delta — e é de propósito. Todo evento que
-          // mexe nos totais nesta partida também vira lance (medido: 0 exceções),
-          // mas se um dia não virar, o snapshot seguinte conserta a tela sozinho.
-          // Delta perdido no caminho ficaria errado para sempre.
-          totals: state.totals,
-        });
-      }
-    },
-    () => {
-      state.finished = true;
-      publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
-    },
-  );
+    if (ehLance(ev, mudou)) {
+      const lance = {
+        minute: state.minute,
+        action: ev.action,
+        goals: mudou ? { ...state.score } : null,
+      };
+      state.feed.unshift(lance);
+      if (state.feed.length > 40) state.feed.pop();
+      publicarBruto({
+        type: 'score_event',
+        ts: ev.ts,
+        minute: state.minute,
+        // A âncora nova do relógio da tela — null quando ESTE evento não
+        // trouxe relógio (a âncora anterior continua valendo lá).
+        clockSeconds: typeof ev.clockSeconds === 'number' ? ev.clockSeconds : null,
+        // Ausente NAO e zero (A4): so mando placar quando o bloco Score veio.
+        // null diz "nao mudou"; quem renderizar `?? 0` da gol fantasma.
+        scoreA: mudou ? state.score.p1 : null,
+        scoreB: mudou ? state.score.p2 : null,
+        lance,
+        // O ACUMULADO inteiro, não o delta — e é de propósito. Todo evento que
+        // mexe nos totais nesta partida também vira lance (medido: 0 exceções),
+        // mas se um dia não virar, o snapshot seguinte conserta a tela sozinho.
+        // Delta perdido no caminho ficaria errado para sempre.
+        totals: state.totals,
+      });
+    }
+  };
+
+  sala.runner = new ReplayRunner(linhaDoTempo, REPLAY_SPEED, processarEvento, () => {
+    state.finished = true;
+    publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
+  });
 
   sala.encerrar = () => {
     if (sala.desligar) clearTimeout(sala.desligar);
