@@ -48,6 +48,13 @@ const pt = {
   demoNote:
     'No modo demo você entra na hora, com uma conta de teste pronta, sem carteira e sem configuração.',
   loginStuck: 'O login social não carregou. Entre na versão demo — funciona sem carteira.',
+  // Selo de origem do dado (§2 exige; G6: rótulo de proveniência não pode mentir).
+  srcSimulado: 'SIMULADO',
+  fxLoading: 'Buscando as partidas na TxLINE…',
+  fxError: 'Não deu para carregar as partidas:',
+  fxEmpty: 'Nenhuma partida nesta aba agora.',
+  srcTxline: 'TXLINE',
+  srcReplay: 'TXLINE · REPLAY',
   lv: 'Nv',
   obStep: 'PASSO',
   obOf: 'de',
@@ -338,6 +345,12 @@ const en: Dict = {
   demoNote:
     "In demo mode you're in right away, with a ready test account, no wallet and no setup.",
   loginStuck: "Social login didn't load. Try the demo — it works without a wallet.",
+  srcSimulado: 'SIMULATED',
+  fxLoading: 'Fetching fixtures from TxLINE…',
+  fxError: "Couldn't load the fixtures:",
+  fxEmpty: 'No fixtures in this tab right now.',
+  srcTxline: 'TXLINE',
+  srcReplay: 'TXLINE · REPLAY',
   lv: 'Lv',
   obStep: 'STEP',
   obOf: 'of',

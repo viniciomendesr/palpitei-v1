@@ -122,6 +122,15 @@ export interface FixtureView {
   scoreA: string | number;
   scoreB: string | number;
   cta: string;
+  /**
+   * Selo de origem, exigido pela §2 ("badge de fonte em cada sala") e pelo G6
+   * ("rótulo de proveniência não pode mentir"). Aparece na linha do grupo — o
+   * MatchCard do ds não tem prop de origem e o contrato dele é o .d.ts.
+   *
+   * No mock isto diz SIMULADO com todas as letras: a §5.1 permite o jurado
+   * testar sem carteira, não permite fingir que o dado é da TxLINE.
+   */
+  source: string;
 }
 
 /** As três abas da home. GET /api/fixtures devolve isto no lugar. */
@@ -138,6 +147,7 @@ export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureVi
         scoreA: 2,
         scoreB: 1,
         cta: t.ctaEnter,
+        source: t.srcSimulado,
       },
       {
         id: 'esp-cor',
@@ -149,6 +159,7 @@ export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureVi
         scoreA: 0,
         scoreB: 0,
         cta: t.ctaEnter,
+        source: t.srcSimulado,
       },
     ],
     next: [
@@ -161,6 +172,7 @@ export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureVi
         scoreA: '–',
         scoreB: '–',
         cta: t.ctaRemind,
+        source: t.srcSimulado,
       },
       {
         id: 'fra-cro',
@@ -171,6 +183,7 @@ export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureVi
         scoreA: '–',
         scoreB: '–',
         cta: t.ctaRemind,
+        source: t.srcSimulado,
       },
       {
         id: 'ing-eua',
@@ -181,6 +194,7 @@ export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureVi
         scoreA: '–',
         scoreB: '–',
         cta: t.ctaRemind,
+        source: t.srcSimulado,
       },
     ],
     replays: [
@@ -193,6 +207,7 @@ export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureVi
         scoreA: 2,
         scoreB: 1,
         cta: t.ctaReplay,
+        source: t.srcSimulado,
       },
       {
         id: 'ale-por',
@@ -203,6 +218,7 @@ export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureVi
         scoreA: 0,
         scoreB: 0,
         cta: t.ctaReplay,
+        source: t.srcSimulado,
       },
     ],
   };

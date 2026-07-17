@@ -8,7 +8,7 @@
  * sala mostra selo de origem; a fonte primária é sempre a TxLINE.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SegTabs, MatchCard, Card, ProgressBar, Button, Chip, Badge } from '@/components/ds';
 import { Screen } from '@/components/Shell';
@@ -18,9 +18,71 @@ import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
 import { fw } from '@/lib/tokens';
-import { fixtures } from '@/lib/mock';
+import { fixtures, type FixtureView } from '@/lib/mock';
+import { api, type ApiFixture } from '@/lib/api';
+import type { SessionState } from '@/lib/session';
+import type { Dict } from '@/lib/i18n';
 
 type Tab = 'live' | 'next' | 'replays';
+
+/** Aba onde cada partida real entra. Sem bola rolando, `live` vem false do servidor. */
+function abaDa(f: ApiFixture): Tab {
+  if (f.live) return 'live';
+  return f.source === 'txline' ? 'next' : 'replays';
+}
+
+/**
+ * O dado da home, e é aqui que mora a regra do produto:
+ *
+ *   demo (§5.1)       → mock, rotulado SIMULADO. Não chama a rota, não precisa
+ *                       de rede: é o caminho do jurado e ele não pode depender
+ *                       de nada.
+ *   Google / carteira → só TxLINE real, via GET /api/fixtures (Bearer verificado).
+ *
+ * O fã logado NUNCA cai no mock: se a rota falhar, ele vê a lista vazia com o
+ * erro, não Argentina × Cabo Verde inventado. Fallback silencioso para o mock é
+ * o G6 — o rótulo passa a mentir sobre a origem — e é justamente o que a §2
+ * proíbe ao exigir selo de fonte.
+ */
+function useFixtures(session: SessionState | null, t: Dict) {
+  const [reais, setReais] = useState<ApiFixture[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const ehDemo = !session || session.authMethod === 'demo';
+
+  useEffect(() => {
+    if (ehDemo) return;
+    let vivo = true;
+    api
+      .fixtures()
+      .then((r) => vivo && setReais(r.fixtures))
+      .catch((e) => vivo && setErro(e instanceof Error ? e.message : 'não deu para carregar as partidas'));
+    return () => {
+      vivo = false;
+    };
+  }, [ehDemo]);
+
+  if (ehDemo) return { abas: fixtures(t), carregando: false, erro: null };
+
+  const abas: Record<Tab, FixtureView[]> = { live: [], next: [], replays: [] };
+  for (const f of reais ?? []) {
+    abas[abaDa(f)].push({
+      id: f.id,
+      live: f.live,
+      status: f.status,
+      group: f.group,
+      teamA: f.teamA,
+      teamB: f.teamB,
+      // O servidor manda null quando a partida não começou. Ausente NÃO é zero
+      // (A4): renderizar 0 aqui afirma um empate que ninguém jogou.
+      scoreA: f.scoreA ?? '–',
+      scoreB: f.scoreB ?? '–',
+      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : t.ctaReplay,
+      // O selo diz o que o servidor gravou, não o que seria bonito.
+      source: f.source === 'txline' ? t.srcTxline : t.srcReplay,
+    });
+  }
+  return { abas, carregando: reais === null && !erro, erro };
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -29,9 +91,10 @@ export default function HomePage() {
   const ready = useRequireSession();
   const [tab, setTab] = useState<Tab>('live');
 
+  const { abas, carregando, erro } = useFixtures(session, t);
+
   if (!ready || !session) return null;
 
-  const fx = fixtures(t);
   const openSala = (id: string) => router.push(`/sala/${id}`);
 
   // A missão do dia acompanha a sequência de acertos: 3 seguidos fecham.
@@ -102,12 +165,12 @@ export default function HomePage() {
       />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
-        {fx[tab].map((f) => (
+        {abas[tab].map((f) => (
           <MatchCard
             key={f.id}
             live={f.live}
             status={f.status}
-            group={f.group}
+            group={`${f.group} · ${f.source}`}
             teamA={f.teamA}
             teamB={f.teamB}
             scoreA={f.scoreA}
@@ -116,6 +179,25 @@ export default function HomePage() {
             onClick={() => openSala(f.id)}
           />
         ))}
+
+        {/* Lista vazia sem explicação é a falha silenciosa que este projeto
+            existe para evitar: o fã logado tem que saber se está carregando, se
+            deu erro, ou se a TxLINE simplesmente não tem partida nesta aba. */}
+        {!abas[tab].length && (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '28px 12px',
+              fontSize: 13,
+              fontWeight: fw.medium,
+              lineHeight: 'var(--leading-body)',
+              color: erro ? 'var(--red)' : 'var(--text-muted)',
+            }}
+            role={erro ? 'alert' : undefined}
+          >
+            {carregando ? t.fxLoading : erro ? `${t.fxError} ${erro}` : t.fxEmpty}
+          </div>
+        )}
       </div>
 
       {tab === 'replays' && (
