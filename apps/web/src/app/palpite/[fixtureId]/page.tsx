@@ -268,7 +268,7 @@ export default function PalpitePreJogoPage() {
               {filled} {t.pmPicksOf}
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: fw.black, color: 'var(--gold)' }}>
-              <Star size={14} />+{fmt(xpInPlay)} XP {t.pmXpInPlay}
+              <Star size={14} />+{fmt(xpInPlay)} {t.pmXpInPlay}
             </span>
           </div>
           <Button size="lg" full disabled={filled < 1 || saving} onClick={jogo.confirmar}>

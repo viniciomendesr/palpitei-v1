@@ -256,6 +256,13 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ehDemo, podeBuscar, fixtureId, lang]);
 
+  // O toast some sozinho — a tela não tem toast global que faça isso por ela.
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(id);
+  }, [toast]);
+
   const filled = useMemo(
     () => (m.result ? 1 : 0) + (m.scoreTouched ? 1 : 0) + (m.goals ? 1 : 0) + (m.corners ? 1 : 0),
     [m],
