@@ -516,6 +516,11 @@ const pt = {
   profileWalletUnavailable: 'Carteira Solana ainda não disponível',
   profileWalletDisclaimer:
     'Este é o endereço público da sua carteira Solana. Sua chave privada nunca é exibida pelo Palpitei.',
+  profileDemoName: 'Conta de demonstração',
+  profileDemoEmail: 'demo@palpitei.app',
+  profileDemoWallet: 'DEMO — carteira Solana simulada',
+  profileDemoWalletDisclaimer:
+    'No modo demo, este código é apenas ilustrativo. Nenhuma carteira Solana real nem chave privada está vinculada a esta conta.',
   profileCopyWallet: 'Copiar endereço da carteira',
   profileWalletCopied: 'Endereço copiado',
   readyNameFallback: 'craque',
@@ -1016,6 +1021,11 @@ const en: Dict = {
   profileWalletUnavailable: 'Solana wallet not available yet',
   profileWalletDisclaimer:
     'This is your Solana wallet public address. Palpitei never displays your private key.',
+  profileDemoName: 'Demo account',
+  profileDemoEmail: 'demo@palpitei.app',
+  profileDemoWallet: 'DEMO — simulated Solana wallet',
+  profileDemoWalletDisclaimer:
+    'In demo mode, this code is illustrative only. No real Solana wallet or private key is linked to this account.',
   profileCopyWallet: 'Copy wallet address',
   profileWalletCopied: 'Address copied',
   readyNameFallback: 'player',

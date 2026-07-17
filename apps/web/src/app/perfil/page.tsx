@@ -59,9 +59,14 @@ export default function PerfilPage() {
 
   // Nome/e-mail são dados privados para o próprio fã reconhecer a conta. O
   // apelido público continua sendo o que ele escolheu — nunca derivamos um do
-  // outro (E12). No demo não há Privy nem carteira real para exibir.
-  const mostrarDadosPrivy = session.authMethod !== 'demo' && privy.ready && privy.authenticated;
-  const enderecoCarteira = privy.wallets[0]?.address ?? null;
+  // outro (E12). A conta demo recebe o mesmo bloco para demonstrar a interface,
+  // mas os dados e o código deixam claro que não há carteira real vinculada.
+  const emDemo = session.authMethod === 'demo';
+  const mostrarDadosConta = emDemo || (privy.ready && privy.authenticated);
+  const nomeDaConta = emDemo ? t.profileDemoName : (privy.profile.name ?? t.profileNotProvided);
+  const emailDaConta = emDemo ? t.profileDemoEmail : (privy.profile.email ?? t.profileNotProvided);
+  const enderecoCarteira = emDemo ? t.profileDemoWallet : (privy.wallets[0]?.address ?? null);
+  const avisoCarteira = emDemo ? t.profileDemoWalletDisclaimer : t.profileWalletDisclaimer;
 
   const copiarCarteira = async () => {
     if (!enderecoCarteira) return;
@@ -213,7 +218,7 @@ export default function PerfilPage() {
         </div>
       </div>
 
-      {mostrarDadosPrivy && (
+      {mostrarDadosConta && (
         <section aria-labelledby="dados-da-conta" style={{ marginTop: 'var(--sp-5)' }}>
           <h2
             id="dados-da-conta"
@@ -235,8 +240,8 @@ export default function PerfilPage() {
               overflow: 'hidden',
             }}
           >
-            <AccountDataRow label={t.profileNameLabel} value={privy.profile.name ?? t.profileNotProvided} />
-            <AccountDataRow label={t.profileEmailLabel} value={privy.profile.email ?? t.profileNotProvided} divider />
+            <AccountDataRow label={t.profileNameLabel} value={nomeDaConta} />
+            <AccountDataRow label={t.profileEmailLabel} value={emailDaConta} divider />
             <AccountDataRow
               label={t.profileWalletLabel}
               value={enderecoCarteira ?? t.profileWalletUnavailable}
@@ -254,7 +259,7 @@ export default function PerfilPage() {
               lineHeight: 'var(--leading-body)',
             }}
           >
-            {t.profileWalletDisclaimer}
+            {avisoCarteira}
           </p>
         </section>
       )}
