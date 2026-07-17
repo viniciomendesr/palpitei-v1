@@ -195,7 +195,20 @@ produto da Privy (E15).
 - ✅ **App Privy de dev** → **RESOLVIDO**: a v1 roda numa app própria
   (`cmrnum7sz00ft0cjruc4dtkj2`). Continua valendo: **o domínio de produção precisa
   entrar em Allowed origins antes do deploy** — hoje as 5 origens liberadas são de
-  desenvolvimento (localhost e IPs de LAN). Apple, se for usar, exige credencial
+  desenvolvimento (localhost e IPs de LAN).
+
+  **Deploy de produção NO AR desde 17/07** (Railway, processo persistente — a
+  sala vive na memória do processo e serverless a mata, ver railway.json):
+  **https://palpitei-v1-production.up.railway.app** · projeto Railway
+  `palpitei-v1` (`d2a0f110`), 1 réplica, `REPLAY_SPEED=12` e
+  `TXLINE_LIVE_INGEST=false` explícitos, `TXLINE_ALLOW_SYNTHETIC` AUSENTE de
+  propósito. Medido em 17/07 na URL: demo inteiro funciona (home, sala
+  simulada, ranking mock); rotas autenticadas respondem 401 fechado.
+  🔴 **PENDENTE: esta origem AINDA NÃO está em Allowed origins da Privy** — o
+  console de produção mostra o CSP dela bloqueando (`frame-ancestors` lista só
+  as 5 origens de dev). Login Google/carteira NÃO funciona lá até adicionar —
+  e o painel não salva sozinho (toggle ligado ≠ salvo, §3). Confira depois com
+  `npm run privy:doctor`. Apple, se for usar, exige credencial
   própria **antes do primeiro usuário** (porta de mão única, E8).
 - 🔴 **Payload da TxLINE versionado** (§7).
 - 🟡 Estado em memória: o XP some no primeiro restart.
