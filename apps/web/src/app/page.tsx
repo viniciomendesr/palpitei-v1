@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation';
 import { Screen } from '@/components/Shell';
 import { Logo, Wordmark } from '@/components/Brand';
 import { Ball, GoogleMark, PrivyMark, SolanaMark, PlayCircle } from '@/components/Icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
@@ -27,9 +27,16 @@ const EASE = 'cubic-bezier(.2,.7,.3,1)';
 export default function LoginPage() {
   const router = useRouter();
   const { t } = useI18n();
-  const { session, hydrated, enterDemo, startOnboarding } = useSession();
+  const { session, hydrated, enterDemo, startOnboarding, enterExisting } = useSession();
   const privy = usePrivyAuth();
   const [erro, setErro] = useState<string | null>(null);
+  // Um POST /api/login em voo por vez: o efeito re-dispara a cada dep, e dois
+  // find-or-create simultâneos do mesmo DID são a corrida que o banco resolve
+  // mas o roteamento não (duas navegações brigando).
+  const entrando = useRef(false);
+  // Muda a cada clique num botão de login — é o que permite TENTAR DE NOVO
+  // depois de um /api/login que falhou (as outras deps não mudam nesse caso).
+  const [tentativa, setTentativa] = useState(0);
 
   const onDemo = () => {
     enterDemo();
@@ -39,55 +46,74 @@ export default function LoginPage() {
   // A Privy autentica no modal dela e volta para cá; é este efeito que reage.
   // Não dá para encadear no clique: o login resolve antes do estado assentar, e
   // no reload a sessão revive sozinha sem passar por clique nenhum.
-  //
-  // TODO (backend): trocar `startOnboarding` por POST /api/login com o Bearer —
-  // o find-or-create por DID é quem sabe se a conta é nova (→ onboarding) ou
-  // velha (→ home). Enquanto o endpoint não existe, todo login vira conta nova.
   useEffect(() => {
     // `hydrated` primeiro: antes do sessionStorage ser lido, `session` é null e
     // TODA sessão parece conta nova. Sem esta linha, recarregar '/' autenticado
     // zerava a sessão gravada antes mesmo de alguém tocar em nada.
     if (!hydrated) return;
     if (!privy.authenticated || !privy.did) return;
-    // Conta nova quando não há sessão — ou quando a que sobrou é a do DEMO.
-    //
-    // `startOnboarding` sobrescreve o estado inteiro ({...BASE}), então dispará-lo
-    // a cada mount de '/' apagava o apelido já digitado (com a Privy autenticada,
-    // todo retorno a '/' é um mount). Mas checar só `!session` erra pro outro
-    // lado: o jurado que entra no demo, volta pro login (onDemo usa push, então
-    // '/' continua na pilha) e entra com Google leva a conta de teste junto —
-    // onboarding por cima do nível 7 / 1.240 XP e, no perfil, "demo · carteira
-    // simulada" para quem autenticou de verdade. A sessão do demo não pertence a
-    // DID nenhum: diante de um login real ela cede.
-    // Conta nova: manda pro cadastro. A sessão do DEMO cede a um login real —
-    // ela não pertence a DID nenhum, e sem isto o jurado que testou o demo e
-    // depois entra com Google leva a conta de teste junto (nível 7, 1.240 XP).
-    if (!session || session.authMethod === 'demo') {
-      startOnboarding(privy.wallets[0]?.source === 'external' ? 'wallet' : 'google');
-      // replace, e não push: depois de entrar, o login não fica no histórico.
-      // Com push, o Voltar do onboarding caía em '/', o efeito disparava de novo
-      // e empurrava o fã pra frente — não dava pra voltar, e cada tentativa
-      // zerava o cadastro. Quem quer desfazer o login usa o botão do passo 0,
-      // que sai de verdade (derruba a Privy também).
-      router.replace('/onboarding');
+
+    // Quem JÁ tem sessão real não recomeça o cadastro: sem apelido = ainda no
+    // meio (o passo 1 é quem grava); com apelido, está dentro — vai pra casa.
+    if (session && session.authMethod !== 'demo') {
+      router.replace(session.nickname.trim() ? '/home' : '/onboarding');
       return;
     }
 
-    // Quem JÁ tem sessão não recomeça o cadastro. Este replace estava FORA do
-    // if, e o efeito era pior do que parece: todo retorno a '/' com a Privy
-    // autenticada empurrava pro onboarding — inclusive quem já tinha terminado.
-    // O fã via o "Bem-vindo, sua conta é nova" pela segunda vez, com apelido
-    // vazio, sem ser conta nova nenhuma.
-    //
-    // Sem apelido = ainda no meio do cadastro (o passo 1 é quem grava): deixa
-    // terminar. Com apelido, está dentro — vai pra casa.
-    router.replace(session.nickname.trim() ? '/home' : '/onboarding');
-  }, [hydrated, session, privy.authenticated, privy.did, privy.wallets, startOnboarding, router]);
+    // Sem sessão local (aba nova, outro aparelho) — ou só a do DEMO, que não
+    // pertence a DID nenhum e cede a um login real. Quem sabe se a conta é nova
+    // é o SERVIDOR: o find-or-create por DID do POST /api/login. A versão
+    // anterior decidia aqui na tela ("sem sessão = conta nova") e o retorno de
+    // um fã cadastrado virava onboarding de novo — com o UNIQUE do banco
+    // recusando o próprio apelido dele (409) no passo 1.
+    if (entrando.current) return;
+    entrando.current = true;
+    const method = privy.wallets[0]?.source === 'external' ? 'wallet' : 'google';
+    void (async () => {
+      try {
+        const { api } = await import('@/lib/api');
+        const { user } = await api.login();
+        if (user.nickname) {
+          // Conta VELHA: a sessão nasce do que o banco sabe (apelido, XP,
+          // nível, time) e o fã volta direto para casa.
+          enterExisting(method, user);
+          router.replace('/home');
+        } else {
+          // Sem apelido no banco = conta nova (ou cadastro interrompido):
+          // termina o onboarding. replace, e não push: depois de entrar, o
+          // login não fica no histórico — com push, o Voltar caía em '/', o
+          // efeito disparava de novo e cada tentativa zerava o cadastro.
+          startOnboarding(method);
+          router.replace('/onboarding');
+        }
+      } catch {
+        // Servidor fora: erro na tela, e NUNCA "conta nova" por cima de uma
+        // possivelmente existente — mock com cara de real é a regra 4. O fã
+        // tenta de novo pelo botão (que bumpa `tentativa`).
+        entrando.current = false;
+        setErro(t.loginFailed);
+      }
+    })();
+  }, [
+    hydrated,
+    session,
+    privy.authenticated,
+    privy.did,
+    privy.wallets,
+    startOnboarding,
+    enterExisting,
+    router,
+    tentativa,
+    t.loginFailed,
+  ]);
 
   const onSocial = async (method: 'google' | 'wallet') => {
     setErro(null);
     try {
       await (method === 'google' ? privy.loginWithGoogle() : privy.loginWithWallet());
+      // Já autenticado de uma tentativa anterior? O estado da Privy não muda e
+      // o efeito não re-dispara sozinho — o bump garante a nova ida ao servidor.
+      setTentativa((n) => n + 1);
     } catch (e) {
       // A Privy falha calada quase sempre; quando ela fala, a gente mostra.
       setErro(e instanceof Error ? e.message : 'não deu para entrar agora');

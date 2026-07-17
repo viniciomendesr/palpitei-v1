@@ -222,16 +222,21 @@ function CardDoDesafio({
 export function SalaReal({ fixtureId }: { fixtureId: string }) {
   const router = useRouter();
   const { t, fmt } = useI18n();
-  const { session } = useSession();
+  const { session, addXp } = useSession();
   const privy = usePrivyAuth();
   // Espera a ilha ficar pronta ANTES de abrir o stream. O React roda efeitos de
   // baixo pra cima: no primeiro mount, o efeito desta tela corre antes de o
   // PrivyIsland (mãe) registrar o authTokenProvider — o token sai null, o SSE vai
   // sem Bearer e o fã LOGADO lê "sem sessão verificada". É a mesma corrida que
   // derrubou a home; a lição é a mesma.
+  //
+  // `addXp` no terceiro argumento: quando o motor paga, o contador do cabeçalho
+  // acompanha na hora — antes ele mostrava o XP de quando a sessão nasceu, e o
+  // fã via "+75" no resultado com o total parado.
   const { state, desafios, resultados, ranking, erro, palpitar } = useSala(
     fixtureId,
     privy.ready && privy.authenticated,
+    addXp,
   );
 
   const [tab, setTab] = useState<SalaTab>('desafios');

@@ -170,9 +170,15 @@ function useLeagues(session: SessionState | null, t: Dict) {
 export default function HomePage() {
   const router = useRouter();
   const { t, fmt } = useI18n();
-  const { session, update } = useSession();
+  const { session, update, refreshState } = useSession();
   const ready = useRequireSession();
   const [tab, setTab] = useState<Tab>('live');
+
+  // O XP/nível do cabeçalho é do BANCO (o motor liquida lá): voltar da sala tem
+  // que mostrar o que o jogo acabou de pagar. No demo é no-op (§5.1: local).
+  useEffect(() => {
+    void refreshState();
+  }, [refreshState]);
 
   const { abas, carregando, erro } = useFixtures(session, t);
   const liga = useLeagues(session, t);

@@ -44,6 +44,8 @@ export interface ApiUser {
   level: number;
   xp: number;
   streak: number;
+  /** Time do coração — escolha do onboarding, null = não escolheu (ou pulou). */
+  favTeam: string | null;
   /**
    * `null` = o fã entrou e NÃO ganhou carteira Solana. É a regressão E2 visível,
    * e o tipo a mantém visível de propósito: colapsar para 'simulated' marcaria um
@@ -52,10 +54,21 @@ export interface ApiUser {
   walletSource: WalletSource | null;
 }
 
+/** Aproveitamento dos palpites, contado pela tabela que o MOTOR liquida. */
+export interface ApiStats {
+  total: number;
+  acertos: number;
+  erros: number;
+  anuladas: number;
+  abertos: number;
+  xpDePalpites: number;
+}
+
 export interface ApiState {
   user: ApiUser;
   leaguesCount: number;
   isPremium: boolean;
+  stats: ApiStats;
 }
 
 export interface ApiFixture {
@@ -102,6 +115,19 @@ export interface ApiLeagueDetail {
   league: ApiLeague & { iLead: boolean };
   /** `handle` null = ainda sem apelido. A tela diz "sem apelido" (E12: nunca o e-mail). */
   members: { handle: string | null; iLead: boolean; me: boolean }[];
+}
+
+/**
+ * Uma linha do ranking global. `pos: null` = a minha linha fora do top — a
+ * posição exata de quem está além do corte não é calculada (e a tela diz "—").
+ * Sem userId de ninguém: apelido é o único nome que atravessa (E12).
+ */
+export interface ApiRankRow {
+  pos: number | null;
+  name: string;
+  xp: number;
+  level: number;
+  me: boolean;
 }
 
 /** Um palpite. Sem userId: quem responde é quem o Bearer diz que é. */
@@ -267,7 +293,17 @@ export const api = {
       body: JSON.stringify({ nickname }),
     }),
 
+  /** O time do coração. `null` limpa — o passo é pulável, e "pulei" não é um time. */
+  setFavoriteTeam: (team: string | null) =>
+    request<{ ok: true; favTeam: string | null }>('/api/account/team', {
+      method: 'POST',
+      body: JSON.stringify({ team }),
+    }),
+
   state: () => request<ApiState>('/api/state'),
+
+  /** O ranking global (top 50 + a minha linha, se eu estiver fora do corte). */
+  ranking: () => request<{ rows: ApiRankRow[] }>('/api/ranking'),
 
   /** As ligas do fã + o que o gate do free precisa saber. */
   leagues: () => request<ApiLeagues>('/api/leagues'),

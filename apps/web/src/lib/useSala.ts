@@ -102,12 +102,26 @@ type QuestionDoServidor = {
   id: string;
   type: string;
   prompt: string;
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; pct?: number | null }[];
   closesAt: number;
   state: string;
+  /** O piso de XP, do motor — a mesma régua do question_open. */
+  xp?: number;
+  /** Quanto falta DE VERDADE, em ms reais, pelo relógio da sala. */
+  closesInRealMs?: number;
 };
 
-export function useSala(fixtureId: string, ativo: boolean) {
+/** O que os MEUS palpites já renderam, como o servidor os liquidou. */
+type ResultadoDoServidor = {
+  questionId: string;
+  prompt: string;
+  correctOptionId?: string;
+  voidReason?: string;
+  gained: number;
+  choice: string;
+};
+
+export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number) => void) {
   const [state, setState] = useState<SalaState | null>(null);
   const [desafios, setDesafios] = useState<SalaDesafio[]>([]);
   const [resultados, setResultados] = useState<SalaResultado[]>([]);
@@ -116,6 +130,14 @@ export function useSala(fixtureId: string, ativo: boolean) {
   /** O enunciado de cada pergunta, para o resultado poder dizer do que se tratava. */
   const enunciados = useRef<Map<string, string>>(new Map());
   const escolhas = useRef<Map<string, string>>(new Map());
+  /**
+   * Por ref: o callback muda a cada render de quem chama, e no array de deps
+   * ele derrubaria e reabriria o SSE a cada tecla. Só dispara em resolução AO
+   * VIVO — o histórico semeado do room_state não passa por aqui, senão cada F5
+   * somaria o mesmo XP de novo.
+   */
+  const onGanhoRef = useRef(onGanho);
+  onGanhoRef.current = onGanho;
 
   useEffect(() => {
     if (!ativo) return;
@@ -156,28 +178,54 @@ export function useSala(fixtureId: string, ativo: boolean) {
               // Quem chega no meio do jogo já pega os totais acumulados da sala.
               totals: s.totals ?? { p1: {}, p2: {} },
             });
-            // Quem chega no meio do jogo pega TODAS as janelas já abertas — não
-            // só a próxima a abrir.
+
+            // O que EU já respondi, na memória do SERVIDOR — semeia os recibos
+            // ANTES de montar a lista. Um F5 derruba a tela, não o palpite: sem
+            // isto o fã via a pergunta aberta de novo, tocava, e ouvia "você já
+            // palpitou" — o recibo morria com o reload e o motor sempre soube.
+            const minhas = (msg.minhas ?? []) as { questionId: string; choice: string }[];
+            for (const m of minhas) escolhas.current.set(m.questionId, m.choice);
+
+            // Quem chega no meio do jogo pega TODAS as janelas já abertas — e as
+            // FECHADAS em que ele palpitou (o card "janela fechada" renasce).
             const agora = Date.now();
             setDesafios(
               (s.questions ?? [])
-                .filter((q) => q.state === 'open')
+                .filter(
+                  (q) => q.state === 'open' || (q.state === 'closed' && escolhas.current.has(q.id)),
+                )
                 .map((q) => {
                   enunciados.current.set(q.id, q.prompt);
                   return {
                     questionId: q.id,
                     type: q.type,
                     prompt: q.prompt,
-                    options: q.options.map((o) => ({ ...o, pct: null })),
-                    xp: 0,
-                    // Sem closesInRealMs no estado inicial, o prazo é desconhecido:
-                    // 0 aqui esconderia o desafio. Dá um minuto e deixa o servidor
-                    // corrigir no question_closed — que é quem manda.
-                    fechaEm: agora + 60_000,
+                    options: q.options.map((o) => ({ id: o.id, label: o.label, pct: o.pct ?? null })),
+                    // O piso do motor, vindo no pacote — 0 só se o servidor não mandou.
+                    xp: q.xp ?? 0,
+                    // O prazo REAL da janela, pelo relógio da sala. O fallback de
+                    // 60s só sobrevive para servidor antigo sem o campo.
+                    fechaEm: agora + (q.closesInRealMs ?? 60_000),
                     minhaEscolha: escolhas.current.get(q.id) ?? null,
-                    fechado: false,
+                    fechado: q.state === 'closed',
                   };
                 }),
+            );
+
+            // O histórico dos MEUS palpites, como o servidor os liquidou — já
+            // na ordem da tela (mais recente primeiro). O reload não apaga o
+            // que o jogo já pagou.
+            const liquidados = (msg.resultados ?? []) as ResultadoDoServidor[];
+            for (const r of liquidados) enunciados.current.set(r.questionId, r.prompt);
+            setResultados(
+              liquidados.map((r) => ({
+                questionId: r.questionId,
+                prompt: r.prompt,
+                correctOptionId: r.correctOptionId,
+                voidReason: r.voidReason,
+                gained: r.gained,
+                minhaEscolha: r.choice,
+              })),
             );
             return;
           }
@@ -243,17 +291,21 @@ export function useSala(fixtureId: string, ativo: boolean) {
             // Só mostra o resultado da pergunta em que EU palpitei: escancarar a
             // resposta de uma que o fã nem viu é ruído, não jogo.
             if (escolhas.current.has(id)) {
+              const gained = (msg.gained as number) ?? 0;
               setResultados((rs) => [
                 {
                   questionId: id,
                   prompt: enunciados.current.get(id) ?? '',
                   correctOptionId: msg.correctOptionId as string | undefined,
                   voidReason: msg.reason as string | undefined,
-                  gained: (msg.gained as number) ?? 0,
+                  gained,
                   minhaEscolha: escolhas.current.get(id) ?? null,
                 },
                 ...rs,
               ]);
+              // O XP que o MOTOR pagou agora — o contador da tela acompanha.
+              // A verdade continua no banco; o próximo /api/state reconfirma.
+              if (gained > 0) onGanhoRef.current?.(gained);
             }
             return;
           }

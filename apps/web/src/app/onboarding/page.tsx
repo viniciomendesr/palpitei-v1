@@ -36,6 +36,8 @@ export default function OnboardingPage() {
   const [nameDraft, setNameDraft] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erroNome, setErroNome] = useState<string | null>(null);
+  const [salvandoTime, setSalvandoTime] = useState(false);
+  const [erroTime, setErroTime] = useState<string | null>(null);
 
   if (!ready || !session) return null;
 
@@ -76,6 +78,31 @@ export default function OnboardingPage() {
       update({ nickname: draft });
     }
     setStep((s) => s + 1);
+  };
+
+  /**
+   * Sai do passo 2 gravando o time no SERVIDOR — a mesma ordem do apelido, pelo
+   * mesmo motivo: o `setFavoriteTeam` existia no repo e ninguém o chamava, então
+   * o escudo ficava pintado na tela com `favorite_team` NULL no banco. A escolha
+   * morria no próximo login. `null` também grava: "pulei" é uma resposta.
+   *
+   * Recebe o time por PARÂMETRO em vez de ler `session.favTeam`: o botão de
+   * pular faz `update({favTeam: null})` no mesmo tick, e o estado do React ainda
+   * não assentou quando esta função roda.
+   */
+  const salvarTime = async (team: string | null) => {
+    if (salvandoTime) return;
+    setSalvandoTime(true);
+    setErroTime(null);
+    const { api } = await import('@/lib/api');
+    try {
+      await api.setFavoriteTeam(team);
+      setStep(3);
+    } catch {
+      setErroTime(t.teamSaveFailed);
+    } finally {
+      setSalvandoTime(false);
+    }
   };
 
   const back = async () => {
@@ -367,15 +394,24 @@ export default function OnboardingPage() {
             </div>
           </div>
           <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-            <Button size="lg" full onClick={next}>
+            {erroTime && (
+              <p
+                role="alert"
+                style={{ fontSize: 12, fontWeight: fw.bold, color: 'var(--red)', textAlign: 'center' }}
+              >
+                {erroTime}
+              </p>
+            )}
+            <Button size="lg" full disabled={salvandoTime} onClick={() => void salvarTime(session.favTeam)}>
               {t.obContinue}
             </Button>
             <Button
               variant="ghost"
               full
+              disabled={salvandoTime}
               onClick={() => {
                 update({ favTeam: null });
-                next();
+                void salvarTime(null);
               }}
             >
               {t.obSkip}

@@ -9,10 +9,12 @@
  * testar sem carteira, mas não deixa a gente fingir que tem uma.
  *
  * O apelido é editável aqui, e continua sendo escolha do fã (E12): nunca sai do
- * e-mail. Quando o backend entrar, salvar chama POST /api/account/handle.
+ * e-mail. Salvar grava no SERVIDOR primeiro (POST /api/account/handle) e só
+ * fecha o painel quando ele aceita — a versão local-primeiro pintava o nome na
+ * tela com o banco dizendo outro, que é a tela mentindo sobre o que persiste.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Toggle, ProgressBar, ListRow, Button } from '@/components/ds';
 import { Screen } from '@/components/Shell';
@@ -26,11 +28,19 @@ import { fw } from '@/lib/tokens';
 export default function PerfilPage() {
   const router = useRouter();
   const { t, fmt, lang, setLang } = useI18n();
-  const { session, update, logout } = useSession();
+  const { session, update, logout, refreshState, serverStats } = useSession();
   const ready = useRequireSession();
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [erroNome, setErroNome] = useState<string | null>(null);
+
+  // Os números desta tela são do BANCO (o motor liquida XP lá): realinha o
+  // cache local ao entrar. Para o demo é no-op — a conta de teste é local (§5.1).
+  useEffect(() => {
+    void refreshState();
+  }, [refreshState]);
 
   if (!ready || !session) return null;
 
@@ -46,14 +56,38 @@ export default function PerfilPage() {
 
   const openEdit = () => {
     setDraft(session.nickname);
+    setErroNome(null);
     setEditing(true);
   };
 
-  const saveName = () => {
-    // TODO: POST /api/account/handle — e só fechar o painel quando o servidor confirmar.
-    if (invalid) return;
-    update({ nickname: draft.trim() });
-    setEditing(false);
+  const saveName = async () => {
+    if (invalid || salvando) return;
+    const novo = draft.trim();
+
+    // A conta de teste do demo é local por regra (§5.1) — não há Bearer nem rota.
+    if (session.authMethod === 'demo') {
+      update({ nickname: novo });
+      setEditing(false);
+      return;
+    }
+
+    // SERVIDOR primeiro, tela depois — a mesma ordem do onboarding, pelo mesmo
+    // motivo: local antes do POST deixaria o apelido na tela mesmo com o 409
+    // (apelido de outra pessoa) recusando.
+    setSalvando(true);
+    setErroNome(null);
+    const { api, ApiError } = await import('@/lib/api');
+    try {
+      await api.setHandle(novo);
+      update({ nickname: novo });
+      setEditing(false);
+    } catch (e) {
+      // A mensagem do ApiError é a do domínio (pt-BR); erro de rede cru em
+      // inglês não é coisa de se jogar na cara de ninguém.
+      setErroNome(e instanceof ApiError ? e.message : t.nameSaveFailed);
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const onLogout = async () => {
@@ -172,7 +206,15 @@ export default function PerfilPage() {
           <div style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--lime)' }}>
             {t.editNameHdr}
           </div>
-          <NicknameInput value={draft} onChange={setDraft} invalid={invalid} />
+          <NicknameInput
+            value={draft}
+            onChange={(v) => {
+              setDraft(v);
+              // Digitou outro apelido: a recusa anterior já não fala deste.
+              setErroNome(null);
+            }}
+            invalid={invalid}
+          />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
             <span style={{ fontSize: 11, fontWeight: fw.bold, color: 'var(--text-muted)' }}>
               {draft.trim().length}/{MAX_NICK}
@@ -181,6 +223,14 @@ export default function PerfilPage() {
               {invalid ? t.nameHintShort : t.nameHintOk}
             </span>
           </div>
+          {erroNome && (
+            <p
+              role="alert"
+              style={{ marginTop: 10, fontSize: 12, fontWeight: fw.bold, color: 'var(--red)' }}
+            >
+              {erroNome}
+            </p>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
             <div style={{ flex: 1 }}>
               <Button variant="ghost" full onClick={() => setEditing(false)}>
@@ -188,7 +238,7 @@ export default function PerfilPage() {
               </Button>
             </div>
             <div style={{ flex: 1 }}>
-              <Button full disabled={invalid} onClick={saveName}>
+              <Button full disabled={invalid || salvando} onClick={() => void saveName()}>
                 {t.save}
               </Button>
             </div>
@@ -202,6 +252,17 @@ export default function PerfilPage() {
         <StatBox value={`${t.lv} ${session.level}`} label={t.nivel} />
         <StatBox value={String(session.streak)} label={t.sequencia} color="var(--orange)" />
       </div>
+
+      {/* aproveitamento — só para conta real, e só o que o BANCO contou. O demo
+          não ganha esta fileira: inventar aproveitamento para a conta de teste
+          seria número falso com cara de real (G6). */}
+      {session.authMethod !== 'demo' && serverStats && serverStats.total > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+          <StatBox value={String(serverStats.acertos)} label={t.statAcertos} color="var(--lime)" />
+          <StatBox value={String(serverStats.erros)} label={t.statErros} />
+          <StatBox value={String(serverStats.anuladas)} label={t.statAnuladas} />
+        </div>
+      )}
 
       {/* premium */}
       {session.isPremium ? (

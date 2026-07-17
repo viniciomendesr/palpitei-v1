@@ -77,6 +77,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         level: salvo.level,
         xp: salvo.xp,
         streak: salvo.currentStreak,
+        favTeam: salvo.favoriteTeam,
         // null aqui é a regressão E2 visível: entrou e não ganhou carteira
         // Solana. Espelha o /api/login — a resposta não esconde.
         wallet: salvo.wallet,

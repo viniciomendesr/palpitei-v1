@@ -67,6 +67,8 @@ export async function POST(req: Request): Promise<NextResponse> {
         nickname: user.handle,
         level: user.level,
         xp: user.xp,
+        streak: user.currentStreak,
+        favTeam: user.favoriteTeam,
         // null aqui é a regressão E2 visível: entrou e não ganhou carteira
         // Solana. O schema recusa a esconder, e a resposta também.
         wallet: user.wallet,

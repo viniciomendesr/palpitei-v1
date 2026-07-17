@@ -12,7 +12,7 @@
 
 import { PrivyClient } from '@privy-io/server-auth';
 import { createDb, createUserRepo } from '@palpitei/db';
-import { abrirSala, assinar, estadoDaSala, rankingDaSala } from '@/server/rooms';
+import { abrirSala, assinar, estadoDaSalaPara, rankingDaSala, registrarApelido } from '@/server/rooms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -65,7 +65,12 @@ export async function GET(
   const dbUser = createDb();
   let userId: string | null = null;
   try {
-    userId = (await createUserRepo(dbUser).findOrCreateByPrivyDid(did)).id;
+    const user = await createUserRepo(dbUser).findOrCreateByPrivyDid(did);
+    userId = user.id;
+    // O apelido FRESCO do banco entra na sala já na chegada — sem isto o
+    // ranking só aprendia o nome quando uma pergunta resolvia, e quem escolheu
+    // o apelido depois do primeiro palpite ficava "sem apelido" até lá.
+    registrarApelido(sala, user.id, user.handle);
   } catch {
     // Sem usuario, o fa ainda assiste — so nao recebe XP proprio.
   } finally {
@@ -85,9 +90,11 @@ export async function GET(
         }
       };
 
-      // O primeiro pacote é o estado INTEIRO. Sem isto quem chega no minuto 60
-      // vê 0 × 0 até o próximo lance — e o placar mentiria por omissão.
-      mandar({ type: 'room_state', state: estadoDaSala(sala) });
+      // O primeiro pacote é o estado INTEIRO, na voz DESTE fã: placar e feed
+      // (sem isto quem chega no minuto 60 vê 0 × 0 até o próximo lance), MAIS o
+      // que ele já respondeu e o que os palpites dele renderam — um F5 derruba
+      // a tela, não o palpite, e o recibo tem que renascer junto.
+      mandar(estadoDaSalaPara(sala, userId));
       // Pelo mesmo motivo, o ranking de agora: ele só é republicado quando uma
       // pergunta resolve, e sem este pacote quem chega no minuto 60 vê a aba
       // vazia — "ninguém pontuou" — até o próximo desafio cair.

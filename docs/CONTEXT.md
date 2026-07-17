@@ -249,13 +249,35 @@ perguntas sobre o dado real.
 ```
 REST  POST /api/login              (Bearer da Privy → find-or-create por DID)
       POST /api/account/handle     (o fã escolhe o apelido — nunca derive do e-mail)
-      GET  /api/state              GET /api/fixtures
+      POST /api/account/team       (time do coração; null = pulou — não invente time)
+      GET  /api/state              (o fã como o BANCO o conhece + aproveitamento)
+      GET  /api/ranking            (top 50 por XP + a minha linha fora do corte)
+      GET  /api/fixtures
       POST /api/rooms/:id/join     POST /api/rooms/:id/leave
       POST /api/rooms/:id/predictions
 
 WS    /ws → score_event, odds_event, odds_explain, question_open/closed/resolved/void,
             ranking, game_end, replay_done
 ```
+
+**A sessão local é CACHE, não verdade (ligado em 17/07).** O que era TODO virou
+contrato: a tela de login chama `POST /api/login` e é o **find-or-create por DID
+que decide** conta nova (→ onboarding) × conta velha (→ home, sessão hidratada do
+banco) — antes, todo retorno virava "conta nova" e o UNIQUE recusava o próprio
+apelido do fã (409) no passo 1. `refreshState()` (session.tsx) realinha o cache
+com o `GET /api/state` ao entrar em home/perfil. O modo demo segue 100% local (§5.1).
+
+**O primeiro pacote do SSE fala na 1ª pessoa (17/07).** `room_state` sai de
+`estadoDaSalaPara(sala, userId)` (rooms.ts) e traz, além do estado do jogo:
+`questions` com `closesInRealMs` REAL (a tela não chuta mais 60s) e `xp` (piso do
+motor); `minhas` (recibos do fã — F5 não apaga palpite); `resultados` (o
+histórico liquidado dele, mais recente primeiro). A fonte é
+`engine.respostasDe(userId)` (core, com teste). E o apelido entra no ranking da
+sala **na chegada** (`registrarApelido`, stream route) — antes só entrava quando
+uma pergunta resolvia, e quem escolhia o apelido depois do palpite ficava "sem
+apelido" até o próximo lance liquidar. Medido em 17/07 com harness sobre a
+18241006 (fixture real, 2 fãs descartáveis, replay 60×): recibo, prazo,
+histórico e apelido voltaram no pacote inicial; fãs de teste apagados ao final.
 
 `walletSource: "privy_embedded" | "external" | "simulated"` — as duas primeiras cumprem
 "sign up through Solana". `simulated` é o modo demo.

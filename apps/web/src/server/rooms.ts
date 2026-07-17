@@ -25,7 +25,7 @@
  * relógio DESTA sala. O cliente só recebe e mostra.
  */
 
-import { QuestionEngine, XP_BASE, cursorClock, type ReplayCursor } from '@palpitei/core';
+import { QuestionEngine, XP_BASE, cursorClock, type Clock, type ReplayCursor } from '@palpitei/core';
 import type {
   Fixture,
   NormEvent,
@@ -84,6 +84,9 @@ type Room = {
   ports: EnginePorts;
   db: Db;
   cursor: ReplayCursor;
+  /** O relógio DESTA sala — o mesmo que o motor usa. É ele que converte
+   *  "quanto falta da janela" em ms REAIS para quem entra no meio do jogo. */
+  clock: Clock;
   state: RoomState;
   subs: Set<Sub>;
   /**
@@ -146,6 +149,7 @@ async function criarSala(fixtureId: number): Promise<Room | null> {
     db,
     ports,
     cursor,
+    clock,
     state,
     subs: new Set(),
     xpDaSala: new Map(),
@@ -409,8 +413,83 @@ export async function abrirSala(fixtureId: number): Promise<Room | null> {
   return salas.get(fixtureId) ?? (await criarSala(fixtureId));
 }
 
-export function estadoDaSala(sala: Room): RoomState {
-  return { ...sala.state, questions: sala.engine.openQuestions() };
+/** Uma pergunta no formato do §8, com o prazo já convertido em ms REAIS. */
+function perguntaDoPacote(sala: Room, q: Question) {
+  return {
+    id: q.id,
+    type: q.type,
+    prompt: q.prompt,
+    // `pct: null` = o explicador de odds não roda nesta sala (G8: ausente ≠ 0%).
+    options: q.options.map((o) => ({ id: o.id, label: o.label, pct: null })),
+    // O PISO do XP, do próprio motor — a mesma régua do question_open.
+    xp: XP_BASE[q.type as keyof typeof XP_BASE] ?? 0,
+    state: q.state,
+    closesAt: q.closesAt,
+    // Quanto falta DE VERDADE, pelo relógio da sala. O primeiro pacote mandava
+    // a pergunta sem prazo e a tela chutava 60s — um contador inventado em cima
+    // de uma janela real. Fechada, falta zero: o que se espera é o LANCE.
+    closesInRealMs:
+      q.state === 'open'
+        ? Math.max(0, sala.clock.toRealMs(Math.max(0, q.closesAt - sala.clock.now())))
+        : 0,
+  };
+}
+
+/**
+ * O primeiro pacote da sala NA VOZ DESTE FÃ — estado do jogo + o que ELE já
+ * respondeu + o que os palpites dele já renderam.
+ *
+ * Existe porque um F5 derruba a tela, não o palpite: sem `minhas`/`resultados`,
+ * o recibo e o histórico viviam só no estado do React e morriam no reload — o
+ * fã via a pergunta aberta de novo, tocava, e ouvia "você já palpitou". O motor
+ * sempre soube; o pacote é que não contava.
+ */
+export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage {
+  const respostas = userId ? sala.engine.respostasDe(userId) : [];
+  const minhasPorId = new Set(respostas.map((r) => r.question.id));
+
+  // Abertas para todo mundo — mais as FECHADAS em que este fã palpitou: o card
+  // "janela fechada · aguardando o lance" tem que renascer no F5.
+  const questions = sala.engine
+    .allQuestions()
+    .filter((q) => q.state === 'open' || (q.state === 'closed' && minhasPorId.has(q.id)))
+    .map((q) => perguntaDoPacote(sala, q));
+
+  const minhas = respostas
+    .filter((r) => r.question.state === 'open' || r.question.state === 'closed')
+    .map((r) => ({ questionId: r.question.id, choice: r.prediction.choice }));
+
+  // O que já liquidou, mais recente primeiro — a ordem em que a aba mostra.
+  const resultados = respostas
+    .filter((r) => r.question.state === 'resolved' || r.question.state === 'void')
+    .sort((a, b) => (b.question.resolvedAt ?? 0) - (a.question.resolvedAt ?? 0))
+    .map((r) => ({
+      questionId: r.question.id,
+      prompt: r.question.prompt,
+      correctOptionId: r.question.correct,
+      voidReason: r.question.voidReason,
+      // O XP que o MOTOR pagou a ele — nunca recalculado aqui (duas tabelas divergem).
+      gained: r.prediction.awardedXp ?? 0,
+      choice: r.prediction.choice,
+    }));
+
+  return {
+    type: 'room_state',
+    ts: sala.cursor.matchTs,
+    state: { ...sala.state, questions },
+    minhas,
+    resultados,
+  };
+}
+
+/**
+ * O apelido FRESCO do banco, registrado na entrada. Sem isto o ranking só
+ * aprendia o nome quando uma pergunta resolvia (`ResolvedResult.handle`) — quem
+ * escolheu o apelido depois do primeiro palpite ficava "sem apelido" na sala
+ * até o próximo lance liquidar. Vazio não apaga o que já se sabia.
+ */
+export function registrarApelido(sala: Room, userId: string, handle: string | null): void {
+  if (handle) sala.apelidos.set(userId, handle);
 }
 
 /**

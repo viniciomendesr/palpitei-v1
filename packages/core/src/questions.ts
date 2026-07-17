@@ -216,6 +216,23 @@ export class QuestionEngine {
     return [...this.tracked.values()].map((t) => t.question);
   }
 
+  /**
+   * O que ESTE fã respondeu, pergunta a pergunta — aberta, fechada ou liquidada.
+   *
+   * Existe para o rejoin: um F5 derruba a tela, mas não o palpite. Sem isto o
+   * recibo e o histórico viviam só no estado do React e morriam no reload — o fã
+   * voltava, via a pergunta aberta de novo, tocava e ouvia "você já palpitou".
+   * A ordem é a de palpite (placedAt), que é a ordem em que ele viveu o jogo.
+   */
+  respostasDe(userId: string): { question: Question; prediction: Prediction }[] {
+    const minhas: { question: Question; prediction: Prediction }[] = [];
+    for (const t of this.tracked.values()) {
+      const p = t.predictions.find((pred) => pred.userId === userId);
+      if (p) minhas.push({ question: t.question, prediction: p });
+    }
+    return minhas.sort((a, b) => a.prediction.placedAt - b.prediction.placedAt);
+  }
+
   // -------------------------------------------------------------------------
   // Gatilhos
   // -------------------------------------------------------------------------

@@ -1,11 +1,14 @@
 'use client';
 
 /**
- * Estado da sessão do fã — por enquanto local/mock.
+ * Estado da sessão do fã.
  *
- * Quando o backend entrar, `nickname`/`level`/`xp`/`streak` passam a vir do
- * GET /api/state e o `authMethod` sai do PrivyIsland. A FORMA aqui já é a do
- * contrato do v0 de propósito: quem trocar o mock pelo fetch não mexe nas telas.
+ * O `sessionStorage` é o CACHE da sessão, não a verdade: para quem entrou de
+ * verdade (Google/carteira), a verdade é o Postgres — o motor liquida XP lá, o
+ * onboarding grava o apelido lá. `refreshState()` puxa o GET /api/state e
+ * realinha o cache; sem isso a tela mostrava o mock do storage para sempre e o
+ * fã "perdia" no F5 o que o banco nunca perdeu. O modo demo (§5.1) é a exceção
+ * DE PROPÓSITO: a conta de teste é local e não pode depender de rede.
  *
  * Regra do CONTEXT.md §4: o apelido NUNCA sai do e-mail — ele é público
  * (ranking/ligas) e derivá-lo do e-mail vaza o endereço da pessoa. Por isso
@@ -18,10 +21,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
+import type { ApiStats, ApiUser } from '@/lib/api';
 
 /** As duas primeiras cumprem "sign up through Solana"; `demo` é a conta de teste da §5.1. */
 export type AuthMethod = 'google' | 'wallet' | 'demo';
@@ -75,7 +80,27 @@ interface SessionValue {
   enterDemo: () => void;
   /** Google/carteira: conta nova, vai pro onboarding escolher o apelido. */
   startOnboarding: (method: Exclude<AuthMethod, 'demo'>) => void;
+  /**
+   * Conta VELHA voltando: monta a sessão com o que o SERVIDOR devolveu no
+   * /api/login. É o que impede o retorno de virar "conta nova" — o fã que já
+   * tinha apelido caía no onboarding e o UNIQUE recusava o próprio nome (409).
+   */
+  enterExisting: (method: Exclude<AuthMethod, 'demo'>, user: ApiUser) => void;
   update: (patch: Partial<SessionState>) => void;
+  /**
+   * XP que o MOTOR acabou de pagar (o `gained` do question_resolved). Soma no
+   * cache local para o contador da tela acompanhar o jogo; a verdade continua
+   * sendo o banco, que o próximo `refreshState` reconfirma.
+   */
+  addXp: (amount: number) => void;
+  /**
+   * Realinha o cache local com o GET /api/state (apelido, XP, nível, ligas…).
+   * No-op para o demo (local por regra) e sem Bearer. As telas que mostram
+   * números do fã chamam isto ao montar.
+   */
+  refreshState: () => Promise<void>;
+  /** Aproveitamento dos palpites (acertos/erros/anuladas), do último refresh. */
+  serverStats: ApiStats | null;
   /**
    * Sai de verdade: derruba a sessão do app E a da Privy. Espere a promise
    * ANTES de navegar — ver o porquê em `logout`, abaixo.
@@ -88,6 +113,9 @@ const SessionContext = createContext<SessionValue | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [session, setSession] = useState<SessionState | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [serverStats, setServerStats] = useState<ApiStats | null>(null);
+  /** Uma sincronização em voo por vez — o refresh é idempotente, não precisa de fila. */
+  const sincronizando = useRef(false);
 
   // sessionStorage só depois de montar: ler no render divergiria do HTML do servidor.
   useEffect(() => {
@@ -124,8 +152,25 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     setSession({ ...BASE, authMethod: method, accountType: 'new' });
   }, []);
 
+  const enterExisting = useCallback((method: Exclude<AuthMethod, 'demo'>, user: ApiUser) => {
+    setSession({
+      ...BASE,
+      authMethod: method,
+      accountType: 'existing',
+      nickname: user.nickname ?? '',
+      level: user.level,
+      xp: user.xp,
+      streak: user.streak,
+      favTeam: user.favTeam ?? null,
+    });
+  }, []);
+
   const update = useCallback((patch: Partial<SessionState>) => {
     setSession((s) => (s ? { ...s, ...patch } : s));
+  }, []);
+
+  const addXp = useCallback((amount: number) => {
+    setSession((s) => (s ? { ...s, xp: s.xp + amount } : s));
   }, []);
 
   /**
@@ -143,6 +188,49 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
    * isso quem chama precisa dar await antes do router.replace('/').
    */
   const privy = usePrivyAuth();
+
+  const refreshState = useCallback(async () => {
+    // O demo é local por regra (§5.1) e sem a ilha pronta não há Bearer — a
+    // corrida do Bearer já derrubou fã logado duas vezes (CONTEXT §11).
+    if (!privy.enabled || !privy.ready || !privy.authenticated) return;
+    if (sincronizando.current) return;
+    sincronizando.current = true;
+    try {
+      const { api } = await import('@/lib/api');
+      const estado = await api.state();
+      setServerStats(estado.stats);
+      setSession((atual) => {
+        if (!atual || atual.authMethod === 'demo') return atual;
+        return {
+          ...atual,
+          nickname: estado.user.nickname ?? '',
+          level: estado.user.level,
+          xp: estado.user.xp,
+          streak: estado.user.streak,
+          favTeam: estado.user.favTeam ?? null,
+          leaguesCount: estado.leaguesCount,
+          isPremium: estado.isPremium,
+        };
+      });
+    } catch {
+      // Servidor fora ou 401: o cache local segue valendo — realinhar é
+      // conveniência de leitura, não pode derrubar a sessão de ninguém.
+    } finally {
+      sincronizando.current = false;
+    }
+  }, [privy.enabled, privy.ready, privy.authenticated]);
+
+  // A primeira sincronização: assim que a ilha fica pronta com um fã REAL
+  // autenticado e uma sessão montada. Sem isto, quem reabria o app via o cache
+  // do storage (nível 1, 0 XP) por cima de um banco que sabia mais.
+  useEffect(() => {
+    if (!hydrated || !session || session.authMethod === 'demo') return;
+    void refreshState();
+    // session.authMethod (e não session inteiro): realinhar de novo a cada
+    // update local viraria um loop de rede sem informação nova.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, session?.authMethod, refreshState]);
+
   const logout = useCallback(async () => {
     // A Privy cai PRIMEIRO; a sessão local só depois. A ordem inversa parece
     // inofensiva e não é: `setSession(null)` acorda o guard (useRequireSession)
@@ -171,8 +259,30 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   }, [privy.enabled, privy.authenticated, privy.logout]);
 
   const value = useMemo<SessionValue>(
-    () => ({ session, hydrated, enterDemo, startOnboarding, update, logout }),
-    [session, hydrated, enterDemo, startOnboarding, update, logout],
+    () => ({
+      session,
+      hydrated,
+      enterDemo,
+      startOnboarding,
+      enterExisting,
+      update,
+      addXp,
+      refreshState,
+      serverStats,
+      logout,
+    }),
+    [
+      session,
+      hydrated,
+      enterDemo,
+      startOnboarding,
+      enterExisting,
+      update,
+      addXp,
+      refreshState,
+      serverStats,
+      logout,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

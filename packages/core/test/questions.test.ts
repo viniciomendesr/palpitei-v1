@@ -292,3 +292,42 @@ test("game_finalised resolve tudo pelo placar e emite game_end por último", () 
   assert.equal(emitted[emitted.length - 1].type, "game_end");
   assert.deepEqual(emitted[emitted.length - 1].goals, { p1: 1, p2: 0 });
 });
+
+test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca as dos outros", () => {
+  const { engine, clock, createUser } = makeEngine();
+  const ana = createUser("ana_r");
+  const bob = createUser("bob_r");
+
+  engine.onScoreEvent(ev(1, T0));
+  const final = engine.openQuestions().find((q) => q.type === "final_result")!;
+  clock.set(T0 + 1000);
+  assert.ok(engine.place(ana, final.id, "p1").ok);
+  assert.ok(engine.place(bob, final.id, "p2").ok);
+
+  clock.set(T0 + 5000);
+  engine.onScoreEvent(ev(2, T0 + 5000, { action: "kickoff" }));
+  const ng1 = engine.openQuestions().find((q) => q.type === "next_goal")!;
+  clock.set(T0 + 10_000);
+  assert.ok(engine.place(ana, ng1.id, "p1").ok);
+
+  engine.onScoreEvent(ev(3, T0 + 70_000)); // sweep fecha a janela da ng1
+  engine.onScoreEvent(ev(4, T0 + 120_000, { action: "goal", goals: { p1: 1, p2: 0 } }));
+
+  // ana: final (fechada, sem veredito) + ng1 (resolvida, ganhou). bob não vaza.
+  const daAna = engine.respostasDe(ana.id);
+  assert.equal(daAna.length, 2);
+  // ordem de palpite: quem palpitou primeiro vem primeiro
+  assert.equal(daAna[0].question.id, final.id);
+  assert.equal(daAna[0].prediction.choice, "p1");
+  assert.equal(daAna[0].prediction.result, undefined, "final ainda não liquidou");
+  assert.equal(daAna[1].question.id, ng1.id);
+  assert.equal(daAna[1].prediction.result, "won");
+  assert.ok((daAna[1].prediction.awardedXp ?? 0) > 0);
+  assert.equal(daAna[1].question.correct, "p1");
+
+  const doBob = engine.respostasDe(bob.id);
+  assert.equal(doBob.length, 1);
+  assert.equal(doBob[0].prediction.choice, "p2");
+
+  assert.deepEqual(engine.respostasDe("ninguem"), []);
+});
