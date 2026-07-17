@@ -56,6 +56,11 @@ function localDevHosts() {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // `next build` e `next dev` brigam pelo MESMO .next: build com o dev vivo
+  // morre em "Cannot find module for page: /_document" (medido em 17/07). Um
+  // distDir alternativo (NEXT_DIST_DIR=.next-build) deixa o build de produção
+  // rodar ao lado do dev — e `next start` precisa do MESMO valor para achá-lo.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   allowedDevOrigins: localDevHosts(),
   // @palpitei/txline entra aqui pelo mesmo motivo do core: é publicado como FONTE
   // (exports: "./src/index.ts"), então quem transpila é o Next. O @palpitei/db NÃO

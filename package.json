@@ -18,6 +18,7 @@
     "lan:url": "node scripts/lan-url.mjs",
     "privy:doctor": "node scripts/privy-doctor.mjs",
     "build": "npm run build:ds && npm run build:db && npm run build -w @palpitei/web",
+    "start": "npm run start -w @palpitei/web",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:migrate": "node scripts/migrate.mjs",

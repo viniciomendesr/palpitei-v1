@@ -1,0 +1,13 @@
+# O upload do `railway up` não leva segredo nem artefato local.
+.env
+.env.*
+!.env.example
+node_modules
+.next
+.next-build
+apps/web/.next
+apps/web/.next-build
+apps/web/certificates
+packages/*/dist
+.git
+.claude
