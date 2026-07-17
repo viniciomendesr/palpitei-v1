@@ -26,6 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { esperaDeReconexao } from '@/lib/reconexao';
+import { minutoDoReplay } from '@/lib/relogio';
 
 export type SalaOpcao = { id: string; label: string; pct: number | null };
 
@@ -72,6 +73,10 @@ export type SalaState = {
   source: string;
   score: { p1: number; p2: number };
   minute: number | null;
+  /** Âncora do relógio (segundos de jogo do último evento com relógio). */
+  clockSeconds?: number | null;
+  /** Minutos de jogo por segundo real — 12 no replay padrão, 1 ao vivo. */
+  replaySpeed?: number;
   finished: boolean;
   feed: SalaLance[];
   /** Vazio = a partida ainda não mandou total nenhum. Não é "tudo zero". */
@@ -151,6 +156,16 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
    */
   const [treino, setTreino] = useState(false);
   const [treinoDaSala, setTreinoDaSala] = useState(false);
+  /**
+   * O minuto INTERPOLADO entre eventos. O feed pode ficar meia dúzia de
+   * minutos de jogo sem lance; sem isto o badge congelava no 0’ e saltava
+   * para o 6’ — relógio parado com cara de sala travada. A âncora é sempre o
+   * último evento COM relógio (B2): o lance re-ancora, a parede só preenche.
+   */
+  const [minutoVivo, setMinutoVivo] = useState<number | null>(null);
+  const ancora = useRef<{ game: number; realAt: number } | null>(null);
+  const speedRef = useRef<number | null>(null);
+  const acabouRef = useRef(false);
   /** O enunciado de cada pergunta, para o resultado poder dizer do que se tratava. */
   const enunciados = useRef<Map<string, string>>(new Map());
   const escolhas = useRef<Map<string, string>>(new Map());
@@ -239,6 +254,13 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
             const s = msg.state as SalaState & { questions?: QuestionDoServidor[] };
             setTreino(Boolean(msg.treino));
             setTreinoDaSala(Boolean(msg.treinoDaSala));
+            // A âncora do relógio, do estado inteiro: quem entra no minuto 34
+            // vê o 34 andando, não parado.
+            if (typeof s.clockSeconds === 'number') {
+              ancora.current = { game: s.clockSeconds, realAt: Date.now() };
+            }
+            if (typeof s.replaySpeed === 'number') speedRef.current = s.replaySpeed;
+            acabouRef.current = s.finished;
             setState({
               fixtureId: s.fixtureId,
               teamA: s.teamA,
@@ -310,6 +332,11 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
             const scoreA = msg.scoreA as number | null;
             const scoreB = msg.scoreB as number | null;
             const totais = msg.totals as SalaTotais | undefined;
+            // O lance re-ancora o relógio. null = este evento veio sem relógio;
+            // a âncora anterior continua valendo (ausente ≠ zero).
+            if (typeof msg.clockSeconds === 'number') {
+              ancora.current = { game: msg.clockSeconds as number, realAt: Date.now() };
+            }
             setState((p) =>
               p
                 ? {
@@ -398,6 +425,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
 
           case 'game_end':
           case 'replay_done': {
+            acabouRef.current = true;
             setState((p) => (p ? { ...p, finished: true } : p));
             setDesafios([]);
             return;
@@ -450,6 +478,26 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     };
   }, [fixtureId, ativo]);
 
+  // O tique do relógio da tela: 1s de intervalo, mas só re-renderiza quando o
+  // MINUTO muda (a 12×, a cada ~5s). Congela no apito final — relógio que anda
+  // depois do fim é mentira andando.
+  useEffect(() => {
+    if (!ativo) return;
+    const tick = () => {
+      if (acabouRef.current || !ancora.current || speedRef.current === null) return;
+      const m = minutoDoReplay(
+        ancora.current.game,
+        ancora.current.realAt,
+        speedRef.current,
+        Date.now(),
+      );
+      setMinutoVivo((antes) => (antes === m ? antes : m));
+    };
+    tick();
+    const timer = setInterval(tick, 1_000);
+    return () => clearInterval(timer);
+  }, [ativo, fixtureId]);
+
   /**
    * Manda o palpite. O veredito é do servidor — aqui não se decide nada.
    * O que muda na hora é só o RECIBO: sem isso o fã toca e a tela não reage.
@@ -471,5 +519,5 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     [fixtureId],
   );
 
-  return { state, desafios, resultados, ranking, erro, treino, treinoDaSala, palpitar };
+  return { state, desafios, resultados, ranking, erro, treino, treinoDaSala, minutoVivo, palpitar };
 }

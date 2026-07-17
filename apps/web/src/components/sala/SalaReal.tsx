@@ -341,11 +341,8 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
   // `addXp` no terceiro argumento: quando o motor paga, o contador do cabeçalho
   // acompanha na hora — antes ele mostrava o XP de quando a sessão nasceu, e o
   // fã via "+75" no resultado com o total parado.
-  const { state, desafios, resultados, ranking, erro, treino, treinoDaSala, palpitar } = useSala(
-    fixtureId,
-    privy.ready && privy.authenticated,
-    addXp,
-  );
+  const { state, desafios, resultados, ranking, erro, treino, treinoDaSala, minutoVivo, palpitar } =
+    useSala(fixtureId, privy.ready && privy.authenticated, addXp);
 
   const [tab, setTab] = useState<SalaTab>('desafios');
   const [enviando, setEnviando] = useState<string | null>(null);
@@ -432,9 +429,13 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
           >
             <ChevronLeft size={18} />
           </button>
-          {/* Uma partida GRAVADA não é "ao vivo", por mais que o relógio corra. */}
+          {/* Uma partida GRAVADA não é "ao vivo", por mais que o relógio corra.
+              O minuto é o INTERPOLADO: entre um lance e outro ele continua
+              andando — o do servidor é o piso, nunca o teto. */}
           <Badge tone={state.finished ? 'neutral' : 'live'} dot={!state.finished}>
-            {state.finished ? t.lanceEnd : `${t.replayShort} · ${state.minute ?? 0}’`}
+            {state.finished
+              ? t.lanceEnd
+              : `${t.replayShort} · ${Math.max(minutoVivo ?? 0, state.minute ?? 0)}’`}
           </Badge>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: fw.heavy, color: 'var(--gold)' }}>
             <Star />

@@ -57,6 +57,15 @@ export type RoomState = {
   score: { p1: number; p2: number };
   /** Minuto do relógio do FEED. null antes do apito. */
   minute: number | null;
+  /**
+   * A ÂNCORA do relógio na tela: segundos de jogo do último evento que trouxe
+   * relógio. Com `replaySpeed`, o cliente interpola o minuto ENTRE eventos —
+   * antes o badge congelava no 0’ e saltava para o 6’ no escanteio seguinte.
+   * A disciplina é a do cursorClock (B2): o evento re-ancora, a parede preenche.
+   */
+  clockSeconds: number | null;
+  /** Minutos de jogo por segundo real (12 no replay padrão; 1 ao vivo). */
+  replaySpeed: number;
   finished: boolean;
   questions: Question[];
   feed: { minute: number | null; action: string; goals: { p1: number; p2: number } | null }[];
@@ -216,6 +225,8 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     source: (fixture as { cacheSource?: string }).cacheSource ?? 'txline-cache',
     score: { p1: 0, p2: 0 },
     minute: null,
+    clockSeconds: null,
+    replaySpeed: REPLAY_SPEED,
     finished: false,
     questions: [],
     feed: [],
@@ -459,7 +470,10 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
         falaDeGols &&
         (ev.goals.p1 !== state.score.p1 || ev.goals.p2 !== state.score.p2);
       if (mudou) state.score = { p1: ev.goals.p1, p2: ev.goals.p2 };
-      if (typeof ev.clockSeconds === 'number') state.minute = Math.floor(ev.clockSeconds / 60);
+      if (typeof ev.clockSeconds === 'number') {
+        state.minute = Math.floor(ev.clockSeconds / 60);
+        state.clockSeconds = ev.clockSeconds;
+      }
 
       // Os totais só valem com o bloco Score (A4): sem ele não há Total nenhum,
       // e sobrescrever aqui zeraria a aba inteira num evento de lineup.
@@ -491,6 +505,9 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
           type: 'score_event',
           ts: ev.ts,
           minute: state.minute,
+          // A âncora nova do relógio da tela — null quando ESTE evento não
+          // trouxe relógio (a âncora anterior continua valendo lá).
+          clockSeconds: typeof ev.clockSeconds === 'number' ? ev.clockSeconds : null,
           // Ausente NAO e zero (A4): so mando placar quando o bloco Score veio.
           // null diz "nao mudou"; quem renderizar `?? 0` da gol fantasma.
           scoreA: mudou ? state.score.p1 : null,
