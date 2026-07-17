@@ -1,7 +1,7 @@
 /** Lobby sincronizado por SSE. O runner só nasce depois do `start` do host. */
 
 import { PrivyClient } from '@privy-io/server-auth';
-import { createMatchRepo, createUserRepo } from '@palpitei/db';
+import { createLobbyRepo, createMatchRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { PULSO, iniciarPulso } from '@/server/pulso';
 import {
@@ -56,6 +56,16 @@ export async function GET(
       createUserRepo(db).findOrCreateByPrivyDid(ctx.did),
     ]);
     if (!fixture) return Response.json({ error: 'partida não encontrada no cache' }, { status: 404 });
+    const persistent = await createLobbyRepo(db).findForMember(ctx.partyId, user.id);
+    if (
+      !persistent ||
+      persistent.fixtureId !== ctx.room.fixtureId ||
+      persistent.treino !== ctx.room.treino ||
+      persistent.expiresAt <= Date.now() ||
+      !['waiting', 'started'].includes(persistent.phase)
+    ) {
+      return Response.json({ error: 'você não participa desse lobby' }, { status: 403 });
+    }
 
     const lobby = openLobby({
       key: chaveDaSala(ctx.room.fixtureId, ctx.room.treino, ctx.partyId),
@@ -65,6 +75,8 @@ export async function GET(
       treino: ctx.room.treino,
       teamA: fixture.p1,
       teamB: fixture.p2,
+      hostId: persistent.hostUserId,
+      phase: persistent.phase === 'started' ? 'started' : 'waiting',
     });
     const enc = new TextEncoder();
     let disconnect = () => {};
@@ -127,6 +139,14 @@ export async function POST(
   const db = createDb();
   try {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(ctx.did);
+    const persistent = await createLobbyRepo(db).findForMember(ctx.partyId, user.id);
+    if (
+      !persistent ||
+      persistent.fixtureId !== ctx.room.fixtureId ||
+      persistent.treino !== ctx.room.treino
+    ) {
+      return Response.json({ error: 'você não participa desse lobby' }, { status: 403 });
+    }
     if (body?.action === 'ready' && typeof body.ready === 'boolean') {
       return setReady(lobby, user.id, body.ready)
         ? Response.json({ ok: true })
@@ -134,9 +154,9 @@ export async function POST(
     }
     if (body?.action === 'start') {
       const result = startLobby(lobby, user.id);
-      return result.ok
-        ? Response.json({ ok: true })
-        : Response.json({ error: result.error }, { status: 409 });
+      if (!result.ok) return Response.json({ error: result.error }, { status: 409 });
+      await createLobbyRepo(db).markStarted(ctx.partyId, user.id);
+      return Response.json({ ok: true });
     }
     return Response.json({ error: 'ação inválida' }, { status: 400 });
   } finally {

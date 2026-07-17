@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge, Button } from '@/components/ds';
 import { Screen } from '@/components/Shell';
@@ -13,14 +13,6 @@ import { fw } from '@/lib/tokens';
 import { SalaReal } from './SalaReal';
 import { localizeTeamName } from '@/lib/team-names';
 
-const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-function newPartyId(): string {
-  const bytes = new Uint8Array(6);
-  crypto.getRandomValues(bytes);
-  return [...bytes].map((n) => ALPHABET[n % ALPHABET.length]).join('');
-}
-
 export function SalaComLobby({ roomId }: { roomId: string }) {
   const router = useRouter();
   const search = useSearchParams();
@@ -30,13 +22,20 @@ export function SalaComLobby({ roomId }: { roomId: string }) {
     const value = search.get('party')?.toUpperCase() ?? '';
     return /^[A-Z0-9]{6,12}$/.test(value) ? value : '';
   });
+  const [createError, setCreateError] = useState<string | null>(null);
+  const creating = useRef(false);
 
   useEffect(() => {
-    if (partyId) return;
-    const generated = newPartyId();
-    setPartyId(generated);
-    router.replace(`/sala/${encodeURIComponent(roomId)}?party=${generated}`, { scroll: false });
-  }, [partyId, roomId, router]);
+    if (partyId || !session || !privy.ready || !privy.authenticated || creating.current) return;
+    creating.current = true;
+    void import('@/lib/api').then(({ api }) => api.createLobby(roomId)).then(({ lobby }) => {
+      setPartyId(lobby.inviteCode);
+      router.replace(`/sala/${encodeURIComponent(roomId)}?party=${encodeURIComponent(lobby.inviteCode)}`, { scroll: false });
+    }).catch((error) => {
+      creating.current = false;
+      setCreateError(error instanceof Error ? error.message : 'não deu para criar o lobby');
+    });
+  }, [partyId, roomId, router, session, privy.ready, privy.authenticated]);
 
   const active = Boolean(partyId && session && privy.ready && privy.authenticated);
   const lobby = useLobby(roomId, partyId, active);
@@ -51,7 +50,7 @@ export function SalaComLobby({ roomId }: { roomId: string }) {
     );
   }
 
-  return <LobbyView roomId={roomId} partyId={partyId} {...lobby} />;
+  return <LobbyView roomId={roomId} partyId={partyId} createError={createError} {...lobby} />;
 }
 
 function LobbyView({
@@ -59,6 +58,7 @@ function LobbyView({
   state,
   error,
   sending,
+  createError,
   toggleReady,
   start,
 }: {
@@ -67,6 +67,7 @@ function LobbyView({
   state: ReturnType<typeof useLobby>['state'];
   error: string | null;
   sending: boolean;
+  createError: string | null;
   toggleReady: () => Promise<void>;
   start: () => Promise<void>;
 }) {
@@ -79,7 +80,7 @@ function LobbyView({
   );
 
   const copyInvite = async () => {
-    await navigator.clipboard.writeText(window.location.href);
+    await navigator.clipboard.writeText(`${window.location.origin}/convite/${encodeURIComponent(partyId)}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1_800);
   };
@@ -184,7 +185,7 @@ function LobbyView({
         ))}
       </div>
 
-      {error && <p role="alert" style={{ color: 'var(--red)', textAlign: 'center', fontSize: 12 }}>{error}</p>}
+      {(error || createError) && <p role="alert" style={{ color: 'var(--red)', textAlign: 'center', fontSize: 12 }}>{error || createError}</p>}
       <div style={{ flex: 1, minHeight: 22 }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         <Button full size="lg" variant={state?.meReady ? 'secondary' : 'primary'} disabled={!state || sending} onClick={() => void toggleReady()}>

@@ -230,3 +230,19 @@ export type LeagueMember = {
   role: LeagueRole;
   joinedAt: number;
 };
+
+export type LobbyPhase = 'waiting' | 'started' | 'finished' | 'cancelled' | 'expired';
+export type LobbyRole = 'host' | 'player';
+
+export type Lobby = {
+  id: string;
+  inviteCode: string;
+  fixtureId: number;
+  treino: boolean;
+  hostUserId: string;
+  phase: LobbyPhase;
+  maxPlayers: number;
+  memberCount: number;
+  expiresAt: number;
+  createdAt: number;
+};

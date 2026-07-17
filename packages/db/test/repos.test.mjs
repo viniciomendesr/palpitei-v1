@@ -31,6 +31,7 @@ import {
   LeagueNameInvalidError,
   LeagueNotFoundError,
   LeagueNotOwnerError,
+  LobbyUnavailableError,
 } from '../dist/index.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,7 @@ const AQUI = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = [
   resolve(AQUI, '../../../supabase/migrations/0001_init.sql'),
   resolve(AQUI, '../../../supabase/migrations/0002_leagues.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0003_lobbies.sql'),
 ];
 const PORTA = 5599;
 
@@ -939,4 +941,40 @@ test('uma liga tem UM dono — o banco recusa o segundo', async () => {
       ]),
     /league_members_one_owner_uk|duplicate key/
   );
+});
+
+// ---------------------------------------------------------------------------
+// Lobby persistente — convite, anfitrião e membros sobrevivem ao processo web
+// ---------------------------------------------------------------------------
+
+test('lobby nasce com código seguro e anfitrião como primeiro membro', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-host');
+  await p.matches.upsert({ fixtureId: 910001, p1: 'England', p2: 'Argentina', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910001, false);
+
+  assert.match(lobby.inviteCode, /^[A-HJKMNP-Z2-9]{6}$/);
+  assert.equal(lobby.hostUserId, host.id);
+  assert.equal(lobby.memberCount, 1);
+  assert.equal((await p.lobbies.findForMember(lobby.inviteCode, host.id))?.id, lobby.id);
+});
+
+test('entrar por código é idempotente e não troca o anfitrião', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-host-2');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-friend');
+  await p.matches.upsert({ fixtureId: 910002, p1: 'France', p2: 'England', startTime: 1_700_000_000_000 });
+  const created = await p.lobbies.create(host.id, 910002, true);
+
+  await p.lobbies.joinByCode(friend.id, ` ${created.inviteCode.slice(0, 3)}-${created.inviteCode.slice(3)} `);
+  const again = await p.lobbies.joinByCode(friend.id, created.inviteCode.toLowerCase());
+  assert.equal(again.memberCount, 2);
+  assert.equal(again.hostUserId, host.id);
+});
+
+test('convite expirado não aceita novo membro', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-expired-host');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-expired-friend');
+  await p.matches.upsert({ fixtureId: 910003, p1: 'Brazil', p2: 'Portugal', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910003, false);
+  await p.db.query(`update lobbies set expires_at = now() - interval '1 minute' where id = $1`, [lobby.id]);
+  await assert.rejects(() => p.lobbies.joinByCode(friend.id, lobby.inviteCode), LobbyUnavailableError);
 });

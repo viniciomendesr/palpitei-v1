@@ -100,6 +100,16 @@ export interface LobbyState {
   players: { name: string; ready: boolean; host: boolean }[];
 }
 
+export interface ApiLobbyPreview {
+  inviteCode: string;
+  roomId: string;
+  treino: boolean;
+  teamA: string;
+  teamB: string;
+  memberCount: number;
+  maxPlayers: number;
+}
+
 /**
  * Uma liga privada, como a home a lista.
  *
@@ -365,6 +375,21 @@ export const api = {
     request<{ ok: true }>(`/api/leagues/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   fixtures: () => request<{ fixtures: ApiFixture[] }>('/api/fixtures'),
+
+  createLobby: (roomId: string) =>
+    request<{ ok: true; lobby: ApiLobbyPreview }>('/api/lobbies', {
+      method: 'POST',
+      body: JSON.stringify({ roomId }),
+    }),
+
+  previewLobby: (code: string) =>
+    request<{ lobby: ApiLobbyPreview }>(`/api/lobbies/${encodeURIComponent(code)}`),
+
+  joinLobby: (code: string) =>
+    request<{ ok: true; lobby: { inviteCode: string; roomId: string } }>(
+      `/api/lobbies/${encodeURIComponent(code)}`,
+      { method: 'POST', body: '{}' },
+    ),
 
   lobbyReady: (roomId: string, partyId: string, ready: boolean) =>
     request<{ ok: true }>(

@@ -8,10 +8,16 @@
 - Estado autoritativo do jogo no servidor (`rooms.ts`); Postgres para identidade,
   perguntas, palpites e XP.
 
-O lobby usa o mesmo transporte. Cada link recebe um `partyId`; a chave
-`fixture + treino + partyId` isola o runner de cada grupo. Presença, pronto e
-início ficam no processo e o host só inicia quando todos os presentes estão
-prontos.
+O lobby usa o mesmo transporte. Cada convite recebe um código global gerado no
+servidor; a chave `fixture + treino + inviteCode` isola o runner de cada grupo.
+Postgres guarda lobby, anfitrião, associação e fase. Presença e pronto continuam
+no processo porque são estados transitórios; o host só inicia quando todos os
+presentes estão prontos.
+
+O fluxo público é `/convite/[code]`. Ele mostra a partida antes da entrada,
+preserva o destino durante login/onboarding e só então associa o usuário. A home
+também oferece entrada manual pelo código. Abrir `/sala/...?...party=` sem ser
+membro falha fechado: conhecer a URL interna não torna o usuário participante.
 
 ## Bibliotecas avaliadas
 
@@ -51,11 +57,34 @@ portanto CRDT adicionaria complexidade sem resolver o relógio do runner.
 - https://socket.io/
 - https://docs.yjs.dev/api/about-awareness
 
+## Plano de evolução
+
+### Fase 1 — identidade persistente (implementada)
+
+- `lobbies` e `lobby_members` no Postgres;
+- convite global, limite de participantes e validade de 24 horas;
+- host definido na criação, não pela ordem das conexões SSE;
+- link público, entrada manual e retorno seguro depois do login;
+- autorização de membro nas ações e no stream do lobby.
+
+### Fase 2 — presença distribuída
+
+- mover presença/pronto para Liveblocks quando houver mais de uma réplica;
+- manter comandos críticos (iniciar, palpitar, liquidar XP) no backend;
+- adicionar heartbeat e reconciliação de membros desconectados;
+- medir tempo de entrada, falha de convite e abandono no lobby.
+
+### Fase 3 — sessão de partida recuperável
+
+- persistir checkpoint do runner e cursor TxLINE;
+- recuperar a mesma execução depois de restart/deploy;
+- expirar lobbies por job e permitir revanche explícita com novo código.
+
 ## Decisão
 
 Manter SSE nesta entrega: é suficiente para lobby, placar, perguntas e presença
 com a réplica única configurada em `railway.json`, sem novas credenciais nem uma
-segunda fonte de verdade. Migrar presença/lobby para Liveblocks antes de subir
+segunda fonte de verdade. Migrar a presença para Liveblocks antes de subir
 `numReplicas` acima de 1 ou quando a sala precisar sobreviver a restart/deploy.
 O motor, XP e relógio TxLINE continuam autoritativos no backend Palpitei mesmo
 após essa migração.

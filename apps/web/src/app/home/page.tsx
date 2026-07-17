@@ -258,6 +258,12 @@ export default function HomePage() {
         onChange={(v) => setTab(v as Tab)}
       />
 
+      {!ehDemo && (
+        <Button full variant="secondary" onClick={() => router.push('/lobby/entrar')} style={{ marginTop: 12 }}>
+          {t.lobbyHomeCta}
+        </Button>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
         {abas[tab].map((f) => (
           <MatchCard

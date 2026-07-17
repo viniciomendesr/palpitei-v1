@@ -21,6 +21,7 @@ import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { fw } from '@/lib/tokens';
+import { consumePendingReturnTo } from '@/lib/return-to';
 
 const EASE = 'cubic-bezier(.2,.7,.3,1)';
 
@@ -39,6 +40,8 @@ export default function LoginPage() {
   const [tentativa, setTentativa] = useState(0);
 
   const onDemo = () => {
+    // O demo não pode carregar um convite real pendente para um login futuro.
+    consumePendingReturnTo();
     enterDemo();
     router.push('/home');
   };
@@ -56,7 +59,7 @@ export default function LoginPage() {
     // Quem JÁ tem sessão real não recomeça o cadastro: sem apelido = ainda no
     // meio (o passo 1 é quem grava); com apelido, está dentro — vai pra casa.
     if (session && session.authMethod !== 'demo') {
-      router.replace(session.nickname.trim() ? '/home' : '/onboarding');
+      router.replace(session.nickname.trim() ? consumePendingReturnTo() : '/onboarding');
       return;
     }
 
@@ -77,7 +80,7 @@ export default function LoginPage() {
           // Conta VELHA: a sessão nasce do que o banco sabe (apelido, XP,
           // nível, time) e o fã volta direto para casa.
           enterExisting(method, user);
-          router.replace('/home');
+          router.replace(consumePendingReturnTo());
         } else {
           // Sem apelido no banco = conta nova (ou cadastro interrompido):
           // termina o onboarding. replace, e não push: depois de entrar, o

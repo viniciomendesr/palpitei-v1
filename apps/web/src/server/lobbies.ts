@@ -11,6 +11,8 @@ export type LobbyMeta = {
   treino: boolean;
   teamA: string;
   teamB: string;
+  hostId?: string;
+  phase?: 'waiting' | 'started';
 };
 
 type Member = { userId: string; name: string; ready: boolean; connections: number };
@@ -30,7 +32,7 @@ export type LobbyState = {
   players: { name: string; ready: boolean; host: boolean }[];
 };
 
-export type Lobby = LobbyMeta & {
+export type Lobby = Omit<LobbyMeta, 'hostId' | 'phase'> & {
   phase: 'waiting' | 'started';
   hostId: string | null;
   members: Map<string, Member>;
@@ -46,8 +48,8 @@ export function openLobby(meta: LobbyMeta): Lobby {
   if (found) return found;
   const lobby: Lobby = {
     ...meta,
-    phase: 'waiting',
-    hostId: null,
+    phase: meta.phase ?? 'waiting',
+    hostId: meta.hostId ?? null,
     members: new Map(),
     subscribers: new Set(),
   };
@@ -107,6 +109,8 @@ export function connectLobby(
       connections: 1,
     });
   }
+  // Compatibilidade para lobbies efêmeros de teste/dev. Em produção o hostId
+  // vem do Postgres e nunca depende da ordem das conexões SSE.
   if (!lobby.hostId) lobby.hostId = user.id;
   const sub: Subscriber = { userId: user.id, send };
   lobby.subscribers.add(sub);
@@ -118,9 +122,6 @@ export function connectLobby(
     if (member) {
       member.connections--;
       if (member.connections <= 0 && lobby.phase === 'waiting') lobby.members.delete(user.id);
-    }
-    if (lobby.phase === 'waiting' && lobby.hostId === user.id && !lobby.members.has(user.id)) {
-      lobby.hostId = lobby.members.keys().next().value ?? null;
     }
     if (lobby.phase === 'waiting' && lobby.members.size === 0) all().delete(lobby.key);
     else broadcast(lobby);

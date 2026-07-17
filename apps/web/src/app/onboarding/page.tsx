@@ -24,6 +24,7 @@ import { TEAMS } from '@/lib/mock';
 import { useRequireSession } from '@/lib/guard';
 import { NicknameInput, MAX_NICK, isNicknameValid } from '@/components/NicknameInput';
 import { localizeTeamName } from '@/lib/team-names';
+import { consumePendingReturnTo } from '@/lib/return-to';
 
 const EASE = 'cubic-bezier(.2,.7,.3,1)';
 
@@ -121,7 +122,7 @@ export default function OnboardingPage() {
     setStep((s) => Math.max(0, s - 1));
   };
 
-  const finish = () => router.replace('/home');
+  const finish = () => router.replace(consumePendingReturnTo());
 
   const pct = Math.round(Math.min(step, 3) / 3 * 100);
   const stepLabel = `${t.obStep} ${Math.min(step + 1, 3)} ${t.obOf} 3`;

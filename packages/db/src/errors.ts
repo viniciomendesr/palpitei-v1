@@ -85,6 +85,24 @@ export class InviteCodeInvalidError extends Error {
   }
 }
 
+export class LobbyNotFoundError extends Error {
+  readonly code = 'lobby_not_found';
+  readonly status = 404;
+  constructor() {
+    super('esse lobby não existe mais — pede um convite novo');
+    this.name = 'LobbyNotFoundError';
+  }
+}
+
+export class LobbyUnavailableError extends Error {
+  readonly code = 'lobby_unavailable';
+  readonly status = 409;
+  constructor(motivo = 'esse lobby não aceita novas entradas agora') {
+    super(motivo);
+    this.name = 'LobbyUnavailableError';
+  }
+}
+
 /** Violação de unicidade do Postgres. */
 export function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505';
