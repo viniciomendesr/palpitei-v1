@@ -3,9 +3,9 @@
 /**
  * RESULTADO DO DESAFIO — tela cheia, com a LEITURA DO JOGO.
  *
- * A leitura é o coração do produto: "com o gol da Argentina, a chance de vitória
- * saltou de 58% para 74%". É o que transforma número de mercado em história de
- * futebol, e é o que a trilha (Consumer and Fan Experiences) premia.
+ * A leitura é o coração do produto: o lance transforma uma pergunta em história
+ * de futebol. Quando há série de preços, ela pode mostrar a mudança de chance;
+ * no replay demo os números são explicitamente simulados.
  *
  * Voz: "atualizada ao vivo", nunca "odds". Nunca jargão de aposta.
  *
@@ -56,6 +56,8 @@ export function ChallengeResult({ spec, text, result, level, xp, myPos, onNext, 
 
   const title = win ? t.resWin : result.timeout ? t.resTimeout : t.resMiss;
   const narrative = win ? text.subWin : result.timeout ? text.subTimeout : text.subMiss;
+  const probabilityReading =
+    spec.before !== null && spec.after !== null ? { before: spec.before, after: spec.after } : null;
 
   const pos = ordinal(myPos, lang);
   const rankNote = fill(win ? t.rankNoteUp : t.rankNoteSame, { pos });
@@ -162,12 +164,14 @@ export function ChallengeResult({ spec, text, result, level, xp, myPos, onNext, 
           {text.reading}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 16 }}>
-          <ProbBar label={t.resBefore} pct={spec.before} tone="var(--text-faint)" valueColor="var(--text-2)" />
-          <ProbBar label={t.resAfter} pct={spec.after} tone="var(--lime)" valueColor="var(--lime)" animate />
-        </div>
+        {probabilityReading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 16 }}>
+            <ProbBar label={t.resBefore} pct={probabilityReading.before} tone="var(--text-faint)" valueColor="var(--text-2)" />
+            <ProbBar label={t.resAfter} pct={probabilityReading.after} tone="var(--lime)" valueColor="var(--lime)" animate />
+          </div>
+        )}
 
-        <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-faint)', marginTop: 14 }}>
+        <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-faint)', marginTop: probabilityReading ? 14 : 12 }}>
           {text.probLabel}
         </div>
       </div>

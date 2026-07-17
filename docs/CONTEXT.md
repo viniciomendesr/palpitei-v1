@@ -245,7 +245,7 @@ Projeto Claude Design `afc48231-349b-42df-975e-420e88fc618b`, arquivo `Palpitei 
 (cópia local de trabalho em `docs/mockup.html`). Telas:
 
 `login` (Google/Privy · carteira · **demo**) → `onboarding` (0 boas-vindas · 1 apelido ·
-2 time do coração · 3 pronto) → `home` (abas Ao Vivo / Próximos / Replays, missão do dia,
+2 pronto) → `home` (abas Ao Vivo / Próximos / Replays, missão do dia,
 ligas privadas) → `sala` (cabeçalho do placar, abas Lances / Estatísticas / Ranking,
 **bottom sheet do desafio** com timer) → `resultado do desafio` (tela cheia, leitura do jogo)
 → `fim de jogo` → `ranking` → `perfil` → `premium` (paywall · planos · checkout · done)
@@ -259,7 +259,6 @@ perguntas sobre o dado real.
 ```
 REST  POST /api/login              (Bearer da Privy → find-or-create por DID)
       POST /api/account/handle     (o fã escolhe o apelido — nunca derive do e-mail)
-      POST /api/account/team       (time do coração; null = pulou — não invente time)
       GET  /api/state              (o fã como o BANCO o conhece + aproveitamento)
       GET  /api/ranking            (top 50 por XP + a minha linha fora do corte)
       GET  /api/fixtures
@@ -683,3 +682,56 @@ npm test -w @palpitei/db
 npm run typecheck
 npm run build
 ```
+
+### Cotações do pré-palpite: lista da TxLINE, nunca linhas de mock (17/07)
+
+O contrato de `GET /api/pregame/:fixtureId` expõe `markets: []`, uma **lista**
+de mercados que a TxLINE abriu e que a v1 sabe liquidar — hoje `result` (1X2 de
+jogo inteiro) e totais binários de `goals`/`corners`. A tela mapeia essa lista;
+ela não reserva quatro cartões e não preenche os ausentes com `2,5`/`9,5`.
+Placar exato continua sendo um palpite sem cotação, então é o único card que
+existe independentemente da lista. O contador é `1 + markets.length`.
+
+A fonte é `GET /odds/snapshot/:fixtureId`, apropriada à foto atual pré-jogo;
+`/odds/updates` continua sendo a série do replay. A projeção descarta mercado
+se `PriceNames`, `Prices` e `Pct` não tiverem o mesmo tamanho, se `Pct` vier
+`NA`, ou se não for jogo inteiro. Linhas inteiras e asiáticas (.25/.75) também
+ficam de fora: sem regra de push/meio ganho, chamá-las de Acima/Abaixo seria
+inventar produto. A seleção entre linhas elegíveis usa a mais equilibrada da
+própria TxLINE. A resposta leva somente id, linha e percentuais — nunca o
+payload cru licenciado (§7).
+
+No `POST`, resultado/totais são rechecados contra a lista atual. A linha que o
+fã viu é salva em `pregame_picks.goals_line`/`corners_line` (migration `0006`)
+e usada na liquidação; assim uma mudança de 2,5 para 3,5 não julga o palpite
+contra outro mercado. Picks já gravados receberam as linhas que a tela antiga
+exibia, preservando a regra prometida a eles. Sem resposta da TxLINE, só o
+placar exato fica disponível — a tela declara a indisponibilidade, não mostra
+chance zero ou cotação fictícia.
+
+## 13. Demo: fatos públicos da Copa, mecânica explicitamente simulada
+
+**Decisão de 17/07/2026.** O modo demo continua 100% local (§5.1), mas os fatos
+de futebol exibidos nele não podem ser uma narrativa inventada. A referência é
+o relatório público da FIFA, e não payload da TxLINE (que não pode ser
+versionado, §7). A mecânica do jogo — XP, ranking e a janela de resposta — segue
+marcada como demo/simulada; ela não é estatística oficial da Copa.
+
+Na revisão de 17/07, os fatos estáticos usados pelo replay guiado são Argentina
+3×2 Cabo Verde após prorrogação, na fase de 32 de 03/07: Messi (29), Deroy
+Duarte (59), Lisandro Martínez (92), Sidny Lopes Cabral (103) e gol contra de
+Diney Borges (111). A fonte é o relatório da FIFA:
+<https://www.fifa.com/en/articles/argentina-cabo-verde-match-report-highlights>.
+
+No mesmo recorte temporal, France 0×2 Spain e England 1×2 Argentina são as
+semifinais já encerradas; France × England (disputa de terceiro) e Spain ×
+Argentina (final) ainda são as duas partidas futuras do demo. Confirme datas e
+confrontos na agenda pública antes de mudar a lista local:
+<https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/match-schedule-fixtures-results-teams-stadiums>.
+
+Fatos esportivos (placar, adversários, datas e autores dos gols) precisam de
+fonte pública. Elementos que existem apenas para a experiência do demo —
+percentuais de chance, estatísticas agregadas, XP e ranking local — podem usar
+estimativas plausíveis, mas a tela deve declará-los **simulados**, sem selo da
+TxLINE e sem sugerir que sejam estatísticas oficiais. Para a conta real, a
+origem continua sendo a TxLINE.

@@ -76,13 +76,6 @@ const VAZIO: Mercados = {
 
 const SEM_MERCADOS: PregameMarket[] = [];
 
-/** Extras sociais/tempo do demo, por id — batem com o mockup. */
-const DEMO_EXTRAS: Record<string, { friends: number; closesPt: string; closesEn: string }> = {
-  'bra-mar': { friends: 12, closesPt: '3h 20min', closesEn: '3h 20min' },
-  'fra-cro': { friends: 7, closesPt: '6h 20min', closesEn: '6h 20min' },
-  'ing-eua': { friends: 4, closesPt: 'amanhã, às 16:00', closesEn: 'tomorrow, 16:00' },
-};
-
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
@@ -181,7 +174,9 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
     }
     const va = timeVisual(fx.teamA);
     const vb = timeVisual(fx.teamB);
-    const extra = DEMO_EXTRAS[fixtureId];
+    const agora = Date.now();
+    const startTs = fx.startTs;
+    const locked = startTs != null && startTs <= agora;
     let salvo: Mercados | null = null;
     let jaEnviou = false;
     try {
@@ -215,12 +210,13 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
       colA: va.color,
       colB: vb.color,
       group: fx.group,
-      kickoffText: fx.status,
-      closesText: extra ? (lang === 'en' ? extra.closesEn : extra.closesPt) : null,
-      friends: extra?.friends ?? 0,
+      kickoffText: startTs != null ? textoDoApito(startTs, agora, lang) : fx.status,
+      closesText: locked || startTs == null ? null : textoDoFechamento(startTs, agora, lang),
+      // O demo não inventa amigos que já palpitaram; só o fluxo é local.
+      friends: null,
       markets: SEM_MERCADOS,
       txlineOddsAvailable: false,
-      locked: false,
+      locked,
       finished: false,
       submitted: jaEnviou,
       final: null,

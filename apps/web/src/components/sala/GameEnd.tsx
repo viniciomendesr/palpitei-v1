@@ -64,7 +64,7 @@ export function GameEnd({ scoreA, scoreB, salaXp, correctCount, total, level, xp
 
       <div style={{ textAlign: 'center', position: 'relative', animation: 'fadeUp .5s ease both' }}>
         <div style={{ fontSize: 11, fontWeight: fw.black, letterSpacing: 1.2, color: 'var(--text-muted)' }}>
-          {t.groupJ}
+          {t.stageRound32}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 6 }}>
           <Streamer a="var(--lime)" b="var(--gold)" rotA={-18} rotB={20} />

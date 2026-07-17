@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * SALA AO VIVO — cabeçalho de placar, abas Lances/Estatísticas/Ranking e o
+ * SALA DE REPLAY — cabeçalho de placar, abas Lances/Estatísticas/Ranking e o
  * bottom sheet do desafio.
  *
  * Três fases, exatamente como o protótipo (lá eram `phase` dentro da rota `sala`,
@@ -68,9 +68,9 @@ type SalaTab = 'lances' | 'stats' | 'ranking';
  *                  público e cliente que decide o próprio XP é fraude (§4).
  *
  * O id decide: as partidas reais são fixtureId da TxLINE (numérico); as do mock
- * são apelidos do protótipo ('arg-cab', 'esp-cor'). Sem isto, "Rever partida" no
- * England × Argentina abria Argentina × Cabo Verde — dado inventado com cara de
- * real, que é o G6 que este projeto existe para evitar.
+ * é o alias `arg-cab`, único replay guiado da demo. Sem esta barreira, um alias
+ * antigo poderia abrir Argentina × Cabo Verde no lugar de outra partida — dado
+ * inventado com aparência de dado real, que é o G6 que este projeto evita.
  */
 export default function SalaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -161,6 +161,13 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
     void id;
   }, [id]);
 
+  // A home demo expõe apenas o replay que este roteiro reproduz. Não aceitar
+  // um apelido antigo evita trocar silenciosamente outra partida por Argentina
+  // × Cabo Verde, que seria um fato inventado com aparência de dado real.
+  useEffect(() => {
+    if (id !== 'arg-cab') router.replace('/home');
+  }, [id, router]);
+
   // O relógio da janela. Só corre na fase de pergunta.
   useEffect(() => {
     if (phase !== 'question') return;
@@ -191,9 +198,10 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
 
   const stats = useMemo(() => liveStats(t), [t]);
   const ranking = useMemo(() => roomRanking(t, salaXp), [t, salaXp]);
-  const myPos = ranking.find((r) => r.id === 'me')?.pos ?? 2;
+  const myPos = ranking.find((r) => r.id === 'me')?.pos ?? 1;
 
   if (!ready || !session) return null;
+  if (id !== 'arg-cab') return null;
   if (!spec || !text) return null;
 
   if (phase === 'fim') {
@@ -257,7 +265,7 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
             <ChevronLeft size={18} />
           </button>
           <Badge tone="live" dot>
-            {t.liveShort} · {minute}’
+            {t.demoReplayShort} · {minute}’
           </Badge>
           <div
             style={{
@@ -284,7 +292,7 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
               {scoreA} – {scoreB}
             </span>
             <span style={{ fontSize: 10, fontWeight: fw.heavy, letterSpacing: 0.8, color: 'var(--text-muted)', marginTop: 4 }}>
-              {t.groupJ}
+              {t.stageRound32}
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: 96 }}>
@@ -336,10 +344,13 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--text-1)' }}>{t.tArgentina}</span>
               <span style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)' }}>
-                {t.statsHdr}
+                {t.demoStatsHdr}
               </span>
               <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--text-1)' }}>{t.tCaboVerde}</span>
             </div>
+            <p style={{ fontSize: 11.5, fontWeight: fw.medium, lineHeight: 1.4, color: 'var(--text-muted)', margin: '0 0 14px' }}>
+              {t.demoStatsNote}
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {stats.map((st) => (
                 <div key={st.label}>

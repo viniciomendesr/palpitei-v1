@@ -44,8 +44,6 @@ export interface ApiUser {
   level: number;
   xp: number;
   streak: number;
-  /** Time do coração — escolha do onboarding, null = não escolheu (ou pulou). */
-  favTeam: string | null;
   /**
    * `null` = o fã entrou e NÃO ganhou carteira Solana. É a regressão E2 visível,
    * e o tipo a mantém visível de propósito: colapsar para 'simulated' marcaria um
@@ -410,13 +408,6 @@ export const api = {
     request<{ ok: true; user: ApiUser }>('/api/account/handle', {
       method: 'POST',
       body: JSON.stringify({ nickname }),
-    }),
-
-  /** O time do coração. `null` limpa — o passo é pulável, e "pulei" não é um time. */
-  setFavoriteTeam: (team: string | null) =>
-    request<{ ok: true; favTeam: string | null }>('/api/account/team', {
-      method: 'POST',
-      body: JSON.stringify({ team }),
     }),
 
   state: () => request<ApiState>('/api/state'),

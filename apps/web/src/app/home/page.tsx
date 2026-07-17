@@ -175,6 +175,7 @@ export default function HomePage() {
   const { session, update, refreshState } = useSession();
   const ready = useRequireSession();
   const [tab, setTab] = useState<Tab>('live');
+  const ehDemo = session?.authMethod === 'demo';
 
   // O XP/nível do cabeçalho é do BANCO (o motor liquida lá): voltar da sala tem
   // que mostrar o que o jogo acabou de pagar. No demo é no-op (§5.1: local).
@@ -182,12 +183,17 @@ export default function HomePage() {
     void refreshState();
   }, [refreshState]);
 
+  // Em 17/07 não há partida do Mundial em andamento. Abrir a demo nos próximos
+  // evita uma primeira aba vazia e leva direto aos dois jogos oficiais listados.
+  useEffect(() => {
+    if (ehDemo) setTab('next');
+  }, [ehDemo]);
+
   const { abas, carregando, erro } = useFixtures(session, t);
   const liga = useLeagues(session, t);
 
   if (!ready || !session) return null;
 
-  const ehDemo = session.authMethod === 'demo';
   const openSala = (id: string) => router.push(`/sala/${id}`);
 
   // A missão do dia acompanha a sequência de acertos: 3 seguidos fecham.
