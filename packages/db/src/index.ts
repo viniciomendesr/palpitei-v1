@@ -14,6 +14,14 @@ export * from './errors.js';
 export { createUserRepo, validarHandle } from './repos/userRepo.js';
 export type { UserRepo, FindOrCreateOpts } from './repos/userRepo.js';
 
+export {
+  createLeagueRepo,
+  validarNomeDeLiga,
+  normalizarCodigo,
+  LIGAS_FREE,
+} from './repos/leagueRepo.js';
+export type { LeagueRepo } from './repos/leagueRepo.js';
+
 export { createMatchRepo } from './repos/matchRepo.js';
 export type { MatchRepo } from './repos/matchRepo.js';
 
@@ -46,6 +54,7 @@ import { createEnginePorts, type EnginePorts } from './enginePorts.js';
 import { createMatchCacheStore, type MatchCacheStore } from './matchCacheStore.js';
 import { createEventRepo, type EventRepo } from './repos/eventRepo.js';
 import { createGamificationRepo, type GamificationRepo } from './repos/gamificationRepo.js';
+import { createLeagueRepo, type LeagueRepo } from './repos/leagueRepo.js';
 import { createMarketRepo, type MarketRepo } from './repos/marketRepo.js';
 import { createMatchRepo, type MatchRepo } from './repos/matchRepo.js';
 import { createOddsRepo, type OddsRepo } from './repos/oddsRepo.js';
@@ -63,6 +72,7 @@ export type Palpitei = {
   predictions: PredictionRepo;
   markets: MarketRepo;
   gamification: GamificationRepo;
+  leagues: LeagueRepo;
   cache: MatchCacheStore;
   ports: EnginePorts;
   close(): Promise<void>;
@@ -88,6 +98,7 @@ export function createPalpitei(opts: CreateDbOptions = {}): Palpitei {
     predictions: createPredictionRepo(db),
     markets: createMarketRepo(db),
     gamification: createGamificationRepo(db),
+    leagues: createLeagueRepo(db),
     cache: createMatchCacheStore(db),
     ports: createEnginePorts(db),
     close: () => db.close(),

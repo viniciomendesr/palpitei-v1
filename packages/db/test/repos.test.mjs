@@ -21,10 +21,28 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 
-import { createPalpitei, createEnginePorts, assertDbReady, HandleTakenError } from '../dist/index.js';
+import {
+  createPalpitei,
+  createEnginePorts,
+  assertDbReady,
+  HandleTakenError,
+  LeagueLimitError,
+  InviteCodeInvalidError,
+  LeagueNameInvalidError,
+} from '../dist/index.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
-const MIGRATION = resolve(AQUI, '../../../supabase/migrations/0001_init.sql');
+/**
+ * TODAS as migrations, na ordem — não só a 0001.
+ *
+ * Ficar preso à 0001 significaria que a tabela criada na migration seguinte não
+ * existe no teste: o teste da feature nova falharia com "relation does not
+ * exist" e pareceria bug do código. Migration nova entra aqui.
+ */
+const MIGRATIONS = [
+  resolve(AQUI, '../../../supabase/migrations/0001_init.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0002_leagues.sql'),
+];
 const PORTA = 5599;
 
 /**
@@ -51,7 +69,7 @@ let p;
 
 before(async () => {
   pg = await PGlite.create();
-  await pg.exec(readFileSync(MIGRATION, 'utf8'));
+  for (const m of MIGRATIONS) await pg.exec(readFileSync(m, 'utf8'));
   server = new PGLiteSocketServer({ db: pg, port: PORTA, host: '127.0.0.1' });
   await server.start();
   process.env.DATABASE_URL = `postgresql://postgres:postgres@127.0.0.1:${PORTA}/postgres`;
@@ -648,5 +666,162 @@ test('assertDbReady detecta a role sujeita à RLS (o banco "funcionando" e vazio
       }),
     /SUJEITA à RLS/,
     'a role errada tem que falhar ALTO no boot, não servir um banco vazio'
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Ligas privadas
+//
+// O que estes testes protegem: a liga existir DE VERDADE. Antes da 0002 ela era
+// um contador na sessão do browser (`session.leaguesCount++`) que sumia no F5 —
+// e o "1 membro · você lidera" era string fixa do dicionário. Por isso os testes
+// abaixo insistem em duas coisas: o número sai do banco, e o gate do free não
+// pode ser furado por corrida.
+// ---------------------------------------------------------------------------
+
+async function faNovo(sufixo) {
+  return p.users.findOrCreateByPrivyDid(`demo:liga-${sufixo}-${Math.random().toString(36).slice(2, 8)}`);
+}
+
+test('a liga PERSISTE, e o dono já entra como membro', async () => {
+  const dono = await faNovo('persiste');
+  const liga = await p.leagues.create(dono.id, 'Resenha FC');
+
+  // Relido do banco, não do objeto que create() devolveu: é o F5.
+  const lido = await p.leagues.findById(liga.id);
+  assert.equal(lido.name, 'Resenha FC');
+  assert.equal(lido.ownerId, dono.id);
+  // 1 membro porque o DONO tem linha em league_members — não porque alguém
+  // somou "+1" em cima de uma lista vazia.
+  assert.equal(lido.memberCount, 1, 'o dono é membro: o count É o número de gente na liga');
+  assert.match(lido.inviteCode, /^[A-HJKMNP-Z2-9]{6}$/, 'o código não pode ter sósia (I, L, O, 0, 1)');
+});
+
+test('o free inclui 1 liga: a 2ª leva ao paywall, não a um silêncio', async () => {
+  const dono = await faNovo('gate');
+  await p.leagues.create(dono.id, 'Primeira');
+  await assert.rejects(() => p.leagues.create(dono.id, 'Segunda'), LeagueLimitError);
+  assert.equal(await p.leagues.countOwned(dono.id), 1, 'a 2ª não pode ter entrado');
+});
+
+test('premium cria quantas quiser', async () => {
+  const dono = await faNovo('premium');
+  await p.users.setPremium(dono.id, true);
+  await p.leagues.create(dono.id, 'Uma');
+  await p.leagues.create(dono.id, 'Duas');
+  await p.leagues.create(dono.id, 'Três');
+  assert.equal(await p.leagues.countOwned(dono.id), 3);
+});
+
+test('o gate NÃO pode ser furado por dois pedidos simultâneos do mesmo fã', async () => {
+  // O defeito clássico: ler o contador fora de trava. Os dois pedidos leem 0, os
+  // dois criam, o fã free fica com 2 ligas — e ninguém vê erro nenhum. É por
+  // isso que o create trava a linha do fã com `for update`.
+  //
+  // LIMITE DO HARNESS (não do código): aqui NÃO dá para afirmar QUAL erro a
+  // perdedora recebe. O PGlite é Postgres de uma thread só (WASM): enquanto a
+  // primeira transação segura a trava, ele não consegue atender a segunda
+  // conexão, e o socket-server a derruba com ECONNRESET antes de o gate chegar a
+  // responder. É a mesma classe de artefato já documentada no `rejeitaCom` lá em
+  // cima.
+  //
+  // Contra o Postgres de verdade (Supabase, medido) a perdedora recebe
+  // LeagueLimitError/402 — o caminho do paywall. O que ESTE teste garante nos
+  // dois motores é o invariante que importa: o fã free não termina com 2 ligas.
+  const dono = await faNovo('corrida');
+  const r = await Promise.allSettled([
+    p.leagues.create(dono.id, 'Corrida Um'),
+    p.leagues.create(dono.id, 'Corrida Dois'),
+  ]);
+  const criou = r.filter((x) => x.status === 'fulfilled').length;
+  assert.equal(criou, 1, 'exatamente uma pode ter sido criada');
+  assert.equal(await p.leagues.countOwned(dono.id), 1, 'o free não pode terminar com 2 ligas');
+  await p.db.query('select 1').catch(() => {}); // drena o cliente morto (só PGlite)
+});
+
+test('entrar pelo código põe o amigo na liga — e repetir não duplica', async () => {
+  const dono = await faNovo('convite-dono');
+  const amigo = await faNovo('convite-amigo');
+  const liga = await p.leagues.create(dono.id, 'Time da Firma');
+
+  const entrou = await p.leagues.joinByCode(amigo.id, liga.inviteCode);
+  assert.equal(entrou.memberCount, 2);
+
+  // Clicar no link duas vezes é o caso NORMAL, não o exótico.
+  const denovo = await p.leagues.joinByCode(amigo.id, liga.inviteCode);
+  assert.equal(denovo.memberCount, 2, 'o mesmo fã não pode contar duas vezes no ranking da liga');
+});
+
+test('o código é aceito em minúscula e com espaço — o fã cola do zap', async () => {
+  const dono = await faNovo('normaliza');
+  const amigo = await faNovo('normaliza-amigo');
+  const liga = await p.leagues.create(dono.id, 'Copa da Rua');
+  const entrou = await p.leagues.joinByCode(amigo.id, `  ${liga.inviteCode.toLowerCase()}  `);
+  assert.equal(entrou.id, liga.id);
+});
+
+test('código que não abre liga nenhuma é 404, não um 200 mudo', async () => {
+  const fa = await faNovo('codigo-ruim');
+  await assert.rejects(() => p.leagues.joinByCode(fa.id, 'ZZZZZZ'), InviteCodeInvalidError);
+});
+
+test('ENTRAR na liga de um amigo NÃO gasta a cota do free', async () => {
+  // Se gastasse, o primeiro amigo que você chamasse — que provavelmente já tem
+  // a própria liga — não conseguiria aceitar o convite.
+  const dono = await faNovo('cota-dono');
+  const amigo = await faNovo('cota-amigo');
+  const liga = await p.leagues.create(dono.id, 'Liga do Dono');
+  await p.leagues.joinByCode(amigo.id, liga.inviteCode);
+
+  const propria = await p.leagues.create(amigo.id, 'Liga do Amigo');
+  assert.ok(propria.id, 'entrou numa liga e AINDA pode criar a dele');
+
+  const dele = await p.leagues.listForUser(amigo.id);
+  assert.equal(dele.length, 2, 'vê as duas: a que entrou e a que criou');
+  assert.equal(dele.filter((l) => l.iLead).length, 1, 'lidera só a que criou');
+});
+
+test('quem não foi convidado não é membro — a liga é privada', async () => {
+  const dono = await faNovo('privada');
+  const estranho = await faNovo('estranho');
+  const liga = await p.leagues.create(dono.id, 'Só Nossa');
+  assert.equal(await p.leagues.isMember(liga.id, estranho.id), false);
+  assert.equal(await p.leagues.isMember(liga.id, dono.id), true);
+});
+
+test('o apelido do membro pode ser NULL — e continua NULL (E12: nunca do e-mail)', async () => {
+  const dono = await faNovo('sem-apelido');
+  const liga = await p.leagues.create(dono.id, 'Sem Nome Ainda');
+  const [membro] = await p.leagues.listMembers(liga.id);
+  // O onboarding grava o apelido só na sessão local; `users.handle` é NULL. A
+  // tela diz "sem apelido" — inventar um nome aqui mentiria pra liga inteira.
+  assert.equal(membro.handle, null);
+  assert.equal(membro.role, 'owner');
+});
+
+test('nome de liga vazio, curto ou gigante não entra', async () => {
+  const dono = await faNovo('nome');
+  await p.users.setPremium(dono.id, true);
+  for (const ruim of ['', '  ', 'ab', 'x'.repeat(25)]) {
+    await assert.rejects(() => p.leagues.create(dono.id, ruim), LeagueNameInvalidError);
+  }
+  // O espaço repetido é normalizado, não recusado.
+  const liga = await p.leagues.create(dono.id, '  Resenha    FC  ');
+  assert.equal(liga.name, 'Resenha FC');
+});
+
+test('uma liga tem UM dono — o banco recusa o segundo', async () => {
+  const dono = await faNovo('um-dono');
+  const outro = await faNovo('um-dono-outro');
+  const liga = await p.leagues.create(dono.id, 'Um Dono Só');
+  // Sem o índice parcial, isto passaria e a tela mostraria "você lidera" para
+  // duas pessoas — sem erro nenhum.
+  await rejeitaCom(
+    () =>
+      p.db.query(`insert into league_members (league_id, user_id, role) values ($1, $2, 'owner')`, [
+        liga.id,
+        outro.id,
+      ]),
+    /league_members_one_owner_uk|duplicate key/
   );
 });

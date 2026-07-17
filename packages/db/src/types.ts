@@ -201,3 +201,32 @@ export type Mission = {
   progress?: number;
   completedAt?: number;
 };
+
+/** Papel na liga. O dono é quem criou — e é um só (índice parcial na 0002). */
+export type LeagueRole = 'owner' | 'member';
+
+export type League = {
+  id: string;
+  name: string;
+  ownerId: string;
+  /** O convite. É a credencial de entrada da liga: só sai para quem já é membro. */
+  inviteCode: string;
+  /**
+   * Contado no banco, sempre. O "1 membro" da tela de hoje é uma string fixa do
+   * dicionário — este campo existe para que o número seja o que o banco tem.
+   */
+  memberCount: number;
+  createdAt: number;
+};
+
+export type LeagueMember = {
+  userId: string;
+  /**
+   * NULL enquanto o fã não escolheu apelido — e a tela mostra "sem apelido", não
+   * um nome inventado e NUNCA o e-mail (E12): o apelido é público para a liga
+   * inteira, e derivá-lo do e-mail vaza o endereço da pessoa.
+   */
+  handle: string | null;
+  role: LeagueRole;
+  joinedAt: number;
+};

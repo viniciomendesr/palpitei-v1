@@ -14,12 +14,12 @@ import { SegTabs, MatchCard, Card, ProgressBar, Button, Chip, Badge } from '@/co
 import { Screen } from '@/components/Shell';
 import { Logo, Wordmark } from '@/components/Brand';
 import { ChevronRight, Crown } from '@/components/Icons';
-import { useI18n } from '@/lib/i18n';
-import { useSession } from '@/lib/session';
+import { useI18n, fill } from '@/lib/i18n';
+import { useSession, initialsOf } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
 import { fw } from '@/lib/tokens';
 import { fixtures, type FixtureView } from '@/lib/mock';
-import { api, type ApiFixture } from '@/lib/api';
+import { api, type ApiFixture, type ApiLeagues } from '@/lib/api';
 import type { SessionState } from '@/lib/session';
 import type { Dict } from '@/lib/i18n';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
@@ -92,6 +92,81 @@ function useFixtures(session: SessionState | null, t: Dict) {
   return { abas, carregando: reais === null && !erro, erro };
 }
 
+/** Como uma liga aparece na lista. `id` null = a liga mock do demo, que não abre. */
+type LigaView = { id: string | null; initials: string; name: string; sub: string };
+
+/**
+ * As ligas da home — o mesmo desenho do `useFixtures` acima, e pela mesma razão:
+ *
+ *   demo (§5.1)       → mock LOCAL. Não chama rota, não precisa de rede: é o
+ *                       caminho do jurado, e ele não pode depender de nada.
+ *   Google / carteira → só o banco, via GET /api/leagues (Bearer verificado).
+ *
+ * O que este hook aposenta: `session.leaguesCount`, um contador que vivia no
+ * browser e sumia no F5 — a liga não existia em lugar nenhum do backend. Para o
+ * fã logado, o número de membros e o "você lidera" agora vêm da tabela; se a
+ * rota falhar, ele vê o erro, não uma liga inventada.
+ */
+function useLeagues(session: SessionState | null, t: Dict) {
+  const [dados, setDados] = useState<ApiLeagues | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const privy = usePrivyAuth();
+  const ehDemo = !session || session.authMethod === 'demo';
+  // Mesma corrida do useFixtures: a sessão local revive na hora, a Privy leva
+  // uns segundos para ficar `ready`. Buscar antes disso é 401 garantido.
+  const podeBuscar = !ehDemo && privy.ready && privy.authenticated;
+
+  useEffect(() => {
+    if (!podeBuscar) return;
+    let vivo = true;
+    api
+      .leagues()
+      .then((r) => vivo && setDados(r))
+      .catch((e) => vivo && setErro(e instanceof Error ? e.message : t.ligaErro));
+    return () => {
+      vivo = false;
+    };
+  }, [podeBuscar, t.ligaErro]);
+
+  const membros = (n: number) => (n === 1 ? t.ligaMembroUm : fill(t.ligaMembros, { n }));
+
+  if (ehDemo) {
+    // A liga do demo é mock local de 1 membro — e é por isso que `myLeagueSub`
+    // ("1 membro · você lidera") pode ser usada aqui: no demo ela é VERDADE.
+    const ligas: LigaView[] = Array.from({ length: session?.leaguesCount ?? 0 }, (_, i) => ({
+      id: null,
+      initials: 'ML',
+      name: i === 0 ? t.myLeague : `${t.myLeague} ${i + 1}`,
+      sub: t.myLeagueSub,
+    }));
+    return {
+      ligas,
+      ownedCount: session?.leaguesCount ?? 0,
+      freeLimit: 1,
+      isPremium: session?.isPremium ?? false,
+      carregando: false,
+      erro: null,
+    };
+  }
+
+  const ligas: LigaView[] = (dados?.leagues ?? []).map((l) => ({
+    id: l.id,
+    initials: initialsOf(l.name, 'existing'),
+    name: l.name,
+    // O número é o que o banco contou. Sem "+1", sem string fixa.
+    sub: l.iLead ? `${membros(l.memberCount)} · ${t.ligaVoceLidera}` : membros(l.memberCount),
+  }));
+
+  return {
+    ligas,
+    ownedCount: dados?.ownedCount ?? 0,
+    freeLimit: dados?.freeLimit ?? 1,
+    isPremium: dados?.isPremium ?? false,
+    carregando: dados === null && !erro,
+    erro,
+  };
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { t, fmt } = useI18n();
@@ -100,36 +175,39 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('live');
 
   const { abas, carregando, erro } = useFixtures(session, t);
+  const liga = useLeagues(session, t);
 
   if (!ready || !session) return null;
 
+  const ehDemo = session.authMethod === 'demo';
   const openSala = (id: string) => router.push(`/sala/${id}`);
 
   // A missão do dia acompanha a sequência de acertos: 3 seguidos fecham.
   const missionDone = Math.min(session.streak, 3);
   const missionPct = (missionDone / 3) * 100;
 
-  const leaguesLabel = session.isPremium
-    ? `${session.leaguesCount} · ${t.leaguesUnlimited}`
-    : `${session.leaguesCount} ${t.leaguesCountFree}`;
+  // O contador conta as ligas CRIADAS, que é o que a cota do free mede. Somar as
+  // ligas em que o fã só entrou faria a tela dizer "3 de 1 grátis" para quem não
+  // furou cota nenhuma.
+  const leaguesLabel = liga.isPremium
+    ? `${liga.ownedCount} · ${t.leaguesUnlimited}`
+    : `${liga.ownedCount} ${t.leaguesCountFree}`;
 
-  // O free inclui 1 liga. Da segunda em diante, o gate leva ao paywall.
-  const showEmptyLeague = session.accountType === 'new' && session.leaguesCount === 0;
-  const showLeagueGate = !session.isPremium && session.leaguesCount >= 1;
+  const podeCriar = liga.isPremium || liga.ownedCount < liga.freeLimit;
+  const semLigas = !liga.carregando && !liga.erro && liga.ligas.length === 0;
 
   const tryCreateLeague = () => {
-    if (session.isPremium || session.leaguesCount < 1) {
-      update({ leaguesCount: session.leaguesCount + 1 });
-    } else {
-      router.push('/premium');
+    // O demo não fala com rota nenhuma (§5.1): a liga dele continua sendo o
+    // contador local do protótipo.
+    if (ehDemo) {
+      if (podeCriar) update({ leaguesCount: session.leaguesCount + 1 });
+      else router.push('/premium');
+      return;
     }
+    // O gate aqui é só cortesia — quem manda é o servidor, sob trava. Isto
+    // existe para não levar o fã a um 402 evitável.
+    router.push(podeCriar ? '/liga/nova' : '/premium');
   };
-
-  const leagues = Array.from({ length: session.leaguesCount }, (_, i) =>
-    i === 0
-      ? { initials: 'ML', name: t.myLeague, sub: t.myLeagueSub }
-      : { initials: `L${i + 1}`, name: `${t.myLeague} ${i + 1}`, sub: t.myLeagueSub },
-  );
 
   return (
     <Screen padding="6px 18px 20px">
@@ -271,9 +349,29 @@ export default function HomePage() {
               <span style={{ color: 'var(--text-muted)', fontWeight: fw.bold }}>{leaguesLabel}</span>
             </div>
 
-            {leagues.map((lg) => (
+            {/* Carregando/erro ditos em voz alta: lista de liga vazia sem
+                explicação é a mesma falha silenciosa das partidas — o fã não
+                sabe se não tem liga ou se a rota caiu. */}
+            {(liga.carregando || liga.erro) && (
               <div
-                key={lg.name}
+                style={{
+                  marginTop: 10,
+                  padding: '18px 12px',
+                  textAlign: 'center',
+                  fontSize: 13,
+                  fontWeight: fw.medium,
+                  color: liga.erro ? 'var(--red)' : 'var(--text-muted)',
+                }}
+                role={liga.erro ? 'alert' : undefined}
+              >
+                {liga.erro ? `${t.ligaErro} ${liga.erro}` : t.ligaCarregando}
+              </div>
+            )}
+
+            {liga.ligas.map((lg) => (
+              <div
+                key={lg.id ?? lg.name}
+                onClick={lg.id ? () => router.push(`/liga/${lg.id}`) : undefined}
                 style={{
                   marginTop: 10,
                   display: 'flex',
@@ -283,6 +381,7 @@ export default function HomePage() {
                   background: 'var(--surface-1)',
                   border: '1px solid var(--border-1)',
                   borderRadius: 'var(--r-2xl)',
+                  cursor: lg.id ? 'pointer' : 'default',
                 }}
               >
                 <div
@@ -311,7 +410,7 @@ export default function HomePage() {
               </div>
             ))}
 
-            {showEmptyLeague && (
+            {semLigas && (
               <div
                 style={{
                   marginTop: 10,
@@ -332,7 +431,36 @@ export default function HomePage() {
               </div>
             )}
 
-            {showLeagueGate && (
+            {/* Já tem liga e AINDA pode criar (premium, ou entrou na liga de um
+                amigo sem ter criado a própria). Sem este caso, quem só entrou
+                por convite ficava sem nenhum jeito de criar a dele: a lista não
+                estava vazia, e o gate do paywall não se aplicava. */}
+            {liga.ligas.length > 0 && podeCriar && (
+              <button
+                onClick={tryCreateLeague}
+                style={{
+                  all: 'unset',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 13,
+                  width: '100%',
+                  marginTop: 10,
+                  padding: '15px 16px',
+                  background: 'var(--surface-1)',
+                  border: '1.5px dashed var(--lime-line)',
+                  borderRadius: 'var(--r-2xl)',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: fw.heavy, fontSize: 14.5 }}>{t.createAnother}</div>
+                </div>
+                <ChevronRight />
+              </button>
+            )}
+
+            {liga.ligas.length > 0 && !podeCriar && (
               <button
                 onClick={tryCreateLeague}
                 style={{
@@ -384,6 +512,29 @@ export default function HomePage() {
                 >
                   {t.pxPremium}
                 </span>
+              </button>
+            )}
+
+            {/* O outro lado do convite. Sem isto, "chame a galera" seria um
+                código que ninguém tem onde digitar. O demo não entra por código:
+                a liga dele é local e não existe no banco (§5.1). */}
+            {!ehDemo && (
+              <button
+                onClick={() => router.push('/liga/entrar')}
+                style={{
+                  all: 'unset',
+                  boxSizing: 'border-box',
+                  cursor: 'pointer',
+                  display: 'block',
+                  width: '100%',
+                  marginTop: 12,
+                  textAlign: 'center',
+                  fontSize: 12.5,
+                  fontWeight: fw.bold,
+                  color: 'var(--lime)',
+                }}
+              >
+                {t.entrarLigaLead}
               </button>
             )}
           </div>

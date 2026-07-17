@@ -3,8 +3,8 @@
 /**
  * PREMIUM · PRONTO — a confirmação, e o convite pra usar o que acabou de liberar.
  *
- * O CTA cria a liga na hora e volta pra home: quem assinou por causa da liga não
- * deve ter que procurar onde criar.
+ * O CTA leva direto pra criar a liga: quem assinou por causa da liga não deve ter
+ * que procurar onde criar.
  */
 
 import { useRouter } from 'next/navigation';
@@ -25,8 +25,17 @@ export default function PremiumProntoPage() {
   if (!ready || !session) return null;
 
   const createLeague = () => {
-    update({ leaguesCount: session.leaguesCount + 1 });
-    router.push('/home');
+    // O demo não fala com rota nenhuma (§5.1): a liga dele segue sendo o
+    // contador local do protótipo.
+    if (session.authMethod === 'demo') {
+      update({ leaguesCount: session.leaguesCount + 1 });
+      router.push('/home');
+      return;
+    }
+    // Para o fã de verdade, isto aqui INCREMENTAVA UM CONTADOR LOCAL e voltava
+    // pra home — a "liga" sumia no F5 porque nunca existiu. Agora vai para a
+    // tela que cria a liga no banco.
+    router.push('/liga/nova');
   };
 
   return (

@@ -71,6 +71,39 @@ export interface ApiFixture {
   source: 'txline' | ReplaySource;
 }
 
+/**
+ * Uma liga privada, como a home a lista.
+ *
+ * `memberCount` vem do banco — o "1 membro" da tela era string fixa do
+ * dicionário (`myLeagueSub`), e o `ligaSub: '8 amigos · você lidera'` é número
+ * inventado que ninguém nunca contou. Este campo existe para que o número seja
+ * o que o banco tem, ou nada.
+ */
+export interface ApiLeague {
+  id: string;
+  name: string;
+  memberCount: number;
+  /** Quem lidera sai da tabela, não de comparar ids na tela. */
+  iLead: boolean;
+  /** O convite. Só chega aqui para quem já é membro: a rota só lista as suas. */
+  inviteCode: string;
+}
+
+/** O que a home precisa para listar as ligas E decidir o gate do free. */
+export interface ApiLeagues {
+  leagues: ApiLeague[];
+  /** Ligas CRIADAS. Entrar na de um amigo não gasta a cota — ver /api/leagues/join. */
+  ownedCount: number;
+  freeLimit: number;
+  isPremium: boolean;
+}
+
+export interface ApiLeagueDetail {
+  league: ApiLeague & { iLead: boolean };
+  /** `handle` null = ainda sem apelido. A tela diz "sem apelido" (E12: nunca o e-mail). */
+  members: { handle: string | null; iLead: boolean; me: boolean }[];
+}
+
 /** Um palpite. Sem userId: quem responde é quem o Bearer diz que é. */
 export interface PredictionRequest {
   questionId: string;
@@ -235,6 +268,29 @@ export const api = {
     }),
 
   state: () => request<ApiState>('/api/state'),
+
+  /** As ligas do fã + o que o gate do free precisa saber. */
+  leagues: () => request<ApiLeagues>('/api/leagues'),
+
+  /**
+   * Cria a liga. Sem `ownerId` no corpo: o dono é o Bearer.
+   * 402 quando o free já tem a dele — é o paywall, e a tela leva ao /premium.
+   */
+  createLeague: (name: string) =>
+    request<{ ok: true; league: ApiLeague }>('/api/leagues', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+
+  /** Entra pelo código do convite. Não gasta a cota do free: a cota é de quem CRIA. */
+  joinLeague: (code: string) =>
+    request<{ ok: true; league: { id: string; name: string; memberCount: number } }>(
+      '/api/leagues/join',
+      { method: 'POST', body: JSON.stringify({ code }) },
+    ),
+
+  /** A liga por dentro. 404 se você não é membro — o mesmo 404 de liga inexistente. */
+  league: (id: string) => request<ApiLeagueDetail>(`/api/leagues/${encodeURIComponent(id)}`),
 
   fixtures: () => request<{ fixtures: ApiFixture[] }>('/api/fixtures'),
 

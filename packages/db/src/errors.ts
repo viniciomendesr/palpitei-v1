@@ -28,6 +28,49 @@ export class UserNotFoundError extends Error {
   }
 }
 
+export class LeagueNameInvalidError extends Error {
+  readonly code = 'league_name_invalid';
+  readonly status = 400;
+  constructor(motivo: string) {
+    super(motivo);
+    this.name = 'LeagueNameInvalidError';
+  }
+}
+
+/**
+ * O free inclui 1 liga (mockup: "O free inclui 1 liga · desbloqueie ilimitadas").
+ *
+ * 402 e não 403: não é falta de permissão, é o paywall. O status diz à tela para
+ * mandar o fã ao /premium em vez de mostrar "acesso negado" a quem não fez nada
+ * de errado.
+ */
+export class LeagueLimitError extends Error {
+  readonly code = 'league_limit';
+  readonly status = 402;
+  constructor() {
+    super('o free inclui 1 liga — vire premium pra criar quantas quiser');
+    this.name = 'LeagueLimitError';
+  }
+}
+
+export class LeagueNotFoundError extends Error {
+  readonly code = 'league_not_found';
+  readonly status = 404;
+  constructor() {
+    super('essa liga não existe');
+    this.name = 'LeagueNotFoundError';
+  }
+}
+
+export class InviteCodeInvalidError extends Error {
+  readonly code = 'invite_code_invalid';
+  readonly status = 404;
+  constructor() {
+    super('esse código não abre nenhuma liga — confere com quem te chamou');
+    this.name = 'InviteCodeInvalidError';
+  }
+}
+
 /** Violação de unicidade do Postgres. */
 export function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505';
