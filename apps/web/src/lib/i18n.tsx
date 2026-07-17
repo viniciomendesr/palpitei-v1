@@ -232,6 +232,29 @@ const pt = {
   resReadingHdr: 'LEITURA DO JOGO',
   resBefore: 'antes',
   resAfter: 'agora',
+  // A aba Chances: a linha do tempo das leituras do explicador ("chance",
+  // nunca "odds" — §6). A frase é redigida na tela (lib/chances.ts) pelos
+  // campos estruturados do odds_explain; o {causa} só entra quando o dado
+  // trouxe contextAction — sem lance na janela, sem causa (G6).
+  salaTabChances: 'Chances',
+  salaChancesEmpty:
+    'As chances ainda não se mexeram. Quando o jogo mexer nelas, a leitura aparece aqui.',
+  chanceUp: 'A chance de {nome} subiu de {de}% para {para}%{causa}.',
+  chanceDown: 'A chance de {nome} caiu de {de}% para {para}%{causa}.',
+  chanceDraw: 'empate',
+  /**
+   * Causa por contextAction do core. Record ABERTO como o statKeys: ação que
+   * não estiver aqui aparece SEM causa na frase — nunca uma causa inventada.
+   */
+  chanceCtx: {
+    goal: 'depois do gol',
+    corner: 'depois do escanteio',
+    red_card: 'depois do cartão vermelho',
+    yellow_card: 'depois do cartão amarelo',
+    penalty: 'depois do pênalti',
+    var: 'depois da revisão do VAR',
+    kickoff: 'depois do pontapé inicial',
+  } as Record<string, string>,
   resBackToGame: 'Voltar ao jogo · próximo desafio',
   resBackToFinal: 'Voltar ao jogo · resultado final',
   resSeeProgress: 'Ver minha progressão',
@@ -645,6 +668,20 @@ const en: Dict = {
   resReadingHdr: 'GAME READ',
   resBefore: 'before',
   resAfter: 'now',
+  salaTabChances: 'Chances',
+  salaChancesEmpty: "The chances haven't moved yet. When the match moves them, the read shows up here.",
+  chanceUp: "{nome}'s chance rose from {de}% to {para}%{causa}.",
+  chanceDown: "{nome}'s chance fell from {de}% to {para}%{causa}.",
+  chanceDraw: 'The draw',
+  chanceCtx: {
+    goal: 'after the goal',
+    corner: 'after the corner',
+    red_card: 'after the red card',
+    yellow_card: 'after the yellow card',
+    penalty: 'after the penalty',
+    var: 'after the VAR review',
+    kickoff: 'after kick-off',
+  } as Record<string, string>,
   resBackToGame: 'Back to the game · next challenge',
   resBackToFinal: 'Back to the game · final result',
   resSeeProgress: 'See my progress',

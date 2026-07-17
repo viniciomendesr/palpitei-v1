@@ -1,0 +1,128 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { redigeChance } from '../src/lib/chances.ts';
+
+// O redator é PURO e recebe o dicionário: aqui entram os MESMOS templates dos
+// dois dicionários de i18n.tsx (que este teste não pode importar — o arquivo
+// tem JSX e o node:test roda só com strip-types). Se o template mudar lá,
+// mude aqui junto: o que se testa é a redação, não o arquivo.
+
+const ptDic = {
+  chanceUp: 'A chance de {nome} subiu de {de}% para {para}%{causa}.',
+  chanceDown: 'A chance de {nome} caiu de {de}% para {para}%{causa}.',
+  chanceDraw: 'empate',
+  chanceCtx: {
+    goal: 'depois do gol',
+    corner: 'depois do escanteio',
+    red_card: 'depois do cartão vermelho',
+    yellow_card: 'depois do cartão amarelo',
+    penalty: 'depois do pênalti',
+    var: 'depois da revisão do VAR',
+    kickoff: 'depois do pontapé inicial',
+  } as Record<string, string>,
+};
+
+const enDic = {
+  chanceUp: "{nome}'s chance rose from {de}% to {para}%{causa}.",
+  chanceDown: "{nome}'s chance fell from {de}% to {para}%{causa}.",
+  chanceDraw: 'The draw',
+  chanceCtx: {
+    goal: 'after the goal',
+    corner: 'after the corner',
+    red_card: 'after the red card',
+    yellow_card: 'after the yellow card',
+    penalty: 'after the penalty',
+    var: 'after the VAR review',
+    kickoff: 'after kick-off',
+  } as Record<string, string>,
+};
+
+const base = { ts: 1_000, minute: 34, text: 'frase do core (fallback)' };
+
+test('pt: subida com causa — nome do time no lugar do priceName do feed', () => {
+  assert.equal(
+    redigeChance(
+      { ...base, priceName: 'part1', fromPct: 58, toPct: 74.5, contextAction: 'goal' },
+      ptDic,
+      'França',
+      'Inglaterra',
+    ),
+    'A chance de França subiu de 58.0% para 74.5% depois do gol.',
+  );
+});
+
+test('pt: queda SEM contextAction não ganha causa nenhuma (nunca inventar)', () => {
+  assert.equal(
+    redigeChance(
+      { ...base, priceName: 'draw', fromPct: 33.3, toPct: 28.1 },
+      ptDic,
+      'França',
+      'Inglaterra',
+    ),
+    'A chance de empate caiu de 33.3% para 28.1%.',
+  );
+});
+
+test('mapa de nomes do feed: part2|2|away → teamB, 1|home → teamA, x → empate', () => {
+  const b = { ...base, fromPct: 20, toPct: 25 };
+  const frase = (priceName: string) =>
+    redigeChance({ ...b, priceName }, ptDic, 'França', 'Inglaterra');
+  assert.match(frase('part2'), /^A chance de Inglaterra subiu/);
+  assert.match(frase('2'), /^A chance de Inglaterra subiu/);
+  assert.match(frase('away'), /^A chance de Inglaterra subiu/);
+  assert.match(frase('1'), /^A chance de França subiu/);
+  assert.match(frase('home'), /^A chance de França subiu/);
+  assert.match(frase('x'), /^A chance de empate subiu/);
+  // Case do feed não importa: o mapa compara em minúsculas.
+  assert.match(frase('Part1'), /^A chance de França subiu/);
+});
+
+test('priceName sem correspondência sai CRU — nunca um nome inventado', () => {
+  assert.equal(
+    redigeChance(
+      { ...base, priceName: 'Over', fromPct: 40, toPct: 46, contextAction: 'corner' },
+      ptDic,
+      'França',
+      'Inglaterra',
+    ),
+    'A chance de Over subiu de 40.0% para 46.0% depois do escanteio.',
+  );
+});
+
+test('contextAction desconhecido = sem causa (causa só sai do mapa, G6)', () => {
+  assert.equal(
+    redigeChance(
+      { ...base, priceName: 'part1', fromPct: 50, toPct: 56, contextAction: 'substitution' },
+      ptDic,
+      'França',
+      'Inglaterra',
+    ),
+    'A chance de França subiu de 50.0% para 56.0%.',
+  );
+});
+
+test('percentuais SEMPRE com 1 casa (toFixed), mesmo em número redondo', () => {
+  assert.equal(
+    redigeChance({ ...base, priceName: 'part1', fromPct: 60, toPct: 55 }, ptDic, 'A', 'B'),
+    'A chance de A caiu de 60.0% para 55.0%.',
+  );
+});
+
+test('en: subida com causa', () => {
+  assert.equal(
+    redigeChance(
+      { ...base, priceName: 'part1', fromPct: 58, toPct: 74.5, contextAction: 'goal' },
+      enDic,
+      'France',
+      'England',
+    ),
+    "France's chance rose from 58.0% to 74.5% after the goal.",
+  );
+});
+
+test('en: queda do empate, sem causa', () => {
+  assert.equal(
+    redigeChance({ ...base, priceName: 'x', fromPct: 33.3, toPct: 28.1 }, enDic, 'France', 'England'),
+    "The draw's chance fell from 33.3% to 28.1%.",
+  );
+});

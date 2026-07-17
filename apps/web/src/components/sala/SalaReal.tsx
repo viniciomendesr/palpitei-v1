@@ -25,15 +25,17 @@ import { useSession } from '@/lib/session';
 import { fw } from '@/lib/tokens';
 import {
   useSala,
+  type SalaChance,
   type SalaDesafio,
   type SalaLance,
   type SalaResultado,
   type SalaTotais,
 } from '@/lib/useSala';
+import { redigeChance } from '@/lib/chances';
 import { formataRelogio } from '@/lib/relogio';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 
-type SalaTab = 'desafios' | 'lances' | 'stats' | 'ranking';
+type SalaTab = 'desafios' | 'lances' | 'stats' | 'chances' | 'ranking';
 
 /** O nome do lance na voz do fã. Gíria de futebol, nunca jargão de aposta. */
 function textoDoLance(
@@ -355,6 +357,83 @@ function DetalheDoResultado({
   );
 }
 
+/**
+ * Uma barrinha de chance antes→agora, no estilo do ProbBar do protótipo
+ * (ChallengeResult): trilho fundo, preenchimento proporcional ao pct, número
+ * ao lado. Cinza para o "antes", lime para o "agora". O número é o DADO com 1
+ * casa — o clamp é só do desenho (largura não passa do trilho), nunca do valor.
+ */
+function BarraDeChance({
+  label,
+  pct,
+  tone,
+  valueColor,
+}: {
+  label: string;
+  pct: number;
+  tone: string;
+  valueColor: string;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ fontSize: 11.5, fontWeight: fw.bold, color: 'var(--text-muted)', minWidth: 44 }}>{label}</span>
+      <div
+        style={{
+          flex: 1,
+          height: 9,
+          borderRadius: 'var(--r-pill)',
+          background: 'var(--surface-sunken)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            height: '100%',
+            borderRadius: 'var(--r-pill)',
+            background: tone,
+            width: `${Math.min(Math.max(pct, 0), 100)}%`,
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 12.5, fontWeight: fw.black, color: valueColor, minWidth: 46, textAlign: 'right' }}>
+        {pct.toFixed(1)}%
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Uma leitura na linha do tempo da aba Chances: minuto, a frase redigida na
+ * tela (bilíngue, pelos campos estruturados — nunca o `text` pt do core), e as
+ * barrinhas antes→agora. Sem causa quando o dado não trouxe contextAction.
+ */
+function LinhaDeChance({ c, teamA, teamB }: { c: SalaChance; teamA: string; teamB: string }) {
+  const { t } = useI18n();
+  return (
+    <div
+      style={{
+        padding: '12px 14px 14px',
+        borderRadius: 'var(--r-xl)',
+        background: 'var(--surface-1)',
+        border: '1px solid var(--border-1)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span style={{ fontSize: 11, fontWeight: fw.black, color: 'var(--lime)', minWidth: 30 }}>
+          {c.minute !== null ? `${c.minute}’` : '–'}
+        </span>
+        <p style={{ flex: 1, fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-1)', textWrap: 'pretty' }}>
+          {redigeChance(c, t, teamA, teamB)}
+        </p>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 10 }}>
+        <BarraDeChance label={t.resBefore} pct={c.fromPct} tone="var(--text-faint)" valueColor="var(--text-2)" />
+        <BarraDeChance label={t.resAfter} pct={c.toPct} tone="var(--lime)" valueColor="var(--lime)" />
+      </div>
+    </div>
+  );
+}
+
 type LinhaDeStat = { chave: string; label: string; a: number; b: number; aFlex: number; bFlex: number };
 
 /**
@@ -515,10 +594,26 @@ function CardDoDesafio({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
           {d.options.map((o) => (
             <Button key={o.id} variant="ghost" full disabled={enviando} onClick={() => onResponder(o.id)}>
-              {rotuloDaOpcao(o.id, t, teamA, teamB, d.options)}
-              {/* `pct` vem do explicador de odds, que esta sala ainda não roda.
-                  null = a TxLINE não mandou preço (G8), e AUSENTE não é 0%:
-                  mostrar "0%" aqui seria a explicação fantasma do v0. */}
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  width: '100%',
+                }}
+              >
+                <span>{rotuloDaOpcao(o.id, t, teamA, teamB, d.options)}</span>
+                {/* A chance da opção, como no protótipo ("Argentina  58%") —
+                    e SÓ quando o número VEIO do dado (último 1X2 conhecido).
+                    null = a TxLINE não mandou preço (G8), e AUSENTE não é 0%:
+                    mostrar "0%" aqui seria a explicação fantasma do v0. */}
+                {typeof o.pct === 'number' && (
+                  <span style={{ fontSize: 12.5, fontWeight: fw.heavy, color: 'var(--text-muted)' }}>
+                    {Math.round(o.pct)}%
+                  </span>
+                )}
+              </span>
             </Button>
           ))}
         </div>
@@ -547,8 +642,18 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
   // `addXp` no terceiro argumento: quando o motor paga, o contador do cabeçalho
   // acompanha na hora — antes ele mostrava o XP de quando a sessão nasceu, e o
   // fã via "+75" no resultado com o total parado.
-  const { state, desafios, resultados, ranking, erro, treino, treinoDaSala, segundosVivos, palpitar } =
-    useSala(fixtureId, privy.ready && privy.authenticated, addXp);
+  const {
+    state,
+    desafios,
+    resultados,
+    ranking,
+    chances,
+    erro,
+    treino,
+    treinoDaSala,
+    segundosVivos,
+    palpitar,
+  } = useSala(fixtureId, privy.ready && privy.authenticated, addXp);
 
   const [tab, setTab] = useState<SalaTab>('desafios');
   const [enviando, setEnviando] = useState<string | null>(null);
@@ -684,7 +789,18 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
         </div>
       </div>
 
-      <div style={{ flex: 'none', padding: '12px 18px 0' }}>
+      {/* CINCO abas não cabem lado a lado nos 384px úteis do frame (o SegTabs
+          não encolhe rótulo): o trilho rola na horizontal DENTRO do frame, como
+          toda lista de pills mobile — nada estoura pra fora dos 420px. */}
+      <div
+        style={{
+          flex: 'none',
+          padding: '12px 18px 0',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
         <SegTabs
           tabs={[
             // O contador diz quantas janelas estão abertas AGORA. O motor abre
@@ -693,6 +809,7 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
             { label: abertos ? `${t.salaTabChallenges} (${abertos})` : t.salaTabChallenges, value: 'desafios' },
             { label: t.salaTabPlays, value: 'lances' },
             { label: t.salaTabStats, value: 'stats' },
+            { label: t.salaTabChances, value: 'chances' },
             { label: t.salaTabRanking, value: 'ranking' },
           ]}
           value={tab}
@@ -857,6 +974,29 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
               {t.salaStatsWaiting}
             </p>
           ))}
+        {tab === 'chances' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Mais recente PRIMEIRO, como o hook guarda. Chave ts+priceName:
+                é o mesmo par do dedup — dois eventos legítimos nunca colidem. */}
+            {chances.map((c) => (
+              <LinhaDeChance
+                key={`${c.ts}-${c.priceName}`}
+                c={c}
+                teamA={state.teamA}
+                teamB={state.teamB}
+              />
+            ))}
+            {!chances.length && (
+              /* Vazio HONESTO: o explicador só fala quando a chance mexe de
+                 verdade (≥3pp). Lista vazia = ainda não mexeu — não é erro,
+                 e um número de enfeite aqui seria o G6. */
+              <p style={{ textAlign: 'center', padding: 28, fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-muted)' }}>
+                {t.salaChancesEmpty}
+              </p>
+            )}
+          </div>
+        )}
+
         {tab === 'ranking' && (
           <>
             <div style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)', marginBottom: 10 }}>

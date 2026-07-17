@@ -28,6 +28,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { esperaDeReconexao } from '@/lib/reconexao';
 import { segundoDoReplay } from '@/lib/relogio';
 
+/** Cap do contrato para a lista de leituras de chance — o mesmo do servidor. */
+const CAP_DE_CHANCES = 60;
+
 export type SalaOpcao = { id: string; label: string; pct: number | null };
 
 export type SalaDesafio = {
@@ -66,6 +69,24 @@ export type SalaLance = {
  */
 export type SalaTotais = { p1: Record<string, number>; p2: Record<string, number> };
 
+/**
+ * Uma leitura de chance do explicador — o contrato do `odds_explain`.
+ *
+ * `text` é a frase pt que o CORE emite (fallback/log); a frase que o fã lê é
+ * redigida na tela, bilíngue, pelos campos estruturados (lib/chances.ts).
+ * `contextAction` ausente = não houve lance na janela de 3 min do core — a
+ * frase sai SEM causa, nunca com uma inventada (G6).
+ */
+export type SalaChance = {
+  ts: number;
+  minute: number | null;
+  priceName: string;
+  fromPct: number;
+  toPct: number;
+  contextAction?: string;
+  text: string;
+};
+
 export type SalaState = {
   fixtureId: number;
   teamA: string;
@@ -81,6 +102,12 @@ export type SalaState = {
   feed: SalaLance[];
   /** Vazio = a partida ainda não mandou total nenhum. Não é "tudo zero". */
   totals: SalaTotais;
+  /**
+   * As leituras de chance do room_state — mais recente PRIMEIRO, cap de 60.
+   * Opcional no tipo porque é o servidor quem manda (servidor antigo não
+   * manda); no hook a lista vive em estado próprio, semeada daqui.
+   */
+  chances?: SalaChance[];
 };
 
 /**
@@ -148,6 +175,8 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
   const [desafios, setDesafios] = useState<SalaDesafio[]>([]);
   const [resultados, setResultados] = useState<SalaResultado[]>([]);
   const [ranking, setRanking] = useState<SalaRankRow[]>([]);
+  /** Leituras de chance, mais recente PRIMEIRO (cap 60 — o mesmo do servidor). */
+  const [chances, setChances] = useState<SalaChance[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   /**
    * MEUS palpites aqui valem XP? `treino: true` = não — ou porque a sala é de
@@ -274,6 +303,11 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
               totals: s.totals ?? { p1: {}, p2: {} },
             });
 
+            // As leituras de chance que a sala acumulou (mais recente primeiro).
+            // SUBSTITUI como o resto do pacote: reconectar não duplica. Ausente
+            // = servidor sem o campo → lista vazia, e a aba diz isso.
+            setChances((s.chances ?? []).slice(0, CAP_DE_CHANCES));
+
             // O que EU já respondi, na memória do SERVIDOR — semeia os recibos
             // ANTES de montar a lista. Um F5 derruba a tela, não o palpite: sem
             // isto o fã via a pergunta aberta de novo, tocava, e ouvia "você já
@@ -352,6 +386,28 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
                     totals: totais ?? p.totals,
                   }
                 : p,
+            );
+            return;
+          }
+
+          case 'odds_explain': {
+            // A leitura nova entra na FRENTE (mais recente primeiro), com o cap
+            // do contrato. Dedup por ts+priceName: o SSE pode reentregar na
+            // reconexão, e a mesma leitura duas vezes é contador subindo à toa
+            // — o odds_explain:125 do v0 começou assim.
+            const nova: SalaChance = {
+              ts: msg.ts as number,
+              minute: (msg.minute as number | null) ?? null,
+              priceName: msg.priceName as string,
+              fromPct: msg.fromPct as number,
+              toPct: msg.toPct as number,
+              contextAction: msg.contextAction as string | undefined,
+              text: (msg.text as string) ?? '',
+            };
+            setChances((cs) =>
+              cs.some((c) => c.ts === nova.ts && c.priceName === nova.priceName)
+                ? cs
+                : [nova, ...cs].slice(0, CAP_DE_CHANCES),
             );
             return;
           }
@@ -525,6 +581,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     desafios,
     resultados,
     ranking,
+    chances,
     erro,
     treino,
     treinoDaSala,

@@ -168,11 +168,21 @@ export interface OddsEvent extends WsBase {
   pct: number[];
 }
 
+/**
+ * A leitura de chance, broadcast IGUAL para todos (publicarBruto). A frase da
+ * tela é redigida no cliente pelos campos estruturados (lib/chances.ts);
+ * `text` é a frase pt do core — fallback/log, não a frase do fã.
+ */
 export interface OddsExplainEvent extends WsBase {
   type: 'odds_explain';
-  before: number;
-  after: number;
-  reading: string;
+  minute: number | null;
+  priceName: string;
+  fromPct: number;
+  toPct: number;
+  /** A causa em FORMA ('goal', 'corner'…): ausente = sem lance na janela de
+   *  3 min do core — e aí a frase sai SEM causa, nunca com uma inventada. */
+  contextAction?: string;
+  text: string;
 }
 
 export interface QuestionOpenEvent extends WsBase {
