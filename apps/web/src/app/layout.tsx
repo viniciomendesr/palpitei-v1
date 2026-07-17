@@ -18,7 +18,7 @@ import { Providers } from './providers';
 import { Shell } from '@/components/Shell';
 
 export const metadata: Metadata = {
-  title: 'Palpitei — Copa do Mundo 2026',
+  title: 'Palpitei Copa do Mundo 2026',
   description: 'Palpite ao vivo, desafie seus amigos e se divirta.',
   manifest: '/manifest.webmanifest',
   applicationName: 'Palpitei',
