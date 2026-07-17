@@ -90,7 +90,12 @@ const pt = {
   leaguesTitle: 'SUAS LIGAS PRIVADAS',
   leaguesFree: '1 de 1 free',
   ligaSub: '8 amigos · você lidera',
-  replaysNote: 'Você fez 4 de 6 palpites nas últimas partidas.',
+  // Já disse "Você fez 4 de 6 palpites nas últimas partidas" — número hardcoded
+  // do protótipo, que aparecia igual para quem tinha 0 palpites. Essa contagem
+  // só existe de verdade no GET /api/state, que ainda não existe; até lá,
+  // afirmar o número é inventar. E não pode citar a TxLINE aqui: no modo demo os
+  // replays são simulados, e a origem quem diz é o selo de cada card.
+  replaysNote: 'Partidas que já aconteceram. Palpite de novo e veja como você se sai.',
   statusLive64: 'AO VIVO · 64’',
   statusLive31: 'AO VIVO · 31’',
   statusToday18: 'HOJE · 18:00',
@@ -384,7 +389,7 @@ const en: Dict = {
   leaguesTitle: 'YOUR PRIVATE LEAGUES',
   leaguesFree: '1 of 1 free',
   ligaSub: '8 friends · you lead',
-  replaysNote: 'You made 4 of 6 picks in recent matches.',
+  replaysNote: 'Matches already played. Pick again and see how you do.',
   statusLive64: 'LIVE · 64’',
   statusLive31: 'LIVE · 31’',
   statusToday18: 'TODAY · 18:00',

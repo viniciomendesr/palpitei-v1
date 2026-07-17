@@ -157,10 +157,29 @@ function Ponte({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(t);
   }, []);
 
-  const tokenProvider = useCallback(
-    async () => (authenticated ? getAccessToken() : null),
-    [authenticated, getAccessToken],
-  );
+  /**
+   * O provider é registrado UMA vez e lê o estado por ref. Parece rebuscado e não é.
+   *
+   * Registrar dentro de um efeito que depende de `authenticated` abre uma janela
+   * de um ciclo: o React roda efeitos de BAIXO PRA CIMA, então a tela (filha)
+   * dispara o fetch antes de esta ilha (mãe) registrar o provider novo — e o que
+   * está registrado ainda é o closure velho, que capturou `authenticated: false`
+   * e devolve null. O Bearer não vai, o servidor recusa com 401, e o fã LOGADO lê
+   * "sem sessão verificada". Só o segundo fetch acertava.
+   *
+   * Com deps `[]` o provider nunca fica obsoleto: a identidade é estável e os
+   * valores saem das refs, sempre frescos. É a mesma família do E7/E14 — a Privy
+   * não erra alto, ela erra fora de hora.
+   */
+  const authRef = useRef(authenticated);
+  authRef.current = authenticated;
+  const getTokenRef = useRef(getAccessToken);
+  getTokenRef.current = getAccessToken;
+
+  const tokenProvider = useCallback(async () => {
+    if (!authRef.current) return null;
+    return getTokenRef.current();
+  }, []);
 
   // O cliente REST assina toda requisição com este Bearer. O servidor resolve o
   // usuário pelo DID verificado — body.userId NUNCA (CONTEXT.md §4).

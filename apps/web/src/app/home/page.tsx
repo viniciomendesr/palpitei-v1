@@ -22,6 +22,7 @@ import { fixtures, type FixtureView } from '@/lib/mock';
 import { api, type ApiFixture } from '@/lib/api';
 import type { SessionState } from '@/lib/session';
 import type { Dict } from '@/lib/i18n';
+import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 
 type Tab = 'live' | 'next' | 'replays';
 
@@ -47,10 +48,17 @@ function abaDa(f: ApiFixture): Tab {
 function useFixtures(session: SessionState | null, t: Dict) {
   const [reais, setReais] = useState<ApiFixture[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const privy = usePrivyAuth();
   const ehDemo = !session || session.authMethod === 'demo';
+  // A sessão local revive do sessionStorage NA HORA; a Privy leva um par de
+  // segundos para ficar `ready`. Buscar assim que a sessão aparece é correr
+  // contra a ilha: o authTokenProvider ainda devolve null, o Bearer não vai, e a
+  // rota responde 401 — que a tela mostrava como "sem sessão verificada" para um
+  // fã que está logado. Esperar o `ready` é o que faz o Bearer existir.
+  const podeBuscar = !ehDemo && privy.ready && privy.authenticated;
 
   useEffect(() => {
-    if (ehDemo) return;
+    if (!podeBuscar) return;
     let vivo = true;
     api
       .fixtures()
@@ -59,7 +67,7 @@ function useFixtures(session: SessionState | null, t: Dict) {
     return () => {
       vivo = false;
     };
-  }, [ehDemo]);
+  }, [podeBuscar]);
 
   if (ehDemo) return { abas: fixtures(t), carregando: false, erro: null };
 
