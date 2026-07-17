@@ -275,8 +275,11 @@ export default function HomePage() {
             teamB={localizeTeamName(f.teamB, lang)}
             scoreA={f.scoreA}
             scoreB={f.scoreB}
-            cta={f.cta}
-            onClick={() => openSala(f.id)}
+            // Na aba Próximas o card abre o palpite pré-jogo, não a sala: a
+            // partida ainda não rolou, o que existe é cravar o palpite antes do
+            // apito. Ao Vivo/Replays seguem entrando na sala.
+            cta={tab === 'next' ? t.ctaPalpitar : f.cta}
+            onClick={tab === 'next' ? () => router.push(`/palpite/${f.id}`) : () => openSala(f.id)}
           />
         ))}
 
