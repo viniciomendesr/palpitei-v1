@@ -131,11 +131,14 @@ export interface UsePalpitePreJogo {
 
 export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
   const { t, lang, fmt } = useI18n();
-  const { session } = useSession();
+  const { session, hydrated } = useSession();
   const privy = usePrivyAuth();
 
+  // A sessão revive num efeito do provider — nos primeiros renders ela é null.
+  // Esperar a hidratação evita tratar um fã logado, que recarregou uma fixture
+  // numérica, como demo e exibir um erro espúrio antes de a Privy ficar pronta.
   const ehDemo = !session || session.authMethod === 'demo';
-  const podeBuscar = !ehDemo && privy.ready && privy.authenticated;
+  const podeBuscar = hydrated && !ehDemo && privy.ready && privy.authenticated;
 
   const [m, setM] = useState<Mercados>(VAZIO);
   const [vm, setVm] = useState<PregameVM | null>(null);
@@ -149,7 +152,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
 
   // ---- carga do demo (local, sem rede) ----------------------------------
   useEffect(() => {
-    if (!ehDemo) return;
+    if (!hydrated || !ehDemo) return;
     const fx = fixtures(t).next.find((f) => f.id === fixtureId);
     if (!fx) {
       setError(t.pmError);
@@ -194,7 +197,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
     setLoading(false);
     // fixtureId muda a tela inteira; lang/t só reformatam rótulos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ehDemo, fixtureId, lang]);
+  }, [hydrated, ehDemo, fixtureId, lang]);
 
   // ---- carga do fã logado (API) -----------------------------------------
   useEffect(() => {

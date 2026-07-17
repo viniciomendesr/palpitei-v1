@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { OddsEvent, ScoreEvent } from '@palpitei/core';
 import { MERCADO_1X2 } from '@palpitei/db';
-import { classificarParaSala, fixtureAoVivo } from '../src/server/live-regras.ts';
+import { classificarParaSala, eventoEncerraPartida, fixtureAoVivo } from '../src/server/live-regras.ts';
 
 const score = (over: Partial<ScoreEvent> = {}): ScoreEvent => ({
   kind: 'score',
@@ -48,6 +48,12 @@ test('fixtureAoVivo: "false", "1" ou fixture não numérica não ligam nada', ()
   assert.equal(fixtureAoVivo({ TXLINE_LIVE_INGEST: '1', LIVE_FIXTURE_ID: '18257865' }), null);
   assert.equal(fixtureAoVivo({ TXLINE_LIVE_INGEST: 'true', LIVE_FIXTURE_ID: 'abc' }), null);
   assert.equal(fixtureAoVivo({ TXLINE_LIVE_INGEST: 'true' }), null);
+});
+
+test('evento terminal é game_finalised ou o status final do feed', () => {
+  assert.equal(eventoEncerraPartida(score({ action: 'game_finalised' })), true);
+  assert.equal(eventoEncerraPartida(score({ action: 'unknown', statusId: 100, period: 100 })), true);
+  assert.equal(eventoEncerraPartida(score({ action: 'goal', hasScore: true })), false);
 });
 
 // ─── o filtro de mercado do roteamento ───

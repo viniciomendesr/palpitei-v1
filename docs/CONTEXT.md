@@ -628,3 +628,35 @@ que ela acabar.
   copiar a tabela — **copiar é o bug nº 1 de novo** (a regra do lance duplicada).
 - **Carência de 30s antes de derrubar sala vazia**: sem ela um F5 reinicia a partida do
   zero e o palpite recém-dado aponta para `questionId` que não existe mais.
+
+## 12. Pré-palpite: a fixture e a liquidação pertencem ao caminho de dados real
+
+**Decisão de implementação em 17/07.** O card de uma partida futura nasce do snapshot
+da TxLINE, mas o palpite e a chave estrangeira nascem no Postgres. Portanto,
+`GET /api/fixtures` persiste as fixtures recebidas em `matches`; e
+`GET`/`POST /api/pregame/:fixtureId` têm um fallback que consulta o mesmo snapshot para
+link direto ou processo recém-iniciado. Se a fonte não trouxer a fixture, a rota devolve
+erro — nunca inventa partida.
+
+**Settlement não é ação de tela.** Uma sala ao vivo pode nunca ser criada; esperar o
+`game_end` dela deixaria palpites sem liquidar. Ao receber `game_finalised` (ou
+`statusId=100` + `period=100`), o canal ao vivo, na fila serial de persistência:
+
+1. grava o evento da TxLINE;
+2. marca a fixture como `finished`;
+3. lê os últimos totais conhecidos de gols/escanteios;
+4. chama `settleFixture(..., gradePregame)`.
+
+O CAS em `settled_at` continua sendo obrigatório: reenvio SSE ou a liquidação lazy da
+leitura posterior não pagam XP duas vezes. Quando o evento terminal não traz `Score`,
+`totaisFinais` conserva a última chave conhecida (A4/G7) antes de calcular o gabarito.
+
+Verificação local em 17/07:
+
+```bash
+npm test -w @palpitei/web
+npm test -w @palpitei/core
+npm test -w @palpitei/db
+npm run typecheck
+npm run build
+```

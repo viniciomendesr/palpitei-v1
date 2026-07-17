@@ -18,6 +18,7 @@ import { gradePregame } from '@palpitei/core';
 import { createEventRepo, createMatchRepo, createPregamePickRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
+import { fixturesTxline } from '@/server/fixtures';
 import { parsePregameBody, travadoNoApito, xpEmJogo } from '@/server/pregame';
 
 export const runtime = 'nodejs';
@@ -43,7 +44,15 @@ export async function GET(
   const db = createDb();
   try {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
-    const match = await createMatchRepo(db).findById(fixtureId);
+    const matches = createMatchRepo(db);
+    // O caminho normal semeia a fixture ao carregar a Home. Este fallback cobre
+    // link direto/F5 em um processo novo sem inventar dado: consulta a mesma
+    // fonte TxLINE e só persiste se a fixture realmente estiver no snapshot.
+    let match = await matches.findById(fixtureId);
+    if (!match) {
+      const fixture = (await fixturesTxline()).find((f) => f.fixtureId === fixtureId);
+      if (fixture) match = await matches.upsert(fixture);
+    }
     if (!match) return NextResponse.json({ error: 'partida não encontrada' }, { status: 404 });
 
     const estado = match.state ?? 'scheduled';
@@ -106,7 +115,12 @@ export async function POST(
   const db = createDb();
   try {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
-    const match = await createMatchRepo(db).findById(fixtureId);
+    const matches = createMatchRepo(db);
+    let match = await matches.findById(fixtureId);
+    if (!match) {
+      const fixture = (await fixturesTxline()).find((f) => f.fixtureId === fixtureId);
+      if (fixture) match = await matches.upsert(fixture);
+    }
     if (!match) return NextResponse.json({ error: 'partida não encontrada' }, { status: 404 });
 
     // A trava no apito é servidor: o cliente pode mentir o horário, o banco não.

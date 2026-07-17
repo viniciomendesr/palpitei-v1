@@ -62,15 +62,22 @@ export async function GET(req: Request): Promise<NextResponse> {
   }
 
   const db = createDb();
+  const matches = createMatchRepo(db);
   const [txline, cache] = await Promise.allSettled([
     fixturesTxline(),
-    createMatchRepo(db).listCached(),
+    matches.listCached(),
   ]);
   const fixtures: ApiFixture[] = [];
 
   // As duas fontes são independentes e começam juntas: a devnet lenta não
   // segura um replay que já está pronto no Postgres.
   if (txline.status === 'fulfilled') {
+    // A aba Próximas é também a fronteira entre a fixture efêmera do snapshot e
+    // o pré-palpite persistido. Sem semear `matches` aqui, o card abria
+    // /palpite/:id, mas a rota só conhecia fixtures já vistas pelo canal ao vivo
+    // e devolvia 404. O snapshot é dado real da TxLINE; persistir seus metadados
+    // não grava payload licenciado no repositório, só no Postgres do produto.
+    await matches.upsertMany(txline.value);
     for (const fx of txline.value) {
       fixtures.push({
         id: String(fx.fixtureId),

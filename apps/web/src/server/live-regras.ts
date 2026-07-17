@@ -32,6 +32,11 @@ export function fixtureAoVivo(env: EnvDoCanal): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/** O evento terminal que torna a fixture apta para settlement. */
+export function eventoEncerraPartida(ev: NormEvent): boolean {
+  return ev.kind === 'score' && (ev.action === 'game_finalised' || (ev.statusId === 100 && ev.period === 100));
+}
+
 export type ClasseDoEvento = 'rotear' | 'outra_fixture' | 'fora_do_mercado';
 
 /**

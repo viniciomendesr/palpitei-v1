@@ -16,7 +16,7 @@
  * no dia do jogo ninguém anexa debugger.
  */
 
-import type { NormEvent } from '@palpitei/core';
+import { gradePregame, type NormEvent } from '@palpitei/core';
 import {
   fetchFixtures,
   info,
@@ -27,9 +27,9 @@ import {
   warn,
   type LiveStatus,
 } from '@palpitei/txline';
-import { createEventRepo, createMatchRepo, createOddsRepo } from '@palpitei/db';
+import { createEventRepo, createMatchRepo, createOddsRepo, createPregamePickRepo } from '@palpitei/db';
 import { createDb } from './db';
-import { classificarParaSala, fixtureAoVivo } from './live-regras';
+import { classificarParaSala, eventoEncerraPartida, fixtureAoVivo } from './live-regras';
 
 type Contadores = {
   ignoradosDeOutrasFixtures: number;
@@ -153,8 +153,32 @@ function aoReceber(canal: Canal, ev: NormEvent): void {
   // projeção que o replay lê; o raw dos demais fica para estudo pós-jogo.
   if (ev.kind === 'score') {
     persistir(canal, `score seq ${ev.seq}`, async () => {
-      await createEventRepo(createDb()).upsert(ev);
+      const db = createDb();
+      const events = createEventRepo(db);
+      await events.upsert(ev);
       canal.contadores.persistidosScores += 1;
+
+      // A liquidação pré-jogo não pode depender de uma sala estar aberta nem
+      // de um fã voltar à tela depois do apito. A fila já garantiu que todos os
+      // scores anteriores foram persistidos; `totaisFinais` preserva a última
+      // leitura conhecida quando o próprio game_finalised não traz Score.
+      if (eventoEncerraPartida(ev)) {
+        await createMatchRepo(db).setState(canal.fixtureId, 'finished');
+        const totais = await events.totaisFinais(canal.fixtureId);
+        if (totais) {
+          await createPregamePickRepo(db).settleFixture(
+            canal.fixtureId,
+            {
+              goalsP1: totais.goals.p1,
+              goalsP2: totais.goals.p2,
+              cornersTotal: totais.corners.p1 + totais.corners.p2,
+            },
+            gradePregame,
+          );
+        } else {
+          warn(`[canal-ao-vivo] fim da fixture ${canal.fixtureId} sem totais persistidos — settlement será tentado na leitura`);
+        }
+      }
     });
   } else {
     persistir(canal, `odds ${ev.messageId ?? ev.ts}`, async () => {
