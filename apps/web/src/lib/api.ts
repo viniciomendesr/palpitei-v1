@@ -86,6 +86,20 @@ export interface ApiFixture {
   treino?: boolean;
 }
 
+export interface LobbyState {
+  type: 'lobby_state';
+  roomId: string;
+  partyId: string;
+  fixtureId: number;
+  treino: boolean;
+  teamA: string;
+  teamB: string;
+  phase: 'waiting' | 'started';
+  meReady: boolean;
+  meHost: boolean;
+  players: { name: string; ready: boolean; host: boolean }[];
+}
+
 /**
  * Uma liga privada, como a home a lista.
  *
@@ -352,14 +366,26 @@ export const api = {
 
   fixtures: () => request<{ fixtures: ApiFixture[] }>('/api/fixtures'),
 
+  lobbyReady: (roomId: string, partyId: string, ready: boolean) =>
+    request<{ ok: true }>(
+      `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}`,
+      { method: 'POST', body: JSON.stringify({ action: 'ready', ready }) },
+    ),
+
+  lobbyStart: (roomId: string, partyId: string) =>
+    request<{ ok: true }>(
+      `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}`,
+      { method: 'POST', body: JSON.stringify({ action: 'start' }) },
+    ),
+
   joinRoom: (roomId: string) =>
     request<{ ok: true }>(`/api/rooms/${encodeURIComponent(roomId)}/join`, { method: 'POST' }),
 
   leaveRoom: (roomId: string) =>
     request<{ ok: true }>(`/api/rooms/${encodeURIComponent(roomId)}/leave`, { method: 'POST' }),
 
-  predict: (roomId: string, body: PredictionRequest) =>
-    request<{ ok: true }>(`/api/rooms/${encodeURIComponent(roomId)}/predictions`, {
+  predict: (roomId: string, partyId: string, body: PredictionRequest) =>
+    request<{ ok: true }>(`/api/rooms/${encodeURIComponent(roomId)}/predictions?party=${encodeURIComponent(partyId)}`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

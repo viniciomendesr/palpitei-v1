@@ -15,7 +15,8 @@ import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
 import { createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
-import { abrirSala, palpitar, parseRoomId } from '@/server/rooms';
+import { getLobby } from '@/server/lobbies';
+import { abrirSala, chaveDaSala, palpitar, parsePartyId, parseRoomId } from '@/server/rooms';
 import { paraCore } from '@/server/identidade';
 
 export const runtime = 'nodejs';
@@ -54,6 +55,14 @@ export async function POST(
   if (!roomId) {
     return NextResponse.json({ error: 'sala inválida' }, { status: 400 });
   }
+  const partyId = parsePartyId(new URL(req.url).searchParams.get('party'));
+  if (!partyId) {
+    return NextResponse.json({ error: 'código do grupo inválido' }, { status: 400 });
+  }
+  const lobby = getLobby(chaveDaSala(roomId.fixtureId, roomId.treino, partyId));
+  if (!lobby || lobby.phase !== 'started') {
+    return NextResponse.json({ error: 'a partida ainda não começou no lobby' }, { status: 409 });
+  }
   const body: unknown = await req.json().catch(() => null);
   const questionId = (body as { questionId?: unknown } | null)?.questionId;
   // `optionId` é o nome do contrato herdado (PredictionRequest em lib/api.ts).
@@ -63,7 +72,7 @@ export async function POST(
     return NextResponse.json({ error: 'questionId e optionId são obrigatórios' }, { status: 400 });
   }
 
-  const sala = await abrirSala(roomId.fixtureId, roomId.treino);
+  const sala = await abrirSala(roomId.fixtureId, roomId.treino, partyId);
   if (!sala) {
     return NextResponse.json({ error: 'sala não está aberta' }, { status: 404 });
   }

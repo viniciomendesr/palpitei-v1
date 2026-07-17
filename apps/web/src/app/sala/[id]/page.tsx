@@ -33,7 +33,7 @@ import { FlagArgentina, FlagCaboVerde } from '@/components/Flag';
 import { ChallengeSheet } from '@/components/sala/ChallengeSheet';
 import { ChallengeResult, type LastResult } from '@/components/sala/ChallengeResult';
 import { GameEnd } from '@/components/sala/GameEnd';
-import { SalaReal } from '@/components/sala/SalaReal';
+import { SalaComLobby } from '@/components/sala/SalaLobby';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
@@ -79,7 +79,7 @@ export default function SalaPage({ params }: { params: Promise<{ id: string }> }
   // Partida real só existe atrás de login: o demo nunca chama a rota (nem tem
   // Bearer para isso). `treino-<fixtureId>` é a MESMA partida real em modo
   // treino (XP sempre 0) — a regra de parse é a do servidor (parseRoomId).
-  if (!ehDemo && /^(treino-)?\d+$/.test(id)) return <SalaReal fixtureId={id} />;
+  if (!ehDemo && /^(treino-)?\d+$/.test(id)) return <SalaComLobby roomId={id} />;
   return <SalaMock params={params} />;
 }
 

@@ -33,6 +33,7 @@ import {
 } from '@/lib/useSala';
 import { redigeChance } from '@/lib/chances';
 import { formataRelogio } from '@/lib/relogio';
+import { calcularResumoDaSala } from '@/lib/resumo';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 
 type SalaTab = 'desafios' | 'lances' | 'stats' | 'chances' | 'ranking';
@@ -628,7 +629,94 @@ function CardDoDesafio({
   );
 }
 
-export function SalaReal({ fixtureId }: { fixtureId: string }) {
+function ResumoDaPartida({
+  teamA,
+  teamB,
+  score,
+  resultados,
+  rankingCount,
+  chancesCount,
+  stats,
+  onBack,
+  onHome,
+}: {
+  teamA: string;
+  teamB: string;
+  score: { p1: number; p2: number };
+  resultados: SalaResultado[];
+  rankingCount: number;
+  chancesCount: number;
+  stats: LinhaDeStat[];
+  onBack: () => void;
+  onHome: () => void;
+}) {
+  const { t } = useI18n();
+  const summary = calcularResumoDaSala(resultados, rankingCount, chancesCount);
+  const cards = [
+    { value: String(summary.picks), label: t.summaryPicks },
+    { value: String(summary.hits), label: t.summaryHits },
+    { value: String(summary.players), label: t.summaryPlayers },
+    { value: String(summary.movements), label: t.summaryMovements },
+  ];
+
+  return (
+    <Screen padding="18px 20px 24px" style={{ display: 'flex', flexDirection: 'column' }}>
+      <button
+        onClick={onBack}
+        aria-label={t.summaryBack}
+        style={{ all: 'unset', cursor: 'pointer', width: 38, height: 38, display: 'grid', placeItems: 'center', borderRadius: 'var(--r-lg)', background: 'var(--surface-1)' }}
+      >
+        <ChevronLeft />
+      </button>
+      <div style={{ textAlign: 'center', marginTop: 12 }}>
+        <Badge tone="neutral">{t.lanceEnd}</Badge>
+        <div style={{ marginTop: 15, fontSize: 11, fontWeight: fw.black, letterSpacing: 1.2, color: 'var(--text-muted)' }}>
+          {t.summaryTitle}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 19, fontWeight: fw.heavy }}>{teamA} × {teamB}</div>
+        <div style={{ marginTop: 4, fontSize: 48, fontWeight: fw.black, fontStyle: 'italic', letterSpacing: -2 }}>
+          {score.p1} – {score.p2}
+        </div>
+        <div style={{ color: 'var(--lime)', fontWeight: fw.black, fontSize: 14 }}>+{summary.xp} XP</div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginTop: 22 }}>
+        {cards.map((card) => (
+          <div key={card.label} style={{ padding: '14px 12px', borderRadius: 'var(--r-xl)', background: 'var(--surface-1)', border: '1px solid var(--border-1)' }}>
+            <div style={{ fontSize: 22, fontWeight: fw.black, color: 'var(--lime)' }}>{card.value}</div>
+            <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: fw.heavy, color: 'var(--text-muted)' }}>{card.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {stats.length > 0 && (
+        <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 11 }}>
+          {stats.map((stat) => (
+            <div key={stat.chave} style={{ display: 'grid', gridTemplateColumns: '36px 1fr 36px', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: fw.black, color: 'var(--lime)' }}>{stat.a}</span>
+              <span style={{ textAlign: 'center', fontSize: 11, fontWeight: fw.heavy, color: 'var(--text-muted)' }}>{stat.label}</span>
+              <span style={{ textAlign: 'right', fontWeight: fw.black }}>{stat.b}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: 24 }} />
+      <Button full size="lg" onClick={onBack}>{t.summaryBack}</Button>
+      <Button full variant="ghost" onClick={onHome}>{t.backHome}</Button>
+    </Screen>
+  );
+}
+
+export function SalaReal({
+  fixtureId,
+  partyId,
+  lobbyPlayerCount,
+}: {
+  fixtureId: string;
+  partyId: string;
+  lobbyPlayerCount: number;
+}) {
   const router = useRouter();
   const { t, fmt } = useI18n();
   const { session, addXp } = useSession();
@@ -653,7 +741,7 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
     treinoDaSala,
     segundosVivos,
     palpitar,
-  } = useSala(fixtureId, privy.ready && privy.authenticated, addXp);
+  } = useSala(fixtureId, partyId, privy.ready && privy.authenticated, addXp);
 
   const [tab, setTab] = useState<SalaTab>('desafios');
   const [enviando, setEnviando] = useState<string | null>(null);
@@ -664,6 +752,7 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
   // O resultado ABERTO em tela cheia. A lista é só manchete (pergunta some,
   // texto some); o toque abre o detalhe com veredito, leitura e números.
   const [detalhe, setDetalhe] = useState<SalaResultado | null>(null);
+  const [resumoAberto, setResumoAberto] = useState(false);
 
   // A aba NÃO rouba mais o foco quando abre desafio. Quem chama o fã é o
   // OVERLAY: a janela dura ~96s de tempo real e ele não pode ter que procurar
@@ -717,6 +806,22 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
    * na aba Desafios, com o contador no rótulo — some da frente, não da vista.
    */
   const noOverlay = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).at(-1) ?? null;
+
+  if (resumoAberto) {
+    return (
+      <ResumoDaPartida
+        teamA={state.teamA}
+        teamB={state.teamB}
+        score={state.score}
+        resultados={resultados}
+        rankingCount={Math.max(ranking.length, lobbyPlayerCount)}
+        chancesCount={chances.length}
+        stats={stats}
+        onBack={() => setResumoAberto(false)}
+        onHome={() => router.push('/home')}
+      />
+    );
+  }
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
@@ -788,6 +893,14 @@ export function SalaReal({ fixtureId }: { fixtureId: string }) {
           </div>
         </div>
       </div>
+
+      {state.finished && (
+        <div style={{ flex: 'none', padding: '12px 18px 0' }}>
+          <Button full size="lg" onClick={() => setResumoAberto(true)}>
+            {t.summaryOpen}
+          </Button>
+        </div>
+      )}
 
       {/* CINCO abas não cabem lado a lado nos 384px úteis do frame (o SegTabs
           não encolhe rótulo): o trilho rola na horizontal DENTRO do frame, como

@@ -13,12 +13,15 @@
 import { PrivyClient } from '@privy-io/server-auth';
 import { createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
+import { getLobby } from '@/server/lobbies';
 import { PULSO, iniciarPulso } from '@/server/pulso';
 import {
   abrirSala,
   assinar,
+  chaveDaSala,
   decidirPagamento,
   estadoDaSalaPara,
+  parsePartyId,
   parseRoomId,
   rankingDaSala,
   registrarApelido,
@@ -67,7 +70,16 @@ export async function GET(
     return Response.json({ error: 'sala inválida' }, { status: 400 });
   }
 
-  const sala = await abrirSala(roomId.fixtureId, roomId.treino);
+  const partyId = parsePartyId(new URL(req.url).searchParams.get('party'));
+  if (!partyId) {
+    return Response.json({ error: 'código do grupo inválido' }, { status: 400 });
+  }
+  const lobby = getLobby(chaveDaSala(roomId.fixtureId, roomId.treino, partyId));
+  if (!lobby || lobby.phase !== 'started') {
+    return Response.json({ error: 'a partida ainda não começou no lobby' }, { status: 409 });
+  }
+
+  const sala = await abrirSala(roomId.fixtureId, roomId.treino, partyId);
   if (!sala) {
     return Response.json({ error: 'partida não encontrada no cache' }, { status: 404 });
   }

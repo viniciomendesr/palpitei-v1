@@ -172,7 +172,12 @@ type ResultadoDoServidor = {
   facts?: SalaFatos | null;
 };
 
-export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number) => void) {
+export function useSala(
+  fixtureId: string,
+  partyId: string,
+  ativo: boolean,
+  onGanho?: (xp: number) => void,
+) {
   const [state, setState] = useState<SalaState | null>(null);
   const [desafios, setDesafios] = useState<SalaDesafio[]>([]);
   const [resultados, setResultados] = useState<SalaResultado[]>([]);
@@ -260,7 +265,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
       }
 
       es = new EventSource(
-        `/api/rooms/${encodeURIComponent(fixtureId)}/stream?token=${encodeURIComponent(token)}`,
+        `/api/rooms/${encodeURIComponent(fixtureId)}/stream?token=${encodeURIComponent(token)}&party=${encodeURIComponent(partyId)}`,
       );
 
       es.onopen = () => {
@@ -552,7 +557,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
       if (proxima) clearTimeout(proxima);
       es?.close();
     };
-  }, [fixtureId, ativo]);
+  }, [fixtureId, partyId, ativo]);
 
   // O tique do relógio da tela: 250ms de intervalo (a 12×, 1s real = 12s de
   // jogo — com 1s de tique o cronômetro pularia de 12 em 12), re-renderizando
@@ -573,7 +578,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     tick();
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
-  }, [ativo, fixtureId]);
+  }, [ativo, fixtureId, partyId]);
 
   /**
    * Manda o palpite. O veredito é do servidor — aqui não se decide nada.
@@ -583,7 +588,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
     async (questionId: string, optionId: string): Promise<{ ok: boolean; error?: string }> => {
       const { api } = await import('@/lib/api');
       try {
-        await api.predict(fixtureId, { questionId, optionId });
+        await api.predict(fixtureId, partyId, { questionId, optionId });
         escolhas.current.set(questionId, optionId);
         setDesafios((ds) =>
           ds.map((d) => (d.questionId === questionId ? { ...d, minhaEscolha: optionId } : d)),
@@ -593,7 +598,7 @@ export function useSala(fixtureId: string, ativo: boolean, onGanho?: (xp: number
         return { ok: false, error: e instanceof Error ? e.message : 'não deu para palpitar' };
       }
     },
-    [fixtureId],
+    [fixtureId, partyId],
   );
 
   return {

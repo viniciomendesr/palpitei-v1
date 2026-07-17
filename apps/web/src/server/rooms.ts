@@ -61,6 +61,10 @@ import {
   type Pct1x2,
 } from './chances';
 import { createDb } from './db';
+import { resetLobby } from './lobbies';
+import { chaveDaSala } from './room-id';
+
+export { chaveDaSala, parsePartyId, parseRoomId } from './room-id';
 
 /** 60 = um minuto de jogo por segundo real. O mesmo default do config da txline. */
 const REPLAY_SPEED = Number(process.env.REPLAY_SPEED ?? 60) || 60;
@@ -116,6 +120,8 @@ type Sub = { userId: string | null; enviar: (msg: RoomMessage) => void };
 
 type Room = {
   fixtureId: number;
+  /** Código do grupo: dois convites da mesma fixture nunca compartilham runner. */
+  partyId: string;
   /**
    * Sala de TREINO: a mesma partida, o mesmo motor — e XP sempre 0, para
    * TODO MUNDO, com NADA persistido. Existe para rejogar com gabarito decorado
@@ -189,20 +195,6 @@ const salasEmCriacao = new Map<string, Promise<Room | null>>();
 const ehScore = (ev: NormEvent): ev is ScoreEvent => ev.kind === 'score';
 
 /**
- * O id da sala na URL: `18241006` (valendo) ou `treino-18241006` (treino).
- * Qualquer outra coisa é inválida — e a MESMA regra vale para o stream e para
- * o palpite, senão os dois abririam salas diferentes do mesmo id.
- */
-export function parseRoomId(id: string): { fixtureId: number; treino: boolean } | null {
-  const m = /^(treino-)?(\d+)$/.exec(id);
-  if (!m) return null;
-  return { fixtureId: Number(m[2]), treino: Boolean(m[1]) };
-}
-
-const chaveDaSala = (fixtureId: number, treino: boolean): string =>
-  treino ? `treino-${fixtureId}` : String(fixtureId);
-
-/**
  * Portas da sala de TREINO: interface idêntica, persistência NENHUMA.
  *
  * Não é preguiça — é a regra do treino inteira num lugar só: sem linhas em
@@ -225,7 +217,7 @@ function portsDeTreino(): EnginePorts {
   };
 }
 
-async function criarSala(fixtureId: number, treino: boolean): Promise<Room | null> {
+async function criarSala(fixtureId: number, treino: boolean, partyId: string): Promise<Room | null> {
   const db = createDb();
   const fixture: Fixture | null = await createMatchRepo(db).findById(fixtureId);
   if (!fixture) {
@@ -273,6 +265,7 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
 
   const sala: Room = {
     fixtureId,
+    partyId,
     treino,
     semXp: new Set(),
     decididos: new Set(),
@@ -615,25 +608,31 @@ async function criarSala(fixtureId: number, treino: boolean): Promise<Room | nul
     if (sala.desligar) clearTimeout(sala.desligar);
     sala.desligar = null;
     sala.runner.stop();
-    salas.delete(chaveDaSala(fixtureId, treino));
+    const key = chaveDaSala(fixtureId, treino, partyId);
+    salas.delete(key);
+    resetLobby(key);
     void ports.flush().catch(() => {}).finally(() => void db.close?.());
   };
 
   sala.runner.start();
-  salas.set(chaveDaSala(fixtureId, treino), sala);
+  salas.set(chaveDaSala(fixtureId, treino, partyId), sala);
   return sala;
 }
 
 /** A sala desta partida, criando-a (e dando o apito inicial) na primeira visita. */
-export async function abrirSala(fixtureId: number, treino = false): Promise<Room | null> {
-  const chave = chaveDaSala(fixtureId, treino);
+export async function abrirSala(
+  fixtureId: number,
+  treino = false,
+  partyId = 'PUBLIC',
+): Promise<Room | null> {
+  const chave = chaveDaSala(fixtureId, treino, partyId);
   const aberta = salas.get(chave);
   if (aberta) return aberta;
 
   const existente = salasEmCriacao.get(chave);
   if (existente) return existente;
 
-  const criacao = criarSala(fixtureId, treino).finally(() => {
+  const criacao = criarSala(fixtureId, treino, partyId).finally(() => {
     if (salasEmCriacao.get(chave) === criacao) salasEmCriacao.delete(chave);
   });
   salasEmCriacao.set(chave, criacao);
