@@ -357,12 +357,6 @@ export function iniciarCanalAoVivo(): void {
   });
 }
 
-/** Removes raw TxLINE samples before exposing live status publicly. */
-function semAmostra(s: LiveStatus): Omit<LiveStatus, 'ultimaAmostra'> {
-  const { ultimaAmostra: _descartada, ...resto } = s;
-  return resto;
-}
-
 /** Returns operational status without licensed raw payloads. */
 export function statusDoCanal(): Record<string, unknown> {
   const canais = canaisAtivos();
@@ -378,7 +372,7 @@ export function statusDoCanal(): Record<string, unknown> {
     fixtureSemeada: canal?.semeada ?? false,
     marcadaAoVivo: canal?.marcadaAoVivo ?? false,
     resumo,
-    streams: { scores: semAmostra(streams.scores), odds: semAmostra(streams.odds) },
+    streams,
     silencioSegundos: { scores: silencio('scores'), odds: silencio('odds') },
     contadores: canal?.contadores ?? null,
     distribuicao: brokerRedisAoVivo()?.estado() ?? { enabled: false, state: 'disabled', leader: true, lastError: null },

@@ -23,8 +23,6 @@ export type LiveStatus = {
   ultimoEventoEm: number | null;
   reconexoes: number;
   ultimoErro?: string;
-  /** Truncated sample of the latest raw payload for diagnostics. */
-  ultimaAmostra?: string;
   lastEventId?: string;
 };
 
@@ -64,7 +62,6 @@ export function liveSummary(): string {
 }
 
 const BACKOFF_TETO_MS = 15_000;
-const AMOSTRAS_LOGADAS = 3;
 
 type Handle = { close(): void };
 
@@ -84,7 +81,6 @@ function abreStream(
   let backoff = 1000;
   let closed = false;
   let lastEventId: string | undefined;
-  let amostrasLogadas = 0;
 
   Object.assign(status, statusNovo(), { state: "connecting" as LiveState });
 
@@ -145,12 +141,6 @@ function abreStream(
       }
 
       const cru = String(ev.data ?? "");
-      status.ultimaAmostra = cru.slice(0, 300);
-      if (amostrasLogadas < AMOSTRAS_LOGADAS) {
-        amostrasLogadas += 1;
-        // Capture initial raw samples to compare live and replay payload shapes.
-        info(`[${label}] amostra crua #${amostrasLogadas}: ${cru.slice(0, 300)}`);
-      }
 
       let parsed: unknown = null;
       try {
@@ -161,9 +151,9 @@ function abreStream(
       const norm = parsed ? normalize(parsed) : null;
       if (!norm) {
         status.descartados += 1;
-        // Log the first two drops and then every 50th to preserve signal.
+        // Keep diagnostics useful without redistributing licensed provider payloads.
         if (status.descartados <= 2 || status.descartados % 50 === 1) {
-          warn(`[${label}] payload não normalizável (#${status.descartados}): ${cru.slice(0, 200)}`);
+          warn(`[${label}] payload descartado por formato inválido (#${status.descartados})`);
         }
         return;
       }
