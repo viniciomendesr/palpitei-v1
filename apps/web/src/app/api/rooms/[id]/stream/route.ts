@@ -11,9 +11,10 @@
  */
 
 import { PrivyClient } from '@privy-io/server-auth';
-import { createUserRepo } from '@palpitei/db';
+import { createLobbyRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { getLobby } from '@/server/lobbies';
+import { podeAcessarLobbyIniciado } from '@/server/lobby-acesso';
 import { PULSO, iniciarPulso } from '@/server/pulso';
 import {
   abrirSala,
@@ -73,32 +74,40 @@ export async function GET(
   if (!partyId) {
     return Response.json({ error: 'código do grupo inválido' }, { status: 400 });
   }
+  // O id interno do fã: e o `question_resolved` do §8 manda `gained`, que e o XP
+  // DELE. A associação persistida, e não o Map de presença do processo, autoriza
+  // a conexão: quem saiu do lobby não pode reutilizar a URL antiga.
+  const dbUser = createDb();
+  let userId: string;
+  let userHandle: string | null;
+  try {
+    const user = await createUserRepo(dbUser).findByPrivyDid(did);
+    if (!user) return Response.json({ error: 'você não participa desse lobby' }, { status: 403 });
+    const persistent = await createLobbyRepo(dbUser).findForMember(partyId, user.id);
+    if (!podeAcessarLobbyIniciado(persistent, roomId)) {
+      return Response.json({ error: 'você não participa desse lobby' }, { status: 403 });
+    }
+    userId = user.id;
+    userHandle = user.handle;
+  } catch (e) {
+    console.error('[palpitei] autorização do stream falhou:', e instanceof Error ? e.message : e);
+    return Response.json({ error: 'não deu para verificar seu acesso ao lobby' }, { status: 500 });
+  } finally {
+    await dbUser.close?.();
+  }
+
+  // A autorização persistida aconteceu antes de tocar na sala em memória. Agora
+  // ela só decide se o runner do processo está disponível.
   const lobby = getLobby(chaveDaSala(roomId.fixtureId, roomId.treino, partyId));
   if (!lobby || lobby.phase !== 'started') {
     return Response.json({ error: 'a partida ainda não começou no lobby' }, { status: 409 });
   }
-
   const sala = await abrirSala(roomId.fixtureId, roomId.treino, partyId);
-  if (!sala) {
-    return Response.json({ error: 'partida não encontrada no cache' }, { status: 404 });
-  }
+  if (!sala) return Response.json({ error: 'partida não encontrada no cache' }, { status: 404 });
 
-  // O id interno do fã: e o `question_resolved` do §8 manda `gained`, que e o XP
-  // DELE. Sem saber quem esta ouvindo, nao da pra dizer quanto ELE ganhou.
-  const dbUser = createDb();
-  let userId: string | null = null;
-  try {
-    const user = await createUserRepo(dbUser).findOrCreateByPrivyDid(did);
-    userId = user.id;
-    // O apelido FRESCO do banco entra na sala já na chegada — sem isto o
-    // ranking só aprendia o nome quando uma pergunta resolvia, e quem escolheu
-    // o apelido depois do primeiro palpite ficava "sem apelido" até lá.
-    registrarApelido(sala, user.id, user.handle);
-  } catch {
-    // Sem usuario, o fa ainda assiste — so nao recebe XP proprio.
-  } finally {
-    await dbUser.close?.();
-  }
+  // O apelido FRESCO do banco entra na sala já na chegada — sem isto o ranking só
+  // aprendia o nome quando uma pergunta resolvia.
+  registrarApelido(sala, userId, userHandle);
 
   const enc = new TextEncoder();
   let desassinar = () => {};

@@ -13,9 +13,10 @@
 
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
-import { createUserRepo } from '@palpitei/db';
+import { createLobbyRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { getLobby } from '@/server/lobbies';
+import { podeAcessarLobbyIniciado } from '@/server/lobby-acesso';
 import { abrirSala, chaveDaSala, palpitar, parsePartyId, parseRoomId } from '@/server/rooms';
 import { paraCore } from '@/server/identidade';
 
@@ -59,10 +60,6 @@ export async function POST(
   if (!partyId) {
     return NextResponse.json({ error: 'código do grupo inválido' }, { status: 400 });
   }
-  const lobby = getLobby(chaveDaSala(roomId.fixtureId, roomId.treino, partyId));
-  if (!lobby || lobby.phase !== 'started') {
-    return NextResponse.json({ error: 'a partida ainda não começou no lobby' }, { status: 409 });
-  }
   const body: unknown = await req.json().catch(() => null);
   const questionId = (body as { questionId?: unknown } | null)?.questionId;
   // `optionId` é o nome do contrato herdado (PredictionRequest em lib/api.ts).
@@ -72,16 +69,27 @@ export async function POST(
     return NextResponse.json({ error: 'questionId e optionId são obrigatórios' }, { status: 400 });
   }
 
-  const sala = await abrirSala(roomId.fixtureId, roomId.treino, partyId);
-  if (!sala) {
-    return NextResponse.json({ error: 'sala não está aberta' }, { status: 404 });
-  }
-
   const db = createDb();
   try {
-    // Find-or-create pelo DID: a identidade é o DID, nunca a carteira (a
-    // carteira muda, e o MESMO endereço aparece duas vezes depois do export).
-    const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
+    // Só a associação PERSISTIDA autoriza. O Map do lobby é presença efêmera;
+    // usá-lo sozinho deixava um ex-membro (ou quem só conhece o código) ganhar
+    // XP ao postar diretamente nesta rota.
+    const user = await createUserRepo(db).findByPrivyDid(did);
+    if (!user) return NextResponse.json({ error: 'você não participa desse lobby' }, { status: 403 });
+    const persistent = await createLobbyRepo(db).findForMember(partyId, user.id);
+    if (!podeAcessarLobbyIniciado(persistent, roomId)) {
+      return NextResponse.json({ error: 'você não participa desse lobby' }, { status: 403 });
+    }
+
+    // Depois da autorização persistida, a instância em memória só decide se o
+    // processo já abriu o runner desta partida.
+    const lobby = getLobby(chaveDaSala(roomId.fixtureId, roomId.treino, partyId));
+    if (!lobby || lobby.phase !== 'started') {
+      return NextResponse.json({ error: 'a partida ainda não começou no lobby' }, { status: 409 });
+    }
+    const sala = await abrirSala(roomId.fixtureId, roomId.treino, partyId);
+    if (!sala) return NextResponse.json({ error: 'sala não está aberta' }, { status: 404 });
+
     // paraCore estoura se o fã não tem carteira Solana (E2). Não coage NULL.
     const r = await palpitar(sala, paraCore(user), questionId, optionId);
     // 409: a pergunta existe, o palpite é que não vale (janela fechada, repetido).
