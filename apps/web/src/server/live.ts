@@ -25,7 +25,13 @@ import {
 import { createDb } from './db';
 import { enfileirarPersistenciaAntesDePublicar } from './eventPipeline';
 import { brokerRedisAoVivo } from './live-broker';
-import { classificarParaSala, eventoEncerraPartida, fixturesAoVivo, ingestAoVivoHabilitado } from './live-regras';
+import {
+  classificarParaSala,
+  eventoEncerraPartida,
+  fixturesAoVivo,
+  ingestAoVivoHabilitado,
+  podeAtivarFixtureAoVivo,
+} from './live-regras';
 
 type Contadores = {
   ignoradosDeOutrasFixtures: number;
@@ -285,6 +291,11 @@ async function reconciliarCanaisPeloBanco(canais: Map<number, Canal>): Promise<v
 /** Activates a fixture in durable storage and makes it immediately local. */
 export async function ativarFixtureAoVivo(fixtureId: number): Promise<boolean> {
   if (!ingestAoVivoHabilitado(process.env)) return false;
+  const match = await createMatchRepo(createDb()).findById(fixtureId);
+  if (!podeAtivarFixtureAoVivo(process.env, fixtureId, match)) {
+    info(`[canal-ao-vivo] fixture ${fixtureId} não elegível para ativação ao vivo; ignorando`);
+    return false;
+  }
   iniciarCanalAoVivo();
   await createLiveFixtureRepo(createDb()).activate(fixtureId);
   return garantirCanalAoVivo(fixtureId);

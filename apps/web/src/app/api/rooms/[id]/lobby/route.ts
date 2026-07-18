@@ -182,8 +182,19 @@ export async function POST(
     if (body?.action === 'start') {
       const result = startLobby(lobby, user.id);
       if (!result.ok) return Response.json({ error: result.error }, { status: 409 });
-      if (!ctx.room.training) await ativarFixtureAoVivo(ctx.room.fixtureId);
+      // Persist BEFORE activating: canAccessStartedLobby reads Postgres, so a
+      // throw between the in-memory start and markStarted would 403 every
+      // member while the UI already showed the match as begun.
       await createLobbyRepo(db).markStarted(ctx.partyId, user.id);
+      if (!ctx.room.training) {
+        try {
+          await ativarFixtureAoVivo(ctx.room.fixtureId);
+        } catch (e) {
+          console.warn(
+            `[lobby] ativação ao vivo falhou para ${ctx.room.fixtureId}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
       return Response.json({ ok: true });
     }
     if (body?.action === 'leave') {

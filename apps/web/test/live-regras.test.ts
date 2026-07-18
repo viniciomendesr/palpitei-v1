@@ -8,6 +8,7 @@ import {
   fixtureAoVivo,
   fixturesAoVivo,
   ingestAoVivoHabilitado,
+  podeAtivarFixtureAoVivo,
 } from '../src/server/live-regras.ts';
 
 const score = (over: Partial<ScoreEvent> = {}): ScoreEvent => ({
@@ -73,6 +74,53 @@ test('evento terminal é game_finalised ou o status final do feed', () => {
   assert.equal(eventoEncerraPartida(score({ action: 'game_finalised' })), true);
   assert.equal(eventoEncerraPartida(score({ action: 'unknown', statusId: 100, period: 100 })), true);
   assert.equal(eventoEncerraPartida(score({ action: 'goal', hasScore: true })), false);
+});
+
+// ─── Who may ENTER live_fixtures ───
+// Starting a lobby does not declare a match live — only the operator does, via
+// LIVE_FIXTURE_IDS. Everything after that gate is defense in depth.
+
+const ENV_PROD = { TXLINE_LIVE_INGEST: 'true', LIVE_FIXTURE_IDS: '18257865,18257739' };
+
+test('REGRESSÃO: o replay gravado (18241006) NUNCA pode virar fixture ao vivo', () => {
+  assert.equal(
+    podeAtivarFixtureAoVivo(ENV_PROD, 18241006, { state: 'finished', cacheSource: 'txline-updates' }),
+    false,
+  );
+});
+
+test('fixture declarada pelo operador e ainda agendada pode ativar', () => {
+  assert.equal(
+    podeAtivarFixtureAoVivo(ENV_PROD, 18257865, { state: 'scheduled', cacheSource: 'txline-live' }),
+    true,
+  );
+});
+
+test('fixture declarada mas já encerrada não ativa (defesa em profundidade)', () => {
+  assert.equal(
+    podeAtivarFixtureAoVivo(ENV_PROD, 18257865, { state: 'finished', cacheSource: 'txline-live' }),
+    false,
+  );
+});
+
+test('fixture agendada fora de LIVE_FIXTURE_IDS não ativa', () => {
+  assert.equal(
+    podeAtivarFixtureAoVivo(ENV_PROD, 18241006, { state: 'scheduled', cacheSource: 'txline-live' }),
+    false,
+  );
+});
+
+test('sem TXLINE_LIVE_INGEST="true" nada ativa', () => {
+  const agendada = { state: 'scheduled', cacheSource: 'txline-live' };
+  assert.equal(podeAtivarFixtureAoVivo({ LIVE_FIXTURE_IDS: '18257865' }, 18257865, agendada), false);
+  assert.equal(
+    podeAtivarFixtureAoVivo({ TXLINE_LIVE_INGEST: 'false', LIVE_FIXTURE_IDS: '18257865' }, 18257865, agendada),
+    false,
+  );
+});
+
+test('partida desconhecida no banco não ativa — ausente NÃO é permissão', () => {
+  assert.equal(podeAtivarFixtureAoVivo(ENV_PROD, 18257865, null), false);
 });
 
 // ─── Market filter used by live routing ───
