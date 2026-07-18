@@ -57,6 +57,9 @@ const STORAGE_KEY = 'palpitei.session';
 /** Prevents logout from blocking if the Privy promise never settles. */
 const LOGOUT_TIMEOUT_MS = 10_000;
 
+/** Caps automatic Privy adoption so a failing `/api/login` cannot spin. */
+const MAX_TENTATIVAS_DE_ADOCAO = 3;
+
 interface SessionValue {
   session: SessionState | null;
   /** False until the first effect runs, preventing a hydration mismatch. */
@@ -74,6 +77,10 @@ interface SessionValue {
   refreshState: () => Promise<void>;
   /** Prediction accuracy from the latest refresh. */
   serverStats: ApiStats | null;
+  /** True when adopting a live Privy session gave up, so a screen can offer a retry. */
+  adocaoFalhou: boolean;
+  /** Rearms the adoption attempts after a transient `/api/login` failure. */
+  retentarAdocao: () => void;
   /** Closes local and Privy sessions before navigation. */
   logout: () => Promise<void>;
 }
@@ -86,6 +93,11 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   const [serverStats, setServerStats] = useState<ApiStats | null>(null);
   /** One synchronization is sufficient because refresh is idempotent. */
   const sincronizando = useRef(false);
+  /** Latch against concurrent adoptions of the same Privy session. */
+  const adotando = useRef(false);
+  /** Bounds retries so a failing login can never spin. */
+  const tentativasDeAdocao = useRef(0);
+  const [adocaoFalhou, setAdocaoFalhou] = useState(false);
 
   // Read sessionStorage only after mount to preserve hydration.
   useEffect(() => {
@@ -178,6 +190,54 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     }
   }, [privy.enabled, privy.ready, privy.authenticated]);
 
+  /**
+   * Adopt a live Privy session into the local cache, on every route.
+   *
+   * The cache lives in `sessionStorage` (per tab), so a link opened in a fresh tab
+   * arrives with `session === null` while Privy — localStorage/cookie, shared across
+   * tabs — is authenticated. Without this, only `/` could rebuild the session and an
+   * authenticated fan was stranded by construction.
+   *
+   * Demo stays network-free (rule 3): the effect needs `privy.authenticated`, which a
+   * demo account never is, and the `session === null` guard keeps it from overwriting
+   * an existing demo session. Routing is not decided here — pages keep that job.
+   */
+  useEffect(() => {
+    if (!hydrated || session !== null) return;
+    if (!privy.enabled || !privy.ready || !privy.authenticated || !privy.did) return;
+    if (adotando.current || tentativasDeAdocao.current >= MAX_TENTATIVAS_DE_ADOCAO) return;
+
+    adotando.current = true;
+    tentativasDeAdocao.current += 1;
+    const method = privy.wallets[0]?.source === 'external' ? 'wallet' : 'google';
+    void (async () => {
+      try {
+        const { api } = await import('@/lib/api');
+        const { user } = await api.login();
+        if (user.nickname) enterExisting(method, user);
+        else startOnboarding(method);
+      } catch {
+        // Surface the failure on the FIRST error. The Privy context is memoized on
+        // stable deps, so nothing here changes an effect dependency: a silent retry
+        // would never fire and the fan would sit on a dead screen with no way back.
+        // The attempt cap below stays only as a guard against future dep churn.
+        setAdocaoFalhou(true);
+      } finally {
+        adotando.current = false;
+      }
+    })();
+  }, [
+    hydrated,
+    session,
+    privy.enabled,
+    privy.ready,
+    privy.authenticated,
+    privy.did,
+    privy.wallets,
+    enterExisting,
+    startOnboarding,
+  ]);
+
   // Reconcile persisted account state after authentication is ready.
   useEffect(() => {
     if (!hydrated || !session || session.authMethod === 'demo') return;
@@ -185,6 +245,11 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     // Depend on auth method rather than the full session to avoid a refresh loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, session?.authMethod, refreshState]);
+
+  const retentarAdocao = useCallback(() => {
+    tentativasDeAdocao.current = 0;
+    setAdocaoFalhou(false);
+  }, []);
 
   const logout = useCallback(async () => {
     // Revoke Privy first, then clear local state, to avoid an auth redirect loop.
@@ -215,6 +280,8 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       addXp,
       refreshState,
       serverStats,
+      adocaoFalhou,
+      retentarAdocao,
       logout,
     }),
     [
@@ -227,6 +294,8 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       addXp,
       refreshState,
       serverStats,
+      adocaoFalhou,
+      retentarAdocao,
       logout,
     ],
   );

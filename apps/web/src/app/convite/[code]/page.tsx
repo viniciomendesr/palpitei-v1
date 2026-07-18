@@ -8,6 +8,8 @@ import { Logo } from '@/components/Brand';
 import { api, type ApiLobbyPreview } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
+import { usePrivyAuth } from '@/components/privy/PrivyIsland';
+import { acaoDoConvite } from '@/lib/convite-acesso';
 import { localizeTeamName } from '@/lib/team-names';
 import { setPendingReturnTo } from '@/lib/return-to';
 import { fw } from '@/lib/tokens';
@@ -18,6 +20,14 @@ export default function ConvitePage({ params }: { params: Promise<{ code: string
   const router = useRouter();
   const { t, lang } = useI18n();
   const { session, hydrated } = useSession();
+  const privy = usePrivyAuth();
+  // Privy is the authority; the local session is per-tab and arrives null from a link.
+  const acao = acaoDoConvite({
+    hydrated,
+    privyReady: privy.ready,
+    privyAuthenticated: privy.authenticated,
+    authMethod: session?.authMethod ?? null,
+  });
   const [lobby, setLobby] = useState<ApiLobbyPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
@@ -37,7 +47,8 @@ export default function ConvitePage({ params }: { params: Promise<{ code: string
   };
 
   const join = async () => {
-    if (!session || session.authMethod === 'demo') return login();
+    if (acao === 'loading') return;
+    if (acao === 'login') return login();
     setJoining(true);
     setError(null);
     try {
@@ -71,8 +82,14 @@ export default function ConvitePage({ params }: { params: Promise<{ code: string
         {error && <p role="alert" style={{ color: 'var(--red)' }}>{error}</p>}
       </Card>
       <div style={{ marginTop: 18 }}>
-        <Button full size="lg" disabled={!lobby || !hydrated || joining} onClick={() => void join()}>
-          {!hydrated ? t.salaLoading : joining ? t.lobbyJoining : session && session.authMethod !== 'demo' ? t.lobbyJoin : t.lobbyLoginToJoin}
+        <Button full size="lg" disabled={!lobby || acao === 'loading' || joining} onClick={() => void join()}>
+          {acao === 'loading'
+            ? t.salaLoading
+            : joining
+              ? t.lobbyJoining
+              : acao === 'join'
+                ? t.lobbyJoin
+                : t.lobbyLoginToJoin}
         </Button>
       </div>
     </Screen>

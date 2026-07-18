@@ -17,7 +17,8 @@ const EASE = 'cubic-bezier(.2,.7,.3,1)';
 export default function LoginPage() {
   const router = useRouter();
   const { t } = useI18n();
-  const { session, hydrated, enterDemo, startOnboarding, enterExisting } = useSession();
+  const { session, hydrated, enterDemo, startOnboarding, enterExisting, adocaoFalhou, retentarAdocao } =
+    useSession();
   const privy = usePrivyAuth();
   const [erro, setErro] = useState<string | null>(null);
   const entrando = useRef(false);
@@ -43,6 +44,13 @@ export default function LoginPage() {
       return;
     }
 
+    // A missing session is adopted by SessionProvider (which serves every route, not
+    // just this one); waiting for it avoids two concurrent `api.login()` for one DID.
+    // The effect re-runs once the session lands, and only then picks a destination.
+    if (!session) return;
+
+    // What remains is the fan on demo in this tab who already has a real Privy account:
+    // the provider never overwrites an existing session, so promotion stays this screen's job.
     if (entrando.current) return;
     entrando.current = true;
     const method = privy.wallets[0]?.source === 'external' ? 'wallet' : 'google';
@@ -77,6 +85,12 @@ export default function LoginPage() {
 
   const onSocial = async (method: 'google' | 'wallet') => {
     setErro(null);
+    // Someone already authenticated in Privy neither needs nor can log in again: what
+    // failed was /api/login. The tap becomes the retry button for session adoption.
+    if (privy.authenticated) {
+      retentarAdocao();
+      return;
+    }
     try {
       await (method === 'google' ? privy.loginWithGoogle() : privy.loginWithWallet());
       setTentativa((n) => n + 1);
@@ -248,7 +262,7 @@ export default function LoginPage() {
           <span>{t.demo}</span>
         </button>
 
-        {(erro || privy.stuck) && (
+        {(erro || adocaoFalhou || privy.stuck) && (
           <p
             role="alert"
             style={{
@@ -261,7 +275,7 @@ export default function LoginPage() {
               color: 'var(--red)',
             }}
           >
-            {privy.stuck ? t.loginStuck : erro}
+            {privy.stuck ? t.loginStuck : (erro ?? t.loginFailed)}
           </p>
         )}
 
