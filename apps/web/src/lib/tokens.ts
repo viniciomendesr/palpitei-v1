@@ -1,17 +1,4 @@
-/**
- * Acesso tipado aos tokens de peso da fonte.
- *
- * Por que existe: `fontWeight` do csstype só aceita número, 'bold'/'normal' e os
- * globais — não aceita `var(--*)`. Sem isto, toda tela precisaria de um cast, ou
- * (pior) alguém escreveria o número na mão. O cast mora aqui, uma vez.
- *
- * ATENÇÃO: `--fw-medium` é **600**, não os 500 de costume. Escrever 500 achando
- * que é "medium" dá um peso que não existe na escala — o mockup faz isso em
- * alguns pontos e nós NÃO reproduzimos o engano: onde ele diz 500, aqui é
- * fw.medium.
- *
- * Estes cinco são a escala inteira. Não existe outro peso.
- */
+/** Acesso tipado aos tokens de peso; `medium` é 600, não 500. */
 
 import type { CSSProperties } from 'react';
 

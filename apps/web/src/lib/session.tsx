@@ -1,19 +1,6 @@
 'use client';
 
-/**
- * Estado da sessão do fã.
- *
- * O `sessionStorage` é o CACHE da sessão, não a verdade: para quem entrou de
- * verdade (Google/carteira), a verdade é o Postgres — o motor liquida XP lá, o
- * onboarding grava o apelido lá. `refreshState()` puxa o GET /api/state e
- * realinha o cache; sem isso a tela mostrava o mock do storage para sempre e o
- * fã "perdia" no F5 o que o banco nunca perdeu. O modo demo (§5.1) é a exceção
- * DE PROPÓSITO: a conta de teste é local e não pode depender de rede.
- *
- * Regra do CONTEXT.md §4: o apelido NUNCA sai do e-mail — ele é público
- * (ranking/ligas) e derivá-lo do e-mail vaza o endereço da pessoa. Por isso
- * `nickname` começa vazio no cadastro novo e o onboarding pergunta.
- */
+/** Estado de sessão: cache local sincronizado ao servidor, com demo estritamente local. */
 
 import {
   createContext,
@@ -28,7 +15,7 @@ import {
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import type { ApiStats, ApiUser } from '@/lib/api';
 
-/** As duas primeiras cumprem "sign up through Solana"; `demo` é a conta de teste da §5.1. */
+/** `demo` é uma conta local; os demais métodos usam Privy. */
 export type AuthMethod = 'google' | 'wallet' | 'demo';
 export type AccountType = 'new' | 'existing';
 export type PlanId = 'anual' | 'mensal';
@@ -67,42 +54,27 @@ const BASE: Omit<SessionState, 'authMethod' | 'accountType'> = {
 
 const STORAGE_KEY = 'palpitei.session';
 
-/** Sair não pode depender de uma promise da Privy que talvez nunca settle (E14). */
+/** Evita bloquear logout caso a Promise da Privy não conclua. */
 const LOGOUT_TIMEOUT_MS = 10_000;
 
 interface SessionValue {
   session: SessionState | null;
   /** false até o primeiro efeito rodar — evita divergência de hidratação. */
   hydrated: boolean;
-  /** Modo demo: entra na hora, conta pronta, sem carteira (regra §5.1 do hackathon). */
+  /** Entra no modo demo local, sem carteira. */
   enterDemo: () => void;
-  /** Google/carteira: conta nova, vai pro onboarding escolher o apelido. */
+  /** Inicia onboarding para conta autenticada nova. */
   startOnboarding: (method: Exclude<AuthMethod, 'demo'>) => void;
-  /**
-   * Conta VELHA voltando: monta a sessão com o que o SERVIDOR devolveu no
-   * /api/login. É o que impede o retorno de virar "conta nova" — o fã que já
-   * tinha apelido caía no onboarding e o UNIQUE recusava o próprio nome (409).
-   */
+  /** Hidrata uma conta existente a partir da resposta autoritativa de login. */
   enterExisting: (method: Exclude<AuthMethod, 'demo'>, user: ApiUser) => void;
   update: (patch: Partial<SessionState>) => void;
-  /**
-   * XP que o MOTOR acabou de pagar (o `gained` do question_resolved). Soma no
-   * cache local para o contador da tela acompanhar o jogo; a verdade continua
-   * sendo o banco, que o próximo `refreshState` reconfirma.
-   */
+  /** Espelha no cache o XP pago pelo motor até a próxima sincronização. */
   addXp: (amount: number) => void;
-  /**
-   * Realinha o cache local com o GET /api/state (apelido, XP, nível, ligas…).
-   * No-op para o demo (local por regra) e sem Bearer. As telas que mostram
-   * números do fã chamam isto ao montar.
-   */
+  /** Sincroniza o cache com `/api/state`; demo e sessão sem Bearer são no-op. */
   refreshState: () => Promise<void>;
   /** Aproveitamento dos palpites (acertos/erros/anuladas), do último refresh. */
   serverStats: ApiStats | null;
-  /**
-   * Sai de verdade: derruba a sessão do app E a da Privy. Espere a promise
-   * ANTES de navegar — ver o porquê em `logout`, abaixo.
-   */
+  /** Encerra a sessão local e a da Privy antes de navegar. */
   logout: () => Promise<void>;
 }
 
@@ -112,23 +84,21 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   const [session, setSession] = useState<SessionState | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [serverStats, setServerStats] = useState<ApiStats | null>(null);
-  /** Uma sincronização em voo por vez — o refresh é idempotente, não precisa de fila. */
+  /** Uma sincronização por vez é suficiente porque refresh é idempotente. */
   const sincronizando = useRef(false);
 
-  // sessionStorage só depois de montar: ler no render divergiria do HTML do servidor.
+  // Leia sessionStorage somente após montar para preservar hidratação.
   useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
-        // Versões anteriores guardavam uma preferência de time que nunca era
-        // consumida pelo produto. Descartamos a chave ao hidratar para ela não
-        // sobreviver no cache local depois de o onboarding removê-la.
+        // Remove preferência legada que não é mais usada pelo produto.
         const stored = JSON.parse(raw) as SessionState & { favTeam?: unknown };
         const { favTeam: _legacyFavTeam, ...rest } = stored;
         setSession(rest);
       }
     } catch {
-      // storage bloqueado (aba privada) — segue sem sessão, o login resolve.
+      // Armazenamento indisponível: a autenticação ainda pode prosseguir.
     }
     setHydrated(true);
   }, []);

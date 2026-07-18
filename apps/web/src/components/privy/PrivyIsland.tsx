@@ -1,22 +1,6 @@
 'use client';
 
-/**
- * Ilha da Privy — portada de ../../palpitei-v0/web/privy-island.tsx, que é o
- * resultado de 14 achados (E1..E16). O que está aqui NÃO é escolha de estilo:
- * cada linha comentada abaixo custou horas na bancada e falha em SILÊNCIO.
- *
- * A app de produção (cmrnum7sz00ft0cjruc4dtkj2) foi verificada em 16/07 pela
- * config real — não pelo painel, que mente sobre estado salvo:
- *   curl -s https://auth.privy.io/api/v1/apps/$APP_ID -H "privy-app-id: $APP_ID"
- *   google_oauth: true · solana_wallet_auth: true
- *   embedded_wallet_config.solana.create_on_login: "users-without-wallets"
- *   allowed_domains: inclui localhost, dev mobile HTTPS e domínio de produção
- *   dev mobile com embedded wallet: use HTTPS e adicione "https://<ip-do-mac>:3000"
- *
- * ⚠ Antes do deploy: pôr o domínio de produção em Allowed origins. Sem isso o
- *   PrivyProvider renderiza null, SEM erro e SEM log — tela branca e muda para o
- *   jurado (E7). É por isso que o watchdog abaixo existe.
- */
+/** Ponte cliente da Privy: DID é a identidade; o watchdog torna falhas de boot visíveis. */
 
 import {
   createContext,
@@ -74,12 +58,12 @@ export interface PrivyAuth {
 
 const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? '';
 
-/** O PrivyProvider que não inicializa fica calado para sempre (E7). Este é o prazo. */
+/** Expõe falha de inicialização da Privy em vez de degradar silenciosamente. */
 const READY_TIMEOUT_MS = 8_000;
-/** A promise do exportWallet() só settla quando o usuário FECHA o modal (E14). */
+/** Impede que uma exportação cujo modal não abriu bloqueie a UI indefinidamente. */
 const EXPORT_TIMEOUT_MS = 20_000;
 
-/** Sem appId: a ilha não sobe, mas o modo demo (§5.1) não depende dela. */
+/** Sem appId, preserva o modo demo sem autenticação Privy. */
 const desligada: PrivyAuth = {
   ready: true,
   authenticated: false,
@@ -104,12 +88,7 @@ const desligada: PrivyAuth = {
 
 const PrivyContext = createContext<PrivyAuth>(desligada);
 
-/**
- * Carteiras Solana lidas das linked accounts — a MESMA fonte e o MESMO filtro que
- * o servidor usa, de propósito. `useWallets()` do /solana devolve carteiras
- * CONECTADAS, que não expõem walletClientType e por isso não distinguem a
- * embutida da externa (E3).
- */
+/** Lê carteiras Solana vinculadas, distinguindo a embutida da externa. */
 function carteirasSolana(user: ReturnType<typeof usePrivy>['user']): {
   embedded: WalletWithMetadata | null;
   externas: WalletWithMetadata[];
@@ -120,12 +99,7 @@ function carteirasSolana(user: ReturnType<typeof usePrivy>['user']): {
   );
   const embedded = solanas.find((w) => w.walletClientType === 'privy') ?? null;
 
-  // O MESMO endereço pode estar registrado DUAS vezes: como embutida e como
-  // externa, quando o fã exporta a chave, importa no Phantom e conecta. Não são
-  // duas carteiras — é a mesma, agora também no Phantom. Filtrar só por
-  // walletClientType não basta: tem que comparar ENDEREÇO, senão a UI lista a
-  // carteira do fã como "externa vinculada" a si mesma (E16). É também por isso
-  // que a identidade é o DID, nunca a carteira.
+  // O mesmo endereço pode ser embutido e externo; compare endereço para não duplicá-lo.
   const externas = solanas.filter(
     (w) => w.walletClientType !== 'privy' && w.address !== embedded?.address,
   );
@@ -136,11 +110,7 @@ function carteirasSolana(user: ReturnType<typeof usePrivy>['user']): {
   return { embedded, externas, tambemNoPhantom };
 }
 
-/**
- * Nome/e-mail servem somente para o fã reconhecer a própria conta no perfil.
- * O apelido público continua sendo escolhido no onboarding (E12), e o DID
- * continua sendo a única identidade da aplicação.
- */
+/** Nome e e-mail são privados no perfil; DID é a identidade e apelido é público. */
 function perfilDaConta(user: ReturnType<typeof usePrivy>['user']): PrivyProfile {
   const contas = user?.linkedAccounts ?? [];
   const google = contas.find((account) => account.type === 'google_oauth');
@@ -161,9 +131,7 @@ function Ponte({ children }: { children: ReactNode }) {
   const { embedded, externas, tambemNoPhantom } = carteirasSolana(user);
   const profile = perfilDaConta(user);
 
-  // Watchdog: com origem não liberada, appId errado ou rede fora, o
-  // PrivyProvider fica em branco e calado PARA SEMPRE (E7). Sem isto ninguém
-  // descobre — descobre o jurado, na frente do vídeo.
+  // Watchdog para origem inválida, appId incorreto ou indisponibilidade de rede.
   const readyRef = useRef(false);
   useEffect(() => {
     if (ready) readyRef.current = true;
@@ -183,20 +151,7 @@ function Ponte({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(t);
   }, []);
 
-  /**
-   * O provider é registrado UMA vez e lê o estado por ref. Parece rebuscado e não é.
-   *
-   * Registrar dentro de um efeito que depende de `authenticated` abre uma janela
-   * de um ciclo: o React roda efeitos de BAIXO PRA CIMA, então a tela (filha)
-   * dispara o fetch antes de esta ilha (mãe) registrar o provider novo — e o que
-   * está registrado ainda é o closure velho, que capturou `authenticated: false`
-   * e devolve null. O Bearer não vai, o servidor recusa com 401, e o fã LOGADO lê
-   * "sem sessão verificada". Só o segundo fetch acertava.
-   *
-   * Com deps `[]` o provider nunca fica obsoleto: a identidade é estável e os
-   * valores saem das refs, sempre frescos. É a mesma família do E7/E14 — a Privy
-   * não erra alto, ela erra fora de hora.
-   */
+  /** Provider estável lê refs atuais para evitar uma janela de Bearer obsoleto. */
   const authRef = useRef(authenticated);
   authRef.current = authenticated;
   const getTokenRef = useRef(getAccessToken);
@@ -207,18 +162,14 @@ function Ponte({ children }: { children: ReactNode }) {
     return getTokenRef.current();
   }, []);
 
-  // O cliente REST assina toda requisição com este Bearer. O servidor resolve o
-  // usuário pelo DID verificado — body.userId NUNCA (CONTEXT.md §4).
+  // O cliente envia Bearer; o servidor deriva identidade apenas do DID verificado.
   useEffect(() => {
     setAuthTokenProvider(tokenProvider);
   }, [tokenProvider]);
 
   const doExport = useCallback(async () => {
     if (!embedded) return;
-    // A chave é remontada fora do nosso alcance: nem o Palpitei nem a Privy veem
-    // a chave inteira. A promise resolve quando o fã FECHA o modal — mas se o
-    // modal não abrir, ela nunca settla e o botão morre em "Abrindo…" para
-    // sempre. try/finally não salva; só a corrida com timeout salva (E14).
+    // O timeout libera a UI se o modal de exportação não abrir.
     await Promise.race([
       exportSolana({ address: embedded.address }),
       new Promise((_, rej) =>
@@ -233,12 +184,7 @@ function Ponte({ children }: { children: ReactNode }) {
       authenticated,
       did: user?.id ?? null,
       profile,
-      // `stuck` só vale enquanto a Privy NÃO subiu. O timer é de mão única
-      // (setStuck(true) e nunca false), então numa conexão lenta a ilha ficava
-      // pronta em 9s, o login funcionava — e o alerta vermelho continuava na
-      // tela para sempre, empurrando o fã para o demo sem motivo. Pior: como o
-      // login (page.tsx) renderiza `stuck ? loginStuck : erro`, a trava também
-      // mascarava todo erro real dali em diante. Se ficou pronta, não travou.
+      // Um watchdog anterior não permanece ativo após a SDK ficar pronta.
       stuck: stuck && !ready,
       enabled: true,
       tambemNoPhantom,
@@ -247,13 +193,11 @@ function Ponte({ children }: { children: ReactNode }) {
         ...externas.map((w) => ({ address: w.address, source: 'external' as const })),
       ],
       getAccessToken: tokenProvider,
-      // Opção A (padrão): Google/e-mail → carteira Solana embutida provisionada
-      // automaticamente. É o critério nº 1 da trilha: sem seed phrase, sem instalar nada.
+      // Login social pode provisionar a carteira Solana embutida.
       loginWithGoogle: async () => {
         login({ loginMethods: ['google', 'email'] });
       },
-      // Opção B: abre o modal já na lista de carteiras — extensão no desktop,
-      // deeplink/QR no mobile. Quem faz o trabalho sujo são os connectors de Solana.
+      // Login por carteira usa conectores Solana no desktop e mobile.
       loginWithWallet: async () => {
         login({ loginMethods: ['wallet'], walletChainType: 'solana-only' });
       },
@@ -281,46 +225,28 @@ function Ponte({ children }: { children: ReactNode }) {
 }
 
 export function PrivyIsland({ children }: { children: ReactNode }) {
-  // Sem appId a ilha inteira sai do caminho — o modo demo continua entrando, que
-  // é justamente o ponto dele (o jurado testa sem carteira e sem custo, §5.1).
+  // Sem appId, o modo demo continua disponível.
   if (!APP_ID) {
     return <PrivyContext.Provider value={desligada}>{children}</PrivyContext.Provider>;
   }
 
-  // No browser, `http://localhost` é uma exceção e conta como contexto seguro.
-  // `http://<ip-da-lan>` não conta. A Privy rejeita embedded wallet fora de
-  // contexto seguro porque depende de WebCrypto; sem este guard, abrir pelo
-  // celular via IP derruba a página inteira antes de mostrar qualquer UI.
+  // Carteira embutida exige contexto seguro fora de localhost.
   const canUseEmbeddedWallet = typeof window === 'undefined' || window.isSecureContext;
 
   return (
     <PrivyProvider
       appId={APP_ID}
       config={{
-        // Apple fora de propósito: é porta de mão única — a credencial padrão da
-        // Privy NÃO migra, e trocar depois exige app nova + migrar todo mundo
-        // (E8). O Google já prova o fluxo: a carteira embutida não depende de
-        // qual OAuth trouxe o fã.
+        // Apple não está configurado para esta integração.
         loginMethods: ['google', 'email', 'wallet'],
         appearance: {
           theme: 'dark',
           accentColor: '#C8F13F', // --lime
           walletChainType: 'solana-only',
-          // Phantom primeiro reduz ambiguidade no celular: no Safari/Chrome
-          // mobile, a Privy cai no conector/deeplink disponível para essa
-          // carteira; no desktop ainda aparecem extensões Solana detectadas.
+          // Phantom é priorizada; extensões Solana detectadas continuam disponíveis.
           walletList: ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'],
         },
-        // O default da Privy é 'off' → o login social FUNCIONA e o fã entra SEM
-        // carteira Solana: o requisito "sign up through Solana" cai calado (E2).
-        //
-        // 'users-without-wallets' (e NÃO 'all-users') é o que desenha as duas
-        // opções sem sobreposição: quem entra por Google não tem carteira →
-        // ganha a embutida (Opção A); quem entra com a Phantom já tem a dele →
-        // NÃO ganha embutida, e a dele é a identidade (Opção B, autocustódia).
-        // Com 'all-users' o fã da Opção B ganhava uma embutida que não pediu (E11).
-        //
-        // Na divergência entre isto e o painel, VALE ISTO.
+        // Não use `all-users`: só usuários sem carteira recebem uma embutida.
         ...(canUseEmbeddedWallet
           ? { embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' as const } } }
           : {}),

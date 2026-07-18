@@ -1,29 +1,4 @@
-/**
- * A sala ao vivo — onde o motor de perguntas encontra o feed da TxLINE.
- *
- * Vive no MÓDULO, e é de propósito: uma sala é um processo com relógio andando,
- * não uma consulta. O `next dev`/`next start` é um processo Node só, então o Map
- * abaixo é o servidor de salas. (Em serverless isto não sobrevive — é a decisão
- * a revisitar no deploy, não aqui.)
- *
- * ─── por que o relógio é assim, e não do jeito óbvio ───
- *
- * O jeito óbvio seria derivar a posição do replay do relógio de PAREDE:
- * `cursor = kickoff + (agora - entrou) * speed`. É errado, e o v0 pagou para
- * descobrir (B2): o ReplayRunner COMPRIME os buracos (pré-jogo, intervalo) para
- * no máximo 2s reais, então em minutos de jogo o relógio de parede diverge do
- * agendador — e começa a fechar janelas de palpite sozinho, antes de o fã poder
- * reagir. Por isso o `cursorClock` ancora no ÚLTIMO EVENTO EMITIDO e só
- * interpola dali. Quem manda no tempo é o feed; o relógio de parede só preenche
- * o intervalo entre dois eventos.
- *
- * ─── por que o servidor decide, e não o cliente ───
- *
- * O motor podia rodar no browser (o core é puro). Não pode: o palpite vale XP no
- * ranking público, e cliente que decide o próprio XP é fraude trivial atrás de
- * um link (CONTEXT §4). A identidade é o DID verificado; a janela do palpite é o
- * relógio DESTA sala. O cliente só recebe e mostra.
- */
+/** Sala autoritativa: o servidor ancora o relógio no feed e decide XP. */
 
 import {
   OddsExplainer,
@@ -84,12 +59,7 @@ export type RoomState = {
   score: { p1: number; p2: number };
   /** Minuto do relógio do FEED. null antes do apito. */
   minute: number | null;
-  /**
-   * A ÂNCORA do relógio na tela: segundos de jogo do último evento que trouxe
-   * relógio. Com `replaySpeed`, o cliente interpola o minuto ENTRE eventos —
-   * antes o badge congelava no 0’ e saltava para o 6’ no escanteio seguinte.
-   * A disciplina é a do cursorClock (B2): o evento re-ancora, a parede preenche.
-   */
+  /** Segundos de jogo do último evento com relógio; o cliente interpola a partir daqui. */
   clockSeconds: number | null;
   /** Minutos de jogo por segundo real (12 no replay padrão; 1 ao vivo). */
   replaySpeed: number;
@@ -98,57 +68,24 @@ export type RoomState = {
   finished: boolean;
   questions: Question[];
   feed: { minute: number | null; action: string; goals: { p1: number; p2: number } | null }[];
-  /**
-   * O bloco `Score.Total` acumulado, chave a chave. Vazio até o primeiro evento
-   * com Score — e vazio é a leitura honesta: a partida ainda não trouxe total
-   * nenhum. Quem preencher com zeros aqui inventa estatística (G6).
-   *
-   * O conjunto de chaves é DESTA partida, não uma lista fixa: medido no England
-   * × Argentina, o Total inteiro é `{ Goals, Corners, YellowCards }` — sem
-   * `Shots`, sem `Possession`. A UI mostra o que vier; nada mais.
-   */
+  /** Totais acumulados por chave do feed; chaves ausentes não viram zero. */
   totals: { p1: Record<string, number>; p2: Record<string, number> };
-  /**
-   * As leituras do explicador de cotação, mais recente PRIMEIRO (cap 60).
-   * Cada uma nasce de um evento de odds REAL que moveu a chance — nunca de
-   * relógio ou de chute (G6): sem dado, o array fica vazio e vazio é a verdade.
-   */
+  /** Leituras de odds emitidas, da mais recente para a mais antiga (cap 60). */
   chances: LeituraDeChance[];
 };
 
-/**
- * Um assinante é uma CONEXÃO DE UM FÃ, não um canal genérico — e isso não é
- * detalhe: o contrato do §8 (lib/api.ts) é escrito na primeira pessoa.
- * `question_resolved` manda `gained`, o XP DAQUELE fã; o motor, por dentro,
- * emite `results[]` com o palpite e o XP de TODO MUNDO na sala.
- *
- * Traduzir por assinante é o que faz o contrato ser cumprido e, de quebra, evita
- * transmitir para cada fã o que os outros palpitaram e quanto ganharam.
- */
+/** Assinante individual; mensagens personalizadas não expõem resultados alheios. */
 type Sub = { userId: string | null; enviar: (msg: RoomMessage) => void };
 
 type Room = {
   fixtureId: number;
   /** Código do grupo: dois convites da mesma fixture nunca compartilham runner. */
   partyId: string;
-  /**
-   * Sala de TREINO: a mesma partida, o mesmo motor — e XP sempre 0, para
-   * TODO MUNDO, com NADA persistido. Sala valendo sempre paga normalmente,
-   * inclusive em replays repetidos e parties diferentes da mesma fixture.
-   */
+  /** Treino não persiste nem concede XP. */
   treino: boolean;
-  /**
-   * Os FATOS do jogo no instante em que cada pergunta liquidou (minuto, placar,
-   * escanteios). É a matéria-prima da explicação na tela de resultado — o
-   * cliente redige o texto; aqui só se registra o que o feed dizia. Capturado
-   * no emit porque `Question` não guarda o estado do jogo, só o veredito.
-   */
+  /** Fatos do feed no instante da liquidação, usados pela explicação da UI. */
   fatos: Map<string, FatosDaResolucao>;
-  /**
-   * O último 1X2 conhecido, por opção da final_result. É DAQUI que sai o pct
-   * das opções — só para essa pergunta, que é o mesmo mercado. Chave ausente =
-   * o feed ainda não cotou = null na tela (G8: desconhecido nunca vira 0).
-   */
+  /** Último 1X2 por opção; ausência permanece `null` na UI. */
   pct1x2: Pct1x2;
   engine: QuestionEngine;
   /** null na sala AO VIVO: o alimentador é o canal (live.ts), não o runner. */
@@ -156,22 +93,13 @@ type Room = {
   ports: EnginePorts;
   db: Db;
   cursor: ReplayCursor;
-  /** O relógio DESTA sala — o mesmo que o motor usa. É ele que converte
-   *  "quanto falta da janela" em ms REAIS para quem entra no meio do jogo. */
+  /** Relógio usado pelo motor e para converter prazos para tempo real. */
   clock: Clock;
   state: RoomState;
   subs: Set<Sub>;
-  /**
-   * O ranking DESTA sala: XP ganho nesta partida, por fã. Não é o global —
-   * `users.xp` é a soma da vida inteira e entrar numa sala no segundo tempo não
-   * pode parecer disputa perdida. Vive aqui, com a sala, e morre com ela.
-   */
+  /** XP desta sala, não o acumulado global do fã. */
   xpDaSala: Map<string, number>;
-  /**
-   * O apelido de cada fã, como o motor o viu no palpite. É o ÚNICO nome que sai
-   * daqui para o browser (E12: o e-mail nunca vira apelido, e o userId interno
-   * não é da conta de terceiros).
-   */
+  /** Apelidos públicos; e-mail e identificadores internos não saem para a UI. */
   apelidos: Map<string, string>;
   /** Timer da carência: sala vazia espera antes de morrer (um F5 não é adeus). */
   desligar: ReturnType<typeof setTimeout> | null;
@@ -190,20 +118,12 @@ export type FatosDaResolucao = {
 };
 
 const salas = new Map<string, Room>();
-/** A promessa entra no Map ANTES do primeiro await: duas visitas simultâneas
- * compartilham a mesma criação, o mesmo runner e os mesmos questionIds. */
+/** Promessas em voo evitam duas criações simultâneas da mesma sala. */
 const salasEmCriacao = new Map<string, Promise<Room | null>>();
 
 const ehScore = (ev: NormEvent): ev is ScoreEvent => ev.kind === 'score';
 
-/**
- * Portas da sala de TREINO: interface idêntica, persistência NENHUMA.
- *
- * Não é preguiça — é a regra do treino inteira num lugar só: sem linhas em
- * `questions`/`predictions`, o treino (1) não infla XP/aproveitamento do
- * perfil e (2) não deixa pergunta órfã em 'open' quando a sala morre no meio.
- * O motor continua vendo palpites normalmente: eles vivem na memória dele.
- */
+/** Portas de treino: exercitam o motor sem persistir perguntas, palpites ou XP. */
 function portsDeTreino(): EnginePorts {
   let n = 0;
   return {
@@ -221,14 +141,10 @@ function portsDeTreino(): EnginePorts {
 async function criarSala(fixtureId: number, treino: boolean, partyId: string): Promise<Room | null> {
   const db = createDb();
 
-  // O ramo AO VIVO: a mesma sala, o mesmo motor — muda o alimentador (o canal
-  // de live.ts em vez do ReplayRunner) e a velocidade (1×). Decidido pelo canal
-  // ATIVO, não pelo env cru: as três travas moram em live-regras.ts.
+  // O canal ativo, não a env crua, decide entre ingestão ao vivo e replay.
   const aoVivo = fixtureTemCanalAoVivo(fixtureId);
 
-  // Assinar ANTES de ler o banco: o que chegar durante a leitura fica no buffer
-  // e entra depois do catch-up, dedupado por seq/messageId. Assinar depois
-  // deixaria um vão entre a foto do banco e o primeiro evento roteado.
+  // Assina antes da leitura para não perder eventos entre o snapshot e o catch-up.
   const bufferDoCatchUp: NormEvent[] = [];
   let entregar: (ev: NormEvent) => void = (ev) => bufferDoCatchUp.push(ev);
   const desassinar = aoVivo ? assinarCanalAoVivo(fixtureId, (ev) => entregar(ev)) : null;
@@ -240,41 +156,29 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     return null;
   }
   const eventos = await createEventRepo(db).listReplayByFixture(fixtureId);
-  // No replay, timeline vazia é 404 honesto. Ao vivo é o ESPERADO no apito
-  // inicial: a sala nasce vazia e espera o feed — nunca inventa dado (regra 4).
+  // Replay sem timeline é inválido; ao vivo pode começar sem eventos.
   if (!eventos.length && !aoVivo) {
     await db.close?.();
     return null;
   }
 
-  // A série 1X2 vem numa projeção normalizada compacta: o `raw` permanece no
-  // banco para auditoria e reprocessamento, sem penalizar a abertura da sala.
-  // O mapper preserva G8 (Prices vazio/desalinhado é ausente, nunca zero).
+  // Odds vêm da projeção normalizada; ausência de preço não é chance zero.
   const odds: OddsEvent[] = await createOddsRepo(db).listReplayByFixture(fixtureId);
-  // Uma linha do tempo só: no empate de ts o lance vem ANTES da cotação — o
-  // explicador precisa do contexto ("depois do gol") já registrado quando ela
-  // passar por ele.
+  // No empate de timestamp, o lance precede a cotação para preservar o contexto.
   const linhaDoTempo = mesclarLinhaDoTempo(eventos, odds);
 
-  // A régua dos contadores é DESTA partida, então o filtro nasce com a sala.
   const ehLance = criarFiltroDeLances();
-  // O prefixo da rota é a fonte única da política: treino não persiste; qualquer
-  // replay valendo persiste e paga, mesmo que este fã já tenha jogado a fixture.
+  // A política centraliza a diferença entre treino e partidas valendo XP.
   const politica = politicaDaSala(treino);
   const ports = politica.persiste ? createEnginePorts(db) : portsDeTreino();
-  // Âncora do relógio: no replay, o primeiro evento da timeline. Ao vivo, antes
-  // do primeiro evento, o start_ts da fixture semeada — explícito para nunca
-  // virar NaN calado (clock.now() = NaN quebraria as janelas do motor SEM
-  // erro). O primeiro evento real re-ancora, como sempre.
+  // Ao vivo sem eventos usa o kickoff; o primeiro evento real reancora o relógio.
   const cursor: ReplayCursor = {
     matchTs: linhaDoTempo.length ? linhaDoTempo[0]!.ts : fixture.startTime ?? Date.now(),
     realAt: Date.now(),
   };
-  // Ao vivo a speed é a CONSTANTE 1 — nunca a env: o default 60 vivo em dois
-  // lugares independentes é a armadilha já paga do §11.
+  // Partida ao vivo sempre usa velocidade 1, independente da env de replay.
   const clock = cursorClock(cursor, aoVivo ? 1 : REPLAY_SPEED);
-  // No replay, impede a interpolação do browser de ultrapassar o último
-  // relógio REAL da TxLINE. Ao vivo fica sem teto: eventos futuros ainda virão.
+  // Replay limita a interpolação ao último relógio recebido; ao vivo não tem teto.
   const clockMaxSeconds = eventos.reduce<number | null>(
     (max, event) => typeof event.clockSeconds === 'number' ? Math.max(max ?? 0, event.clockSeconds) : max,
     null,
@@ -284,9 +188,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     fixtureId,
     teamA: fixture.p1,
     teamB: fixture.p2,
-    // Ao vivo o selo é EXPLÍCITO, não herdado do cache_source: cinto-e-
-    // suspensório contra escrita futura por cima (o cache:match pós-jogo grava
-    // 'txline-updates' via coalesce) — rótulo de proveniência que mente é o G6.
+    // O selo ao vivo não é herdado de um possível cache pós-jogo.
     source: aoVivo
       ? 'txline-live'
       : (fixture as { cacheSource?: string }).cacheSource ?? 'txline-cache',
@@ -323,10 +225,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     encerrar: () => {},
   };
 
-  /**
-   * Traduz uma mensagem do motor para o evento do §8 QUE ESTE FÃ deve receber.
-   * `null` = não é da conta dele.
-   */
+  /** Traduz uma mensagem do motor para o evento visível a este fã. */
   /** Só a sala explicitamente marcada como treino fica sem pagamento. */
   const semXpPara = (): boolean => !politica.pagaXp;
 
@@ -339,26 +238,17 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         type: 'question_open',
         ts,
         questionId: q.id,
-        // O TIPO da pergunta (next_goal/hilo_corners/final_result). A tela usa
-        // como rótulo do card. Vai como `qtype` porque `type` já é o nome do
-        // EVENTO no envelope do §8 — dois `type` no mesmo objeto é confusão
-        // garantida na primeira leitura.
+        // `type` já identifica o evento SSE; o tipo da pergunta segue em `qtype`.
         qtype: q.type,
         prompt: q.prompt,
-        // `pct` SÓ na final_result, do último 1X2 conhecido — é o MESMO mercado,
-        // e os ids das opções (p1/draw/p2) são as chaves do mapa. Opção que o
-        // feed ainda não cotou fica null (G8: desconhecido nunca vira 0), e os
-        // outros tipos de pergunta não têm mercado correspondente: null sempre.
+        // Só `final_result` usa 1X2; opção ainda não cotada segue `null`.
         options: q.options.map((o) => ({
           id: o.id,
           label: o.label,
           pct:
             q.type === 'final_result' ? sala.pct1x2[o.id as keyof Pct1x2] ?? null : null,
         })),
-        // Quanto vale, do próprio motor — nunca uma tabela copiada aqui.
-        // É o PISO: quem palpita na primeira metade da janela leva 1.5x, e o
-        // resultado revela o valor real. Piso não é mentira; número inventado é.
-        // No treino, o piso honesto é 0; todo replay valendo anuncia o XP real.
+        // O piso de XP vem do motor; treino sempre anuncia zero.
         xp: semXpPara() ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
         closesAt: q.closesAt,
         closesInRealMs: msg.closesInRealMs as number,
@@ -378,13 +268,11 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         ts,
         questionId: q.id,
         correctOptionId: q.correct,
-        // Os RÓTULOS das opções e os fatos do instante: é com eles que a tela
-        // diz "Você: England · Certo: Argentina — gol aos 63’". Sem os rótulos
-        // o resultado falava por id; sem os fatos, não explicava nada.
+        // A UI recebe rótulos e fatos, não somente identificadores.
         options: q.options.map((o) => ({ id: o.id, label: o.label })),
         facts: sala.fatos.get(q.id) ?? null,
         qtype: q.type,
-        // Sem palpite meu, `gained` é 0 — e é verdade: não ganhei nada.
+        // Sem palpite deste fã, o ganho é zero.
         gained: meu?.awardedXp ?? 0,
       };
     }
@@ -406,7 +294,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       return { type: 'game_end', ts, scoreA: state.score.p1, scoreB: state.score.p2 };
     }
 
-    // `log` e o que mais o motor emitir para si mesmo não é evento de fã.
+    // Mensagens internas do motor não são eventos de fã.
     return null;
   };
 
@@ -422,7 +310,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     }
   };
 
-  /** Eventos que já nascem no formato do §8 e são iguais para todo mundo. */
+  /** Eventos SSE compartilhados por todos os assinantes. */
   const publicarBruto = (msg: RoomMessage) => {
     for (const sub of sala.subs) {
       try {
@@ -441,18 +329,13 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     if (sala.watchdog) clearTimeout(sala.watchdog);
     sala.watchdog = null;
     publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
-    // O servidor fecha o lobby mesmo sem a aba do anfitrião conectada.
+    // O servidor fecha o lobby mesmo sem a aba do anfitrião.
     void createLobbyRepo(db).markFinishedBySystem(partyId).catch(() => {});
     void ports.flush().catch(() => {});
     if (sala.subs.size === 0) agendarLimpezaFinal(sala);
   };
 
-  /**
-   * O explicador de cotação (core, determinístico): só fala quando a chance
-   * MOVEU de verdade (limiar de 3 p.p.) — é ele o dono do limiar, não a sala.
-   * Cada emissão vira uma LeituraDeChance no estado (para quem entrar depois)
-   * e um broadcast igual para todo mundo (não há nada de 1ª pessoa aqui).
-   */
+  /** O core define as emissões de chance; a sala as armazena e transmite. */
   const explicador = new OddsExplainer({
     fixture,
     emit: (msg) => {
@@ -464,31 +347,21 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         priceName: msg.priceName as string,
         fromPct: msg.fromPct as number,
         toPct: msg.toPct as number,
-        // `text` é a frase pt que o core já emite — fallback/log; a tela
-        // redige a própria frase bilíngue pelos campos estruturados.
+        // Texto é fallback; a UI prefere os campos estruturados para traduzir.
         text: msg.text as string,
       };
-      // Ausente ≠ undefined serializado: sem lance na janela, a chave nem viaja.
+      // Omitir contexto é diferente de serializar um valor inexistente.
       if (msg.contextAction) leitura.contextAction = msg.contextAction as string;
       registrarLeitura(state.chances, leitura);
       publicarBruto({ type: 'odds_explain', ...leitura });
     },
   });
 
-  /**
-   * Acumula no ranking da sala o que o MOTOR pagou. `awardedXp` é o veredito
-   * dele — aqui não se recalcula nada: recontar o bônus de velocidade a partir
-   * do `result` daria uma segunda tabela de XP, e duas tabelas divergem.
-   *
-   * Anulada (`void`) também entra, com 0: quem palpitou está na sala e some do
-   * ranking seria mentira por omissão. 0 XP é a verdade, não é ausência.
-   */
+  /** Acumula o XP decidido pelo motor, sem recalcular bônus na camada de sala. */
   const registrarNoRanking = (results: ResolvedResult[]) => {
     for (const r of results) {
       sala.xpDaSala.set(r.userId, (sala.xpDaSala.get(r.userId) ?? 0) + r.awardedXp);
-      // O motor manda '' quando o fã ainda não escolheu apelido (paraCore não
-      // coage NULL) e '?' quando não achou o fã. Nenhum dos dois pode APAGAR um
-      // apelido que já conhecíamos — e nenhum dos dois vira nome na tela.
+      // Valores sentinela não apagam nem viram apelido público.
       if (r.handle && r.handle !== '?') sala.apelidos.set(r.userId, r.handle);
     }
   };
@@ -508,33 +381,19 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     fixture,
     clock,
     ports,
-    // Só a sala de treino explícita não paga. IDs novos por runner mantêm cada
-    // nova execução elegível; o banco continua idempotente dentro da pergunta.
+    // Só treino não paga; persistência mantém idempotência por pergunta.
     pagaXp: () => politica.pagaXp,
     emit: (msg) => {
-      // O core NÃO conhece a porta saveQuestion (o contrato dele tem só
-      // uid/savePrediction/saveBet). Sem gravar a pergunta aqui, o primeiro
-      // palpite estoura FK: predictions referencia questions.
-      //
-      // E tem que gravar de novo ao RESOLVER/ANULAR. Gravar só na abertura
-      // deixava `questions.state` em 'open' para sempre: medido, 101 perguntas
-      // no banco e nenhuma fora de 'open', com a partida terminada e os palpites
-      // já liquidados. O `correct` e o `voidReason` também nunca chegavam. Quem
-      // lesse a tabela veria uma partida inteira "em aberto" — e é dela que o
-      // ranking e o histórico vão sair.
+      // Persiste abertura e desfecho: predictions dependem da pergunta e o estado final é auditável.
       if (msg.question && (msg.type === 'question_open' || msg.type === 'question_resolved' || msg.type === 'question_void')) {
         ports.saveQuestion(msg.question as Question);
       }
       if (msg.type === 'game_end') state.finished = true;
       state.questions = sala.engine.allQuestions();
-      // O ranking se move ANTES de o evento sair: quem receber o
-      // `question_resolved` e pedir o ranking no mesmo tick tem que ver o XP
-      // que acabou de ganhar já contado.
+      // Atualiza o ranking antes de publicar a resolução.
       if (msg.type === 'question_resolved' || msg.type === 'question_void') {
         registrarNoRanking((msg.results ?? []) as ResolvedResult[]);
-        // Os FATOS do instante da liquidação — é deles que a tela redige a
-        // explicação ("gol aos 63’ — 1×0"). Escanteio sai do Total acumulado;
-        // sem a chave, null (ausente ≠ zero, G7/A4 — não se inventa 0×0).
+        // Fatos da liquidação usam totais acumulados; escanteios ausentes seguem `null`.
         const c1 = state.totals.p1.Corners;
         const c2 = state.totals.p2.Corners;
         sala.fatos.set((msg.question as Question).id, {
@@ -547,11 +406,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       if (msg.type === 'question_resolved' || msg.type === 'question_void') {
         publicarRanking();
       }
-      // Ao vivo não há runner com onDone: o fim vem do próprio feed
-      // (game_finalised → game_end no motor). `replay_done` continua sendo o
-      // evento que encerra a tela (§8) — renomear contrato a 24h do jogo é
-      // risco gratuito. Depois do publicar: no replay o game_end também chega
-      // antes do replay_done.
+      // Ao vivo encerra pelo feed, mas conserva o contrato SSE `replay_done`.
       if (msg.type === 'game_end' && aoVivo) {
         finalizarSala();
         void createMatchRepo(db)
@@ -563,22 +418,13 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     },
   });
 
-  /**
-   * O corpo por evento da sala — UMA regra, dois alimentadores: o ReplayRunner
-   * (replay) e o barramento do canal ao vivo (live). Extraído do closure do
-   * runner de propósito: a alternativa (copiar o handler para o caminho live)
-   * é o bug nº 1 do projeto — a regra do lance já divergiu uma vez entre dois
-   * lugares, e `lances.ts` existe por causa disso.
-   */
+  /** Processa eventos de replay e ao vivo pelo mesmo caminho. */
   const processarEvento = (ev: NormEvent): void => {
-    // A ÂNCORA. Tem que ser atualizada ANTES de o motor rodar: é ela que
-    // define o "agora" da partida para abrir e fechar janelas.
+    // Atualize a âncora antes do motor calcular janelas.
     cursor.matchTs = ev.ts;
     cursor.realAt = Date.now();
 
-    // Cotação alimenta o explicador e o pct da final_result — e NADA MAIS:
-    // não passa pelo motor de perguntas, nem pelo filtro de lances, nem
-    // encosta em placar/totais. Odds movem chance; quem move jogo é o placar.
+    // Odds atualizam chances, nunca placar, totais ou perguntas.
     if (ev.kind === 'odds') {
       atualizarPct1x2(sala.pct1x2, ev);
       explicador.onOddsEvent(ev);
@@ -587,26 +433,10 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
 
     if (!ehScore(ev)) return;
     sala.engine.onScoreEvent(ev);
-    // O explicador só guarda o ÚLTIMO lance como contexto ("depois do gol").
+    // O explicador guarda o último lance como contexto.
     explicador.onScoreEvent(ev);
 
-    // `hasScore` NÃO basta para mover o placar, e a diferença é a distância
-    // entre 1 × 2 e 0 × 0 no meio do jogo.
-    //
-    // Medido nesta partida: 23 dos 47 eventos com `hasScore: true` trazem o
-    // bloco `Total` SEM a chave `Goals` — e, sem a chave, `ev.goals` vem
-    // {0,0} de placeholder. As chaves entram no Total DURANTE o jogo (a de
-    // `Goals` só aparece no 1º gol, seq 539); antes disso o Total vem vazio.
-    //
-    // Aqui o A4 entra pela porta do G7: dentro do Total, chave ausente É zero
-    // (G7) — mas um Total que não fala de gols não está dizendo "0 a 0", está
-    // calado. Confiar no `hasScore` sozinho faz o placar REGREDIR ao primeiro
-    // evento pós-gol cujo Total não cite `Goals`.
-    //
-    // Nesta partida isso não acontece (depois do seq 539 a chave nunca mais
-    // falta), e é por isso que o placar fecha 1 × 2. Isso é SORTE DESTA
-    // PARTIDA, não garantia — e o France × England é outra partida. Só move o
-    // placar quem realmente fala de gols.
+    // `hasScore` sem `Goals` não informa 0–0: evite regredir o placar com placeholders.
     const falaDeGols =
       ev.totals?.p1?.Goals !== undefined || ev.totals?.p2?.Goals !== undefined;
     const mudou =
@@ -619,17 +449,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       state.clockSeconds = ev.clockSeconds;
     }
 
-    // Os totais só valem com o bloco Score (A4): sem ele não há Total nenhum,
-    // e sobrescrever aqui zeraria a aba inteira num evento de lineup.
-    //
-    // MERGE por chave, nunca `state.totals = ev.totals`. As chaves entram no
-    // Total ao longo do jogo, não no apito: medido nesta partida, `Goals` só
-    // aparece no 1º gol (seq 539) — dos 47 eventos com Score, 24 têm `Goals`,
-    // 46 têm `Corners` e o primeiro (seq 76) traz o Total VAZIO. Trocar o mapa
-    // inteiro faria a linha de Gols piscar e sumir a cada evento que não a
-    // trouxesse: é o G7 na tela ("chave ausente = zero → linhas somem"). Como
-    // são contadores acumulados do feed (medido: zero regressões), a última
-    // leitura de cada chave é a verdade dela.
+    // Totais do feed são parciais: faça merge por chave e nunca sobrescreva o mapa.
     if (ev.hasScore && ev.totals) {
       state.totals = {
         p1: { ...state.totals.p1, ...ev.totals.p1 },
@@ -649,18 +469,13 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         type: 'score_event',
         ts: ev.ts,
         minute: state.minute,
-        // A âncora nova do relógio da tela — null quando ESTE evento não
-        // trouxe relógio (a âncora anterior continua valendo lá).
+        // Sem relógio neste evento, o cliente conserva a âncora anterior.
         clockSeconds: typeof ev.clockSeconds === 'number' ? ev.clockSeconds : null,
-        // Ausente NAO e zero (A4): so mando placar quando o bloco Score veio.
-        // null diz "nao mudou"; quem renderizar `?? 0` da gol fantasma.
+        // `null` indica placar não informado neste evento, não zero.
         scoreA: mudou ? state.score.p1 : null,
         scoreB: mudou ? state.score.p2 : null,
         lance,
-        // O ACUMULADO inteiro, não o delta — e é de propósito. Todo evento que
-        // mexe nos totais nesta partida também vira lance (medido: 0 exceções),
-        // mas se um dia não virar, o snapshot seguinte conserta a tela sozinho.
-        // Delta perdido no caminho ficaria errado para sempre.
+        // Envia o acumulado para a UI se recuperar de qualquer evento perdido.
         totals: state.totals,
       });
     }
@@ -686,19 +501,14 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
   };
 
   if (aoVivo) {
-    // Catch-up SÍNCRONO pela foto do banco, no MESMO processarEvento (fast-
-    // forward: o engine abre/fecha/resolve pelos ts dos eventos, como no
-    // replay) — com o dedupe de kickoff na frente: o feed manda o kickoff em
-    // par e, a 1×, o par fecharia a final_result ~3s depois de abrir (o guard
-    // de janela mínima do motor é inerte a speed <= 1). Ver lances.ts.
+    // Reaplica o snapshot pelo mesmo handler e deduplica kickoff antes do catch-up.
     const ehKickoffDuplicado = criarDedupeDeKickoff();
     const aoEvento = (ev: NormEvent): void => {
       if (ev.kind === 'score' && ehKickoffDuplicado(ev)) return;
       processarEvento(ev);
     };
     for (const ev of linhaDoTempo) aoEvento(ev);
-    // O que chegou do canal durante a leitura do banco, sem repetir o que a
-    // foto já tinha: score dedupa por seq, odds por messageId.
+    // Eventos recebidos durante a leitura são deduplicados por seq/messageId.
     const ultimoSeq = eventos.length ? eventos[eventos.length - 1]!.seq : -1;
     const oddsVistas = new Set(odds.map((o) => o.messageId).filter(Boolean));
     for (const ev of bufferDoCatchUp) {
@@ -707,7 +517,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       aoEvento(ev);
     }
     bufferDoCatchUp.length = 0;
-    // Daqui em diante o canal entrega direto — o vão está fechado.
+    // Após o catch-up, eventos do canal seguem direto ao handler.
     entregar = aoEvento;
   } else {
     const runner = sala.runner!;
@@ -741,27 +551,23 @@ export async function abrirSala(
   return criacao;
 }
 
-/** Uma pergunta no formato do §8, com o prazo já convertido em ms REAIS. */
+/** Serializa uma pergunta com prazo convertido para milissegundos reais. */
 function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
   return {
     id: q.id,
     type: q.type,
     prompt: q.prompt,
-    // A MESMA régua do question_open: pct só na final_result, do último 1X2
-    // conhecido; opção não cotada é null (G8: ausente ≠ 0%), outros tipos idem.
+    // Só `final_result` recebe 1X2; ausência de cotação segue `null`.
     options: q.options.map((o) => ({
       id: o.id,
       label: o.label,
       pct: q.type === 'final_result' ? sala.pct1x2[o.id as keyof Pct1x2] ?? null : null,
     })),
-    // O PISO do XP, do próprio motor — a mesma régua do question_open.
-    // Sem pagamento (treino explícito), o piso honesto é 0.
+    // O piso vem do motor; treino anuncia zero.
     xp: semXp ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
     state: q.state,
     closesAt: q.closesAt,
-    // Quanto falta DE VERDADE, pelo relógio da sala. O primeiro pacote mandava
-    // a pergunta sem prazo e a tela chutava 60s — um contador inventado em cima
-    // de uma janela real. Fechada, falta zero: o que se espera é o LANCE.
+    // Prazo calculado pelo relógio autoritativo; pergunta fechada tem zero restante.
     closesInRealMs:
       q.state === 'open'
         ? Math.max(0, sala.clock.toRealMs(Math.max(0, q.closesAt - sala.clock.now())))
@@ -769,22 +575,13 @@ function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
   };
 }
 
-/**
- * O primeiro pacote da sala NA VOZ DESTE FÃ — estado do jogo + o que ELE já
- * respondeu + o que os palpites dele já renderam.
- *
- * Existe porque um F5 derruba a tela, não o palpite: sem `minhas`/`resultados`,
- * o recibo e o histórico viviam só no estado do React e morriam no reload — o
- * fã via a pergunta aberta de novo, tocava, e ouvia "você já palpitou". O motor
- * sempre soube; o pacote é que não contava.
- */
+/** Primeiro pacote personalizado: estado, recibos e resultados deste fã. */
 export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage {
   const respostas = userId ? sala.engine.respostasDe(userId) : [];
   const minhasPorId = new Set(respostas.map((r) => r.question.id));
   const semXp = sala.treino;
 
-  // Abertas para todo mundo — mais as FECHADAS em que este fã palpitou: o card
-  // "janela fechada · aguardando o lance" tem que renascer no F5.
+  // Mantém também perguntas fechadas respondidas para restaurar o recibo após reload.
   const questions = sala.engine
     .allQuestions()
     .filter((q) => q.state === 'open' || (q.state === 'closed' && minhasPorId.has(q.id)))
@@ -794,7 +591,7 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
     .filter((r) => r.question.state === 'open' || r.question.state === 'closed')
     .map((r) => ({ questionId: r.question.id, choice: r.prediction.choice }));
 
-  // O que já liquidou, mais recente primeiro — a ordem em que a aba mostra.
+  // Resultados já liquidados, do mais recente para o mais antigo.
   const resultados = respostas
     .filter((r) => r.question.state === 'resolved' || r.question.state === 'void')
     .sort((a, b) => (b.question.resolvedAt ?? 0) - (a.question.resolvedAt ?? 0))
@@ -804,10 +601,10 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
       qtype: r.question.type,
       correctOptionId: r.question.correct,
       voidReason: r.question.voidReason,
-      // O XP que o MOTOR pagou a ele — nunca recalculado aqui (duas tabelas divergem).
+      // XP é o valor decidido pelo motor, nunca recalculado nesta camada.
       gained: r.prediction.awardedXp ?? 0,
       choice: r.prediction.choice,
-      // Rótulos e fatos: o F5 não pode rebaixar o histórico a ids sem explicação.
+      // Inclui rótulos e fatos para restaurar uma explicação completa.
       options: r.question.options.map((o) => ({ id: o.id, label: o.label })),
       facts: sala.fatos.get(r.question.id) ?? null,
     }));
@@ -818,34 +615,17 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
     state: { ...sala.state, questions },
     minhas,
     resultados,
-    // O prefixo da sala é a única fonte desta informação.
+    // A política da sala é a fonte de verdade do modo de treino.
     treino: semXp,
   };
 }
 
-/**
- * O apelido FRESCO do banco, registrado na entrada. Sem isto o ranking só
- * aprendia o nome quando uma pergunta resolvia (`ResolvedResult.handle`) — quem
- * escolheu o apelido depois do primeiro palpite ficava "sem apelido" na sala
- * até o próximo lance liquidar. Vazio não apaga o que já se sabia.
- */
+/** Registra o apelido atual sem sobrescrever um valor conhecido por vazio. */
 export function registrarApelido(sala: Room, userId: string, handle: string | null): void {
   if (handle) sala.apelidos.set(userId, handle);
 }
 
-/**
- * O ranking desta sala NA VOZ DESTE FÃ — o evento `ranking` do §8.
- *
- * Repare no que NÃO atravessa: o `userId` interno. Ele é a chave da conta de
- * outra pessoa e o browser não tem o que fazer com ele; a única coisa que o fã
- * precisa saber sobre os outros é o apelido (que é público de propósito) e o XP.
- * `me` é calculado aqui, por assinante, pelo mesmo motivo que o `gained` do
- * `question_resolved`: o contrato é escrito na primeira pessoa.
- *
- * `name: ''` diz "ainda não escolheu apelido" e é a leitura HONESTA — quem
- * renderizar tem que dizer isso ao fã. Inventar um nome aqui (ou, pior, sacar um
- * do e-mail) é o E12 com outra roupa.
- */
+/** Ranking personalizado; apenas apelidos públicos e `me` saem para o navegador. */
 export function rankingDaSala(sala: Room, userId: string | null): RoomMessage {
   const rows = [...sala.xpDaSala.entries()]
     .map(([id, xp]) => ({
@@ -853,26 +633,18 @@ export function rankingDaSala(sala: Room, userId: string | null): RoomMessage {
       xp,
       me: userId !== null && id === userId,
     }))
-    // Empate mantém quem pontuou primeiro na frente: o sort do JS é estável e o
-    // Map itera na ordem de inserção.
+    // Empates preservam a ordem de entrada, graças ao sort estável e ao Map.
     .sort((a, b) => b.xp - a.xp);
   return { type: 'ranking', ts: sala.cursor.matchTs, rows };
 }
 
-/**
- * Carência antes de derrubar a sala vazia. Sem ela, um F5 mata a sala entre o
- * unsubscribe e o subscribe seguinte — e a partida RECOMEÇA do minuto zero, com
- * perguntas novas. Pior: o palpite que o fã acabou de dar aponta para um
- * questionId que não existe mais, e ele ouve "pergunta não existe". Medido.
- */
+/** Mantém uma sala vazia durante a carência para que reload não reinicie a partida. */
 export function assinar(sala: Room, sub: Sub): () => void {
   sala.subs.add(sub);
   cancelarEncerramento(sala);
   return () => {
     sala.subs.delete(sub);
-    // Um F5 tem 30s para voltar. Se ninguém voltar, o runner termina usando os
-    // eventos reais restantes; destruir a sala aqui faria o mesmo convite
-    // recomeçar do zero na próxima abertura.
+    // O runner drena a partida se ninguém reconectar durante a carência.
     agendarEncerramentoSeVazia(sala);
   };
 }
@@ -886,14 +658,7 @@ export async function palpitar(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const r = sala.engine.place(user, questionId, choice);
   if (!r.ok) return r;
-  // `place` devolve ok ANTES de o INSERT terminar (as portas são
-  // fire-and-forget). Sem esperar, o fã ouve "palpite registrado" e o palpite
-  // pode não existir — mentir para o torcedor é pior que dar erro.
-  //
-  // `flushDe` e não `flush`: o flush genérico julga a sala INTEIRA e entrega o
-  // erro do primeiro que falhou a quem chamar primeiro. Numa sala com vários
-  // fãs — que é o caso do France × England — isso faz um levar 500 pelo palpite
-  // do outro. Cada um espera pelo SEU.
+  // Aguarda a escrita deste palpite; `flushDe` não entrega ao fã o erro de outro.
   await sala.ports.flushDe(r.prediction.id);
   return { ok: true };
 }

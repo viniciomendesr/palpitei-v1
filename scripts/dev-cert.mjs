@@ -1,26 +1,4 @@
-/**
- * Emite o certificado do dev HTTPS cobrindo TODOS os endereços desta máquina.
- *
- * Por que existe: o `--experimental-https` do Next emite um cert só para
- * localhost/127.0.0.1/::1. Abrir pelo celular usa o IP da rede (172.20.10.x no
- * hotspot do iPhone, 192.168.x.x no Wi-Fi, 100.x no Tailscale) — que NÃO está no
- * SAN. O browser então recusa por NOME ERRADO, que é um aviso diferente e pior
- * que o de CA desconhecida: o Safari fica menos disposto a deixar passar.
- *
- * E HTTPS aqui não é capricho: fora de contexto seguro o `canUseEmbeddedWallet`
- * da ilha derruba a config de embedded wallet (a Privy depende de WebCrypto), a
- * carteira embutida some e o requisito "sign up through Solana" (E2) cai calado.
- * `http://localhost` é exceção e conta como seguro; `http://<ip-da-lan>`, não.
- *
- * O IP muda quando você troca de rede, então a lista é lida das interfaces a
- * cada boot. O cert só é REEMITIDO quando ela muda de verdade: reemitir à toa
- * troca a identidade do servidor e invalida a exceção que o celular já aceitou,
- * obrigando todo mundo a aceitar o aviso de novo.
- *
- * A CA continua sendo a do mkcert — o Mac confia (está no System keychain), os
- * outros aparelhos não. Quem abrir pelo IP aceita o aviso uma vez; o HTTPS segue
- * valendo depois disso, que é o que a carteira embutida precisa.
- */
+/** Emite um certificado de desenvolvimento para localhost e IPs LAN atuais. */
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -32,13 +10,12 @@ const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const certDir = resolve(raiz, 'apps/web/certificates');
 const certFile = resolve(certDir, 'localhost.pem');
 const keyFile = resolve(certDir, 'localhost-key.pem');
-/** A lista exata que gerou o cert atual. Comparar isto é mais confiável que
- *  reparsear o SAN do x509 (o ::1 sai como 0:0:0:0:0:0:0:1, entre outros). */
+/** Lista de hosts que gerou o certificado atual. */
 const marcaFile = resolve(certDir, '.hosts.json');
 
 const PORT = process.env.PORT || '3000';
 
-/** O mkcert que o próprio Next baixa, ou um instalado no PATH. */
+/** Usa o mkcert baixado pelo Next ou disponível no PATH. */
 function acharMkcert() {
   const doNext = resolve(
     os.homedir(),

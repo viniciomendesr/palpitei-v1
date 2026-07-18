@@ -90,19 +90,7 @@ async function postOAuthInit(appId, origin) {
   return body.url;
 }
 
-/**
- * Devolve o motivo da recusa do Google, ou null se ele aceitou a URL.
- *
- * ⚠ Este check já mentiu — e mentir aqui é pior que não existir. A versão
- * anterior fazia `redirect: 'manual'` e procurava a falha no CORPO. Só que o
- * Google responde 302 com um corpo-stub de ~1,4 kB e põe o motivo no header
- * Location (…/signin/oauth/error?authError=…). O grep no corpo nunca achava
- * nada: o doctor imprimia "ok" enquanto o Google recusava 100% dos logins.
- *
- * Procurar "Error 400" também não serve: a página sai no idioma do cliente
- * ("Erro 400" em pt-BR). O authError é base64 e carrega o motivo SEMPRE em
- * inglês (redirect_uri_mismatch) — é nele que dá para confiar.
- */
+/** Retorna a recusa OAuth a partir de `Location.authError`, ou `null` se não houver. */
 async function googleAuthError(authUrl) {
   const res = await fetch(authUrl, {
     redirect: 'manual',
@@ -112,7 +100,7 @@ async function googleAuthError(authUrl) {
     },
   });
 
-  // 3xx → o veredito está no Location. 2xx → o Google respondeu direto.
+  // Em redirects, o veredito confiável está no header `Location`.
   const target = res.headers.get('location') || res.url || '';
   if (!target.includes('/signin/oauth/error')) return null;
 
@@ -121,7 +109,7 @@ async function googleAuthError(authUrl) {
     const authError = new URL(target).searchParams.get('authError') ?? '';
     decoded = Buffer.from(authError, 'base64').toString('utf8');
   } catch {
-    // sem authError legível: a recusa continua valendo, só perdemos o motivo.
+    // A recusa continua válida mesmo sem um `authError` decodificável.
   }
 
   const reason = decoded.match(/[a-z][a-z_]*(?:mismatch|invalid|denied)[a-z_]*/i);
