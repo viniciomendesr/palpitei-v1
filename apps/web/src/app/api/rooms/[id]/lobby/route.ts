@@ -1,9 +1,10 @@
 /** Lobby sincronizado por SSE. O runner só nasce depois do `start` do host. */
 
-import { PrivyClient } from '@privy-io/server-auth';
 import { createLobbyRepo, createMatchRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
+import { didVerificado } from '@/server/http';
 import { PULSO, iniciarPulso } from '@/server/pulso';
+import { consumirTicketSse } from '@/server/sse-ticket';
 import {
   connectLobby,
   finishLobby,
@@ -18,38 +19,60 @@ import { chaveDaSala, parsePartyId, parseRoomId } from '@/server/rooms';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? '';
-const APP_SECRET = process.env.PRIVY_APP_SECRET ?? '';
+type ContextoErro = { error: string; status: number };
+type ContextoBase = {
+  rawRoomId: string;
+  room: { fixtureId: number; treino: boolean };
+  partyId: string;
+};
+type ContextoAutenticado = ContextoBase & { did: string };
 
-async function didVerificado(req: Request): Promise<string | null> {
-  const header = req.headers.get('authorization') ?? '';
-  const tokenHeader = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
-  const token = tokenHeader || new URL(req.url).searchParams.get('token') || '';
-  if (!token || !APP_ID || !APP_SECRET) return null;
-  try {
-    const { userId } = await new PrivyClient(APP_ID, APP_SECRET).verifyAuthToken(token);
-    return userId ?? null;
-  } catch {
-    return null;
-  }
+function temErro<T extends object>(ctx: T | ContextoErro): ctx is ContextoErro {
+  return 'error' in ctx;
 }
 
-async function contexto(req: Request, params: Promise<{ id: string }>) {
-  const did = await didVerificado(req);
-  if (!did) return { error: 'sem sessão verificada', status: 401 } as const;
+async function contextoBase(
+  req: Request,
+  params: Promise<{ id: string }>,
+): Promise<ContextoBase | ContextoErro> {
   const rawRoomId = (await params).id;
   const room = parseRoomId(rawRoomId);
   const partyId = parsePartyId(new URL(req.url).searchParams.get('party'));
-  if (!room || !partyId) return { error: 'sala ou grupo inválido', status: 400 } as const;
-  return { did, rawRoomId, room, partyId } as const;
+  if (!room || !partyId) return { error: 'sala ou grupo inválido', status: 400 };
+  return { rawRoomId, room, partyId };
+}
+
+async function contextoComBearer(
+  req: Request,
+  params: Promise<{ id: string }>,
+): Promise<ContextoAutenticado | ContextoErro> {
+  const did = await didVerificado(req);
+  if (!did) return { error: 'sem sessão verificada', status: 401 };
+  const base = await contextoBase(req, params);
+  return temErro(base) ? base : { ...base, did };
+}
+
+async function contextoComTicket(
+  req: Request,
+  params: Promise<{ id: string }>,
+): Promise<ContextoAutenticado | ContextoErro> {
+  const base = await contextoBase(req, params);
+  if (temErro(base)) return base;
+  const did = consumirTicketSse(new URL(req.url).searchParams.get('ticket'), {
+    purpose: 'lobby',
+    roomId: base.rawRoomId,
+    partyId: base.partyId,
+  });
+  if (!did) return { error: 'sem sessão verificada', status: 401 };
+  return { ...base, did };
 }
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const ctx = await contexto(req, params);
-  if ('error' in ctx) return Response.json({ error: ctx.error }, { status: ctx.status });
+  const ctx = await contextoComTicket(req, params);
+  if (temErro(ctx)) return Response.json({ error: ctx.error }, { status: ctx.status });
 
   const db = createDb();
   try {
@@ -134,8 +157,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const ctx = await contexto(req, params);
-  if ('error' in ctx) return Response.json({ error: ctx.error }, { status: ctx.status });
+  const ctx = await contextoComBearer(req, params);
+  if (temErro(ctx)) return Response.json({ error: ctx.error }, { status: ctx.status });
   const body = (await req.json().catch(() => null)) as
     | { action?: unknown; ready?: unknown }
     | null;

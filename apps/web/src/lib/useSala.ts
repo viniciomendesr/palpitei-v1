@@ -172,26 +172,28 @@ export function useSala(
       }, espera);
     };
 
-    /** Reconecta manualmente para obter um Bearer renovado a cada conexão. */
+    /** Reconecta manualmente para obter um ticket SSE novo a cada conexão. */
     const conectar = async () => {
       if (!vivo || conectando) return;
       conectando = true;
       es?.close();
       es = null;
-      // Falha ao obter token é transitória e entra no backoff.
-      const token = await import('@/lib/api')
-        .then((m) => m.getAuthToken())
+      // O POST usa o Bearer no header e devolve só um ticket curto para a URL
+      // do EventSource. Falha é transitória e entra no backoff.
+      const ticket = await import('@/lib/api')
+        .then((m) => m.api.sseTicket(fixtureId, partyId, 'room'))
+        .then((response) => response.ticket)
         .catch(() => null);
       conectando = false;
       if (!vivo) return;
-      if (!token) {
+      if (!ticket) {
         if (!temEstado) setErro('sem sessão verificada');
         agendar();
         return;
       }
 
       es = new EventSource(
-        `/api/rooms/${encodeURIComponent(fixtureId)}/stream?token=${encodeURIComponent(token)}&party=${encodeURIComponent(partyId)}`,
+        `/api/rooms/${encodeURIComponent(fixtureId)}/stream?ticket=${encodeURIComponent(ticket)}&party=${encodeURIComponent(partyId)}`,
       );
 
       es.onopen = () => {
@@ -417,7 +419,7 @@ export function useSala(
       };
 
       es.onerror = () => {
-        // Nova conexão obtém token fresco; após estado válido, reconexão é silenciosa.
+        // Nova conexão emite ticket fresco; após estado válido, reconexão é silenciosa.
         es?.close();
         es = null;
         if (!vivo) return;

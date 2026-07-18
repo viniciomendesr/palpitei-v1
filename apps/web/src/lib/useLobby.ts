@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, getAuthToken, type LobbyState } from '@/lib/api';
+import { api, type LobbyState } from '@/lib/api';
 
 export function useLobby(roomId: string, partyId: string, active: boolean) {
   const [state, setState] = useState<LobbyState | null>(null);
@@ -15,15 +15,20 @@ export function useLobby(roomId: string, partyId: string, active: boolean) {
     let retry: ReturnType<typeof setTimeout> | null = null;
 
     const connect = async () => {
-      const token = await getAuthToken().catch(() => null);
-      if (!alive) return;
-      if (!token) {
-        setError('sem sessão verificada');
+      let ticket: string;
+      try {
+        // EventSource não carrega o Bearer da Privy. Cada conexão troca o
+        // Bearer atual por um ticket curto e de uso único no servidor.
+        ({ ticket } = await api.sseTicket(roomId, partyId, 'lobby'));
+      } catch (e) {
+        if (!alive) return;
+        setError(e instanceof Error ? e.message : 'sem sessão verificada');
         retry = setTimeout(connect, 1_000);
         return;
       }
+      if (!alive) return;
       source = new EventSource(
-        `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}&token=${encodeURIComponent(token)}`,
+        `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}&ticket=${encodeURIComponent(ticket)}`,
       );
       source.onmessage = (event) => {
         if (!alive) return;

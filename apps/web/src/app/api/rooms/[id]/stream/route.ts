@@ -10,12 +10,12 @@
  * question_closed, question_resolved, game_end, replay_done.
  */
 
-import { PrivyClient } from '@privy-io/server-auth';
 import { createLobbyRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { getLobby } from '@/server/lobbies';
 import { podeAcessarLobbyIniciado } from '@/server/lobby-acesso';
 import { PULSO, iniciarPulso } from '@/server/pulso';
+import { consumirTicketSse } from '@/server/sse-ticket';
 import {
   abrirSala,
   assinar,
@@ -30,42 +30,14 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? '';
-const APP_SECRET = process.env.PRIVY_APP_SECRET ?? '';
-
-async function didVerificado(req: Request): Promise<string | null> {
-  const header = req.headers.get('authorization') ?? '';
-  const url = new URL(req.url);
-  // EventSource não manda header. O token vem na query, e é por isso que este
-  // endpoint é só LEITURA: token em URL entra em log de proxy e em histórico.
-  // Quem muda estado (palpite) é POST, com o Bearer no header.
-  const token = header.toLowerCase().startsWith('bearer ')
-    ? header.slice(7).trim()
-    : (url.searchParams.get('token') ?? '');
-  if (!token || !APP_ID || !APP_SECRET) return null;
-  try {
-    const { userId } = await new PrivyClient(APP_ID, APP_SECRET).verifyAuthToken(token);
-    return userId ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const did = await didVerificado(req);
-  if (!did) {
-    return Response.json(
-      { error: 'sem sessão verificada — o modo demo não usa esta rota' },
-      { status: 401 },
-    );
-  }
-
   // `treino-18241006` = a mesma partida, XP zero, nada persistido. A regra de
   // parse é uma só (parseRoomId) — a mesma do POST do palpite.
-  const roomId = parseRoomId((await params).id);
+  const rawRoomId = (await params).id;
+  const roomId = parseRoomId(rawRoomId);
   if (!roomId) {
     return Response.json({ error: 'sala inválida' }, { status: 400 });
   }
@@ -73,6 +45,19 @@ export async function GET(
   const partyId = parsePartyId(new URL(req.url).searchParams.get('party'));
   if (!partyId) {
     return Response.json({ error: 'código do grupo inválido' }, { status: 400 });
+  }
+  // O ticket foi emitido por um POST com Authorization Bearer e é de uso
+  // único. A URL de SSE nunca recebe o token de longa duração da Privy.
+  const did = consumirTicketSse(new URL(req.url).searchParams.get('ticket'), {
+    purpose: 'room',
+    roomId: rawRoomId,
+    partyId,
+  });
+  if (!did) {
+    return Response.json(
+      { error: 'sem sessão verificada — o modo demo não usa esta rota' },
+      { status: 401 },
+    );
   }
   // O id interno do fã: e o `question_resolved` do §8 manda `gained`, que e o XP
   // DELE. A associação persistida, e não o Map de presença do processo, autoriza

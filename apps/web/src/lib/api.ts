@@ -360,15 +360,6 @@ export function setAuthTokenProvider(fn: TokenProvider): void {
   authTokenProvider = fn;
 }
 
-/**
- * O Bearer, para quem NÃO consegue mandar header: o EventSource do SSE só aceita
- * URL. É por isso que o /stream é somente leitura — token em query entra em log
- * de proxy e em histórico. Palpite é POST, com o header, por aqui.
- */
-export function getAuthToken(): Promise<string | null> {
-  return authTokenProvider();
-}
-
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -495,6 +486,16 @@ export const api = {
     request<{ ok: true }>(
       `/api/rooms/${encodeURIComponent(roomId)}/lobby?party=${encodeURIComponent(partyId)}`,
       { method: 'POST', body: JSON.stringify({ action: 'finish' }) },
+    ),
+
+  /**
+   * O EventSource não aceita Authorization. Esta rota troca o Bearer atual por
+   * um ticket curto, de uso único e limitado à sala/grupo/finalidade do stream.
+   */
+  sseTicket: (roomId: string, partyId: string, purpose: 'lobby' | 'room') =>
+    request<{ ticket: string }>(
+      `/api/rooms/${encodeURIComponent(roomId)}/sse-ticket?party=${encodeURIComponent(partyId)}`,
+      { method: 'POST', body: JSON.stringify({ purpose }) },
     ),
 
   joinRoom: (roomId: string) =>
