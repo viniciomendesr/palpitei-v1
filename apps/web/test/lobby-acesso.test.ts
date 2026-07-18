@@ -23,3 +23,20 @@ test('acesso da sala rejeita convite vencido ou lobby de outra partida/modo/fase
   assert.equal(canAccessStartedLobby({ ...membroAtivo, treino: true }, sala, agora), false);
   assert.equal(canAccessStartedLobby({ ...membroAtivo, phase: 'waiting' }, sala, agora), false);
 });
+
+test('depois do apito o fã ainda entra para ver o resultado — reiniciar exige party nova', () => {
+  // finalizarSala grava 'finished'; exigir 'started' fazia o próprio apito revogar
+  // o acesso, e quem tinha perdido a conexão nunca via resultado nem ranking.
+  assert.equal(
+    canAccessStartedLobby({ ...membroAtivo, phase: 'finished' }, sala, agora),
+    true,
+    'partida encerrada continua legível para quem participou',
+  );
+  // Ler o resultado não é rejogar: waiting segue barrado e a expiração vale igual.
+  assert.equal(canAccessStartedLobby({ ...membroAtivo, phase: 'waiting' }, sala, agora), false);
+  assert.equal(
+    canAccessStartedLobby({ ...membroAtivo, phase: 'finished', expiresAt: agora }, sala, agora),
+    false,
+    'convite vencido não reabre pelo fim de jogo',
+  );
+});
