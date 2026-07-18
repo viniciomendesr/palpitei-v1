@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server';
 import { createDb } from '@/server/db';
 import { fixturesDosCanais, iniciarCanalAoVivo, statusDoCanal } from '@/server/live';
+import { statusOddsPregameTxline } from '@/server/pregameOdds';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,5 +40,7 @@ export async function GET(): Promise<NextResponse> {
     }
   }
 
-  return NextResponse.json({ ...status, banco });
+  // Contadores sem payload de cotação: permitem distinguir "a fonte não abriu
+  // mercado" de "o snapshot da TxLINE falhou" durante o runbook.
+  return NextResponse.json({ ...status, banco, pregameOdds: statusOddsPregameTxline() });
 }

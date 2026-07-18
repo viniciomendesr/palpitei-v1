@@ -8,7 +8,7 @@
  * AUSÊNCIA de mercado, não zero nem uma estimativa nossa (G8).
  */
 
-import { fetchOddsSnapshot } from '@palpitei/txline';
+import { TxlineHttpError, fetchOddsSnapshot, warn } from '@palpitei/txline';
 
 export type ChancesResultado = { home: number; draw: number; away: number };
 export type ChancesAcimaAbaixo = { line: number; over: number; under: number };
@@ -37,6 +37,15 @@ export interface PregameOddsRead {
   txlineAvailable: boolean;
 }
 
+/** Contadores seguros para investigar falha de cotação sem expor payload/segredo. */
+export interface PregameOddsStatus {
+  consultasTxline: number;
+  cacheHits: number;
+  indisponibilidades: number;
+  ultimoMotivo: string | null;
+  ultimaIndisponibilidadeEm: number | null;
+}
+
 export const SEM_MERCADOS: PregameMarket[] = [];
 
 const MERCADO_RESULTADO = '1X2_PARTICIPANT_RESULT';
@@ -46,11 +55,47 @@ const TTL_MS = Math.max(1_000, Number(process.env.TXLINE_PREGAME_ODDS_CACHE_MS ?
 
 type Cache = Map<number, { value: PregameOddsRead; expiresAt: number; inFlight: Promise<PregameOddsRead> | null }>;
 const CHAVE = '__palpitei_pregame_odds_cache__' as const;
+const CHAVE_STATUS = '__palpitei_pregame_odds_status__' as const;
 type GlobalComCache = typeof globalThis & { [CHAVE]?: Cache };
+type GlobalComStatus = typeof globalThis & { [CHAVE_STATUS]?: PregameOddsStatus };
 
 function cache(): Cache {
   const g = globalThis as GlobalComCache;
   return (g[CHAVE] ??= new Map());
+}
+
+function statusInterno(): PregameOddsStatus {
+  const g = globalThis as GlobalComStatus;
+  return (g[CHAVE_STATUS] ??= {
+    consultasTxline: 0,
+    cacheHits: 0,
+    indisponibilidades: 0,
+    ultimoMotivo: null,
+    ultimaIndisponibilidadeEm: null,
+  });
+}
+
+/** Estado observável do snapshot pré-jogo, sem resposta crua da TxLINE. */
+export function statusOddsPregameTxline(): Readonly<PregameOddsStatus> {
+  return { ...statusInterno() };
+}
+
+/** Isola testes de cache/telemetria; não é chamado pelo fluxo de produção. */
+export function resetOddsPregameTxlineParaTeste(): void {
+  cache().clear();
+  const status = statusInterno();
+  status.consultasTxline = 0;
+  status.cacheHits = 0;
+  status.indisponibilidades = 0;
+  status.ultimoMotivo = null;
+  status.ultimaIndisponibilidadeEm = null;
+}
+
+function motivoSeguroDaIndisponibilidade(erro: unknown): string {
+  if (erro instanceof TxlineHttpError) return `HTTP ${erro.status}`;
+  if (erro instanceof DOMException && erro.name === 'TimeoutError') return 'timeout';
+  if (erro instanceof Error && erro.name === 'AbortError') return 'timeout';
+  return 'rede/cliente';
 }
 
 function texto(v: unknown): string {
@@ -198,17 +243,41 @@ export function extrairMercadosPregame(rows: unknown[]): PregameMarket[] {
  * cache velho como se fosse atual: a tela recebe mercados indisponíveis e segue
  * permitindo somente o que não depende de cotação (placar exato).
  */
-export async function oddsPregameTxline(fixtureId: number): Promise<PregameOddsRead> {
+type BuscarOddsSnapshot = (fixtureId: number) => Promise<unknown[]>;
+
+export async function oddsPregameTxline(
+  fixtureId: number,
+  buscarOddsSnapshot: BuscarOddsSnapshot = fetchOddsSnapshot,
+): Promise<PregameOddsRead> {
   const c = cache();
+  const status = statusInterno();
   const now = Date.now();
   const anterior = c.get(fixtureId);
-  if (anterior && now < anterior.expiresAt) return anterior.value;
-  if (anterior?.inFlight) return anterior.inFlight;
+  if (anterior && now < anterior.expiresAt) {
+    status.cacheHits += 1;
+    return anterior.value;
+  }
+  if (anterior?.inFlight) {
+    status.cacheHits += 1;
+    return anterior.inFlight;
+  }
 
   const entry = anterior ?? { value: { markets: SEM_MERCADOS, txlineAvailable: false }, expiresAt: 0, inFlight: null };
-  const emVoo = fetchOddsSnapshot(fixtureId)
+  status.consultasTxline += 1;
+  const emVoo = buscarOddsSnapshot(fixtureId)
     .then((rows) => ({ markets: extrairMercadosPregame(rows), txlineAvailable: true }))
-    .catch(() => ({ markets: SEM_MERCADOS, txlineAvailable: false }))
+    .catch((erro: unknown) => {
+      const motivo = motivoSeguroDaIndisponibilidade(erro);
+      status.indisponibilidades += 1;
+      status.ultimoMotivo = motivo;
+      status.ultimaIndisponibilidadeEm = Date.now();
+      // Nunca logar corpo HTTP, URL assinada, JWT ou payload da TxLINE.
+      warn(
+        `[pregame-odds] snapshot indisponível para fixture ${fixtureId} (${motivo}); ` +
+          'mercados dinâmicos não serão exibidos',
+      );
+      return { markets: SEM_MERCADOS, txlineAvailable: false };
+    })
     .then((value) => {
       entry.value = value;
       entry.expiresAt = Date.now() + TTL_MS;

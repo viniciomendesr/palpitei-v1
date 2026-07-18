@@ -29,6 +29,7 @@ import {
 } from '@palpitei/txline';
 import { createEventRepo, createMatchRepo, createOddsRepo, createPregamePickRepo } from '@palpitei/db';
 import { createDb } from './db';
+import { enfileirarPersistenciaAntesDePublicar } from './eventPipeline';
 import { classificarParaSala, eventoEncerraPartida, fixturesAoVivo } from './live-regras';
 
 type Contadores = {
@@ -38,6 +39,8 @@ type Contadores = {
   persistidosScores: number;
   persistidosOdds: number;
   falhasDePersistencia: number;
+  /** Eventos que não chegaram à sala porque sua gravação falhou. */
+  publicacoesSuprimidasPorPersistencia: number;
   errosDeHandler: number;
 };
 
@@ -123,80 +126,17 @@ async function semear(canal: Canal, tentativa = 0): Promise<void> {
   }
 }
 
-/** Enfileira uma escrita; erro vira contador + log alto, nunca silêncio. */
-function persistir(canal: Canal, oQue: string, op: () => Promise<unknown>): void {
-  canal.fila = canal.fila
-    .then(op)
-    .then(() => undefined)
-    .catch((e) => {
-      canal.contadores.falhasDePersistencia += 1;
-      warn(
-        `[canal-ao-vivo] FALHA DE PERSISTÊNCIA (${oQue}, #${canal.contadores.falhasDePersistencia}): ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      );
-    });
+function registrarFalhaDePersistencia(canal: Canal, oQue: string, erro: unknown): void {
+  canal.contadores.falhasDePersistencia += 1;
+  canal.contadores.publicacoesSuprimidasPorPersistencia += 1;
+  const tipo = erro instanceof Error ? erro.name : typeof erro;
+  warn(
+    `[canal-ao-vivo] FALHA DE PERSISTÊNCIA (${oQue}, #${canal.contadores.falhasDePersistencia}); ` +
+      `evento NÃO publicado na sala (tipo=${tipo})`,
+  );
 }
 
-function aoReceber(canal: Canal, ev: NormEvent): void {
-  if (ev.fixtureId !== canal.fixtureId) {
-    canal.contadores.ignoradosDeOutrasFixtures += 1;
-    return;
-  }
-
-  // O primeiro evento DE SCORE da fixture-alvo marca a partida como 'live' no
-  // banco — o cinto de segurança da listagem. Só score, e foi medido, não
-  // teoria: no dry-run de 17/07 a devnet mandou odds PRÉ-JOGO ~26h antes do
-  // apito, e a versão que marcava em qualquer evento rotulou como "ao vivo"
-  // uma partida que só começa amanhã. Score só existe com jogo rolando.
-  if (!canal.marcadaAoVivo && ev.kind === 'score') {
-    canal.marcadaAoVivo = true;
-    info(`[canal-ao-vivo] PRIMEIRO evento da fixture ${canal.fixtureId} — marcando 'live' no banco`);
-    persistir(canal, 'setState live', () =>
-      createMatchRepo(createDb()).setState(canal.fixtureId, 'live'),
-    );
-  }
-
-  // Persistência ANTES do roteamento: a sala pode nem existir ainda, e o dado
-  // gravado é o que sobrevive a restart (A1). Odds grava TODO mercado da
-  // fixture — o upsertManyRaw filtra com eh1x2JogoInteiro, o mesmo critério da
-  // projeção que o replay lê; o raw dos demais fica para estudo pós-jogo.
-  if (ev.kind === 'score') {
-    persistir(canal, `score seq ${ev.seq}`, async () => {
-      const db = createDb();
-      const events = createEventRepo(db);
-      await events.upsert(ev);
-      canal.contadores.persistidosScores += 1;
-
-      // A liquidação pré-jogo não pode depender de uma sala estar aberta nem
-      // de um fã voltar à tela depois do apito. A fila já garantiu que todos os
-      // scores anteriores foram persistidos; `totaisFinais` preserva a última
-      // leitura conhecida quando o próprio game_finalised não traz Score.
-      if (eventoEncerraPartida(ev)) {
-        await createMatchRepo(db).setState(canal.fixtureId, 'finished');
-        const totais = await events.totaisFinais(canal.fixtureId);
-        if (totais) {
-          await createPregamePickRepo(db).settleFixture(
-            canal.fixtureId,
-            {
-              goalsP1: totais.goals.p1,
-              goalsP2: totais.goals.p2,
-              cornersTotal: totais.corners.p1 + totais.corners.p2,
-            },
-            gradePregame,
-          );
-        } else {
-          warn(`[canal-ao-vivo] fim da fixture ${canal.fixtureId} sem totais persistidos — settlement será tentado na leitura`);
-        }
-      }
-    });
-  } else {
-    persistir(canal, `odds ${ev.messageId ?? ev.ts}`, async () => {
-      await createOddsRepo(createDb()).upsertManyRaw([ev.raw]);
-      canal.contadores.persistidosOdds += 1;
-    });
-  }
-
+function publicarParaSala(canal: Canal, ev: NormEvent): void {
   const classe = classificarParaSala(ev, canal.fixtureId);
   if (classe === 'fora_do_mercado') {
     canal.contadores.foraDoMercado += 1;
@@ -215,6 +155,73 @@ function aoReceber(canal: Canal, ev: NormEvent): void {
         }`,
       );
     }
+  }
+}
+
+function aoReceber(canal: Canal, ev: NormEvent): void {
+  if (ev.fixtureId !== canal.fixtureId) {
+    canal.contadores.ignoradosDeOutrasFixtures += 1;
+    return;
+  }
+
+  // Persistência ANTES do roteamento: a sala pode nem existir ainda, e o dado
+  // gravado é o que sobrevive a restart (A1). O callback SSE só ENFILEIRA: a
+  // publicação ocorre na mesma fila, após a escrita (e o settlement terminal)
+  // terminar. Odds grava TODO mercado da fixture — o upsertManyRaw filtra com
+  // eh1x2JogoInteiro, o mesmo critério da projeção que o replay lê.
+  if (ev.kind === 'score') {
+    enfileirarPersistenciaAntesDePublicar(
+      canal,
+      async () => {
+        const db = createDb();
+
+        // Só score marca a partida como ao vivo. Esta decisão acontece DENTRO
+        // da fila: se o banco falhar, o próximo score tenta de novo em vez de o
+        // flag local afirmar uma transição que não foi gravada.
+        if (!canal.marcadaAoVivo) {
+          info(`[canal-ao-vivo] PRIMEIRO score da fixture ${canal.fixtureId} — marcando 'live' no banco`);
+          await createMatchRepo(db).setState(canal.fixtureId, 'live');
+          canal.marcadaAoVivo = true;
+        }
+
+        const events = createEventRepo(db);
+        await events.upsert(ev);
+        canal.contadores.persistidosScores += 1;
+
+        // A liquidação pré-jogo não depende de uma sala aberta. Como esta
+        // operação é aguardada, `game_finalised` só chega ao fã depois que o
+        // placar final e o XP idempotente foram processados.
+        if (eventoEncerraPartida(ev)) {
+          await createMatchRepo(db).setState(canal.fixtureId, 'finished');
+          const totais = await events.totaisFinais(canal.fixtureId);
+          if (totais) {
+            await createPregamePickRepo(db).settleFixture(
+              canal.fixtureId,
+              {
+                goalsP1: totais.goals.p1,
+                goalsP2: totais.goals.p2,
+                cornersTotal: totais.corners.p1 + totais.corners.p2,
+              },
+              gradePregame,
+            );
+          } else {
+            warn(`[canal-ao-vivo] fim da fixture ${canal.fixtureId} sem totais persistidos — settlement será tentado na leitura`);
+          }
+        }
+      },
+      () => publicarParaSala(canal, ev),
+      (erro) => registrarFalhaDePersistencia(canal, `score seq ${ev.seq}`, erro),
+    );
+  } else {
+    enfileirarPersistenciaAntesDePublicar(
+      canal,
+      async () => {
+        await createOddsRepo(createDb()).upsertManyRaw([ev.raw]);
+        canal.contadores.persistidosOdds += 1;
+      },
+      () => publicarParaSala(canal, ev),
+      (erro) => registrarFalhaDePersistencia(canal, `odds ${ev.messageId ?? ev.ts}`, erro),
+    );
   }
 }
 
@@ -241,6 +248,7 @@ export function iniciarCanalAoVivo(): void {
       persistidosScores: 0,
       persistidosOdds: 0,
       falhasDePersistencia: 0,
+      publicacoesSuprimidasPorPersistencia: 0,
       errosDeHandler: 0,
     },
     handlers: new Set(),

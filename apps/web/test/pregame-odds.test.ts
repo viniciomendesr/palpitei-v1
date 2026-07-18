@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extrairMercadosPregame, linhaDoMercado, mercadoPorId, mesmaLinha } from '../src/server/pregameOdds.ts';
+import { TxlineHttpError } from '@palpitei/txline';
+import {
+  extrairMercadosPregame,
+  linhaDoMercado,
+  mercadoPorId,
+  mesmaLinha,
+  oddsPregameTxline,
+  resetOddsPregameTxlineParaTeste,
+  statusOddsPregameTxline,
+} from '../src/server/pregameOdds.ts';
 
 const base = {
   FixtureId: 700001,
@@ -94,4 +103,22 @@ test('arrays desalinhados, Pct NA, período e linha inválida não viram uma cha
   ]);
 
   assert.deepEqual(markets, []);
+});
+
+test('falha da TxLINE fica observável sem registrar corpo ou segredo', async () => {
+  resetOddsPregameTxlineParaTeste();
+  const indisponivel = await oddsPregameTxline(
+    700003,
+    async () => {
+      throw new TxlineHttpError(503, '/odds/snapshot/700003', 'Bearer segredo-que-nao-pode-vazar');
+    },
+  );
+
+  assert.deepEqual(indisponivel, { markets: [], txlineAvailable: false });
+  const status = statusOddsPregameTxline();
+  assert.equal(status.consultasTxline, 1);
+  assert.equal(status.cacheHits, 0);
+  assert.equal(status.indisponibilidades, 1);
+  assert.equal(status.ultimoMotivo, 'HTTP 503');
+  assert.equal(typeof status.ultimaIndisponibilidadeEm, 'number');
 });
