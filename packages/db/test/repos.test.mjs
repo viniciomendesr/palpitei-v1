@@ -507,6 +507,32 @@ test('upsert sem state NÃO rebaixa uma partida ao vivo para "scheduled"', async
   assert.equal(vivo.state, 'live', 'state explícito tem que valer');
 });
 
+test('listCached só devolve partida ENCERRADA — a de hoje não pode virar "replay"', async () => {
+  // A live fixture persists status events before kick-off, and the fixtures route
+  // turns every row from listCached into a replay + training card. Filtering only
+  // by "has events" put tonight's match in the Replays tab as "watch it again".
+  const aoVivo = 900007;
+  await p.matches.upsert({ fixtureId: aoVivo, p1: 'França', p2: 'Inglaterra', startTime: 3_000_000, state: 'live' });
+  await p.events.upsertMany([
+    { kind: 'score', fixtureId: aoVivo, seq: 2, ts: 3_000_100, action: 'status', hasScore: false, raw: { Seq: 2 } },
+  ]);
+
+  const comEventos = await p.matches.listCached();
+  assert.equal(
+    comEventos.some((m) => m.fixtureId === aoVivo),
+    false,
+    'partida ao vivo com eventos NÃO é replay',
+  );
+
+  // Depois do apito final ela vira um replay legítimo.
+  await p.matches.setState(aoVivo, 'finished');
+  assert.equal(
+    (await p.matches.listCached()).some((m) => m.fixtureId === aoVivo),
+    true,
+    'encerrada e com timeline gravada, aí sim é replay',
+  );
+});
+
 // ---------------------------------------------------------------------------
 // market (v2 preview, simulated USDC)
 // ---------------------------------------------------------------------------

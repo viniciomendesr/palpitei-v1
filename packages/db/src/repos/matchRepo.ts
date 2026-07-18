@@ -97,10 +97,19 @@ export function createMatchRepo(db: Db) {
     },
 
     /** Matches with persisted timelines that can replay without the devnet. */
+    /**
+     * Replayable matches only: finished, with a recorded timeline.
+     *
+     * Having events is not enough. A live fixture starts persisting status events
+     * before kick-off, and the fixtures route turns every row here into a "replay"
+     * and a "training" card — so tonight's match showed up as "watch it again"
+     * before it was played. A replay is a match that already ended.
+     */
     async listCached(): Promise<Fixture[]> {
       const rows = await db.query(
         `select ${COLS} from matches m
-          where exists (select 1 from match_events e where e.fixture_id = m.fixture_id)
+          where m.state = 'finished'
+            and exists (select 1 from match_events e where e.fixture_id = m.fixture_id)
           order by start_ts nulls last`
       );
       return rows.map(mapFixture);
