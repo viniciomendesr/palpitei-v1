@@ -8,7 +8,7 @@ process.env.TXLINE_LOG_SILENT = "true";
 
 import {
   adaptDbCacheStore,
-  cacheUtil,
+  hasUsableMatchCache,
   createFileMatchCacheStore,
   createInMemoryMatchCacheStore,
   type MatchCacheRecord,
@@ -38,23 +38,18 @@ test("store em memória: guarda, lê e lista", async () => {
   assert.deepEqual(await store.list?.(), [1]);
 });
 
-test("cacheUtil recusa registro sem eventos de placar", () => {
-  assert.equal(cacheUtil(null), false);
-  assert.equal(cacheUtil(registro(1, [])), false, "sem scores não há linha do tempo");
-  assert.equal(cacheUtil(registro(1)), true);
+test("hasUsableMatchCache rejects records without score events", () => {
+  assert.equal(hasUsableMatchCache(null), false);
+  assert.equal(hasUsableMatchCache(registro(1, [])), false, "sem scores não há linha do tempo");
+  assert.equal(hasUsableMatchCache(registro(1)), true);
 });
 
 // ---------------------------------------------------------------------------
-// A costura com o @palpitei/db.
-//
-// O db fala load/save/list (+ apelidos do v0); esta porta fala get/put/list. Os
-// TIPOS batem, os MÉTODOS não, e o db entra por import dinâmico (any) — nada no
-// compilador liga um no outro. Sem adaptador, `cache.get` é undefined, o
-// TypeError cai no catch que tolera "cache indisponível", e o replay varre 144
-// requisições toda vez dizendo que está tudo bem.
-// ---------------------------------------------------------------------------
+// The DB store exposes load/save/list while this port expects get/put/list.
+// Dynamic imports bypass type checking, so the adapter prevents a missing method
+// from being silently treated as an unavailable cache.
 
-/** Espelha a superfície REAL de createPalpitei().cache do @palpitei/db. */
+/** Mirrors the public createPalpitei().cache surface from @palpitei/db. */
 function fakeDbStore(inicial: MatchCacheRecord[] = []) {
   const mapa = new Map<number, MatchCacheRecord>(inicial.map((r) => [r.fixtureId, r]));
   const store = {
@@ -113,8 +108,7 @@ test("adaptDbCacheStore aceita o vocabulário do v0 (lerCache/salvarCache)", asy
 test("adaptDbCacheStore explode alto no objeto errado, em vez de falhar mudo depois", () => {
   assert.throws(() => adaptDbCacheStore(null), /não é um store do @palpitei\/db/);
   assert.throws(() => adaptDbCacheStore({}), /não é um store do @palpitei\/db/);
-  // O caso que morde de verdade: createMatchCacheStore() sem conexão devolve um
-  // objeto truthy; o script antigo o aceitava como "Postgres" e só quebrava no put.
+  // A disconnected createMatchCacheStore() is truthy; reject it before a later put fails.
   assert.throws(() => adaptDbCacheStore({ has: () => true, stats: () => ({}) }), /esperava load\/save/);
 });
 
@@ -126,7 +120,7 @@ test("com o adaptador, o replay usa o cache do db e o badge diz txline-cache", a
     { FixtureId: 18241006, Seq: 5, Ts: 4000, Action: "shot" },
     { FixtureId: 18241006, Seq: 6, Ts: 5000, Action: "game_finalised" },
   ]);
-  // Porta morta: se tocasse na rede, o teste falhava em vez de passar por sorte.
+  // An unreachable port ensures this test fails if it unexpectedly reaches the network.
   process.env.TXLINE_API_BASE_URL = "http://127.0.0.1:1/api";
   process.env.TXLINE_JWT = "x";
 

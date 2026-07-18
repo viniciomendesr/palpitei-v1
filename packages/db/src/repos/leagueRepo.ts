@@ -1,11 +1,4 @@
-// leagueRepo — as ligas privadas.
-//
-// O que este arquivo substitui: um `session.leaguesCount++` no browser, que
-// sumia no F5. Liga que some no refresh não é liga — é um número.
-//
-// Como todo repo daqui, este não sabe verificar token nenhum: quem chama já tem
-// de ter passado pelo verifyAuthToken da Privy. O `ownerId`/`userId` que chega
-// aqui SEMPRE saiu do DID verificado, nunca do corpo do request (CONTEXT §4).
+// Private league persistence. Callers provide identities verified by Privy.
 
 import { randomInt } from 'node:crypto';
 import type { Db, Executor, Row } from '../pool.js';
@@ -21,22 +14,14 @@ import {
   isUniqueViolation,
 } from '../errors.js';
 
-/**
- * O free inclui 1 liga CRIADA (mockup: "O free inclui 1 liga · desbloqueie
- * ilimitadas"). Entrar na liga de um amigo não gasta esta cota — ver `joinByCode`.
- */
+/** Free users can create one league; joining does not consume the quota. */
 export const LIGAS_FREE = 1;
 
-/**
- * Sem I, L, O, 0 e 1: o código é lido em voz alta e digitado por gente com
- * pressa. Tirar os sósias na GERAÇÃO é o que evita ter de adivinhar, na leitura,
- * se o fã quis dizer O ou 0 — adivinhar aí é que faz "código inválido" virar
- * mistério.
- */
+/** Excludes visually ambiguous characters from invite codes. */
 const ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const TAM_CODIGO = 6;
 
-/** Quantas vezes tentar outro código antes de desistir. Ver `create`. */
+/** Maximum invite-code collision retries. */
 const TENTATIVAS_CODIGO = 5;
 
 const COLS = `
@@ -51,48 +36,32 @@ function mapLeague(r: Row): League {
     name: String(r.name),
     ownerId: String(r.owner_id),
     inviteCode: String(r.invite_code),
-    // Contado no banco. É o campo que aposenta o "1 membro" fixo do dicionário.
     memberCount: Number(r.member_count),
     createdAt: Math.round(Number(r.created_ms)),
   };
 }
 
-/**
- * `randomInt` e não `Math.random()`: o código é a credencial de entrada da liga.
- * `Math.random()` é previsível o bastante para alguém enumerar códigos de fora —
- * e "liga privada" com convite adivinhável é privada só no nome.
- *
- * `randomInt` também é uniforme (rejeita amostra em vez de usar `% n`, que
- * enviesa os primeiros símbolos do alfabeto e encurta o espaço de busca na
- * prática).
- */
+/** Uses cryptographically secure, unbiased sampling for invitation credentials. */
 function gerarCodigo(): string {
   let saida = '';
   for (let i = 0; i < TAM_CODIGO; i++) saida += ALFABETO[randomInt(ALFABETO.length)];
   return saida;
 }
 
-/** Normaliza o que o fã digitou. Não "conserta" caractere nenhum — ver ALFABETO. */
-export function normalizarCodigo(code: string): string {
+/** Normalizes user input without substituting ambiguous characters. */
+export function normalizeLeagueCode(code: string): string {
   return String(code ?? '')
     .replace(/[\s-]/g, '')
     .toUpperCase();
 }
 
-/** Regras do nome da liga. Espelha o CHECK da 0002 — o banco é quem manda. */
-export function validarNomeDeLiga(nome: string): string {
-  // Espaço repetido e quebra de linha viram um espaço só: sem isto "Resenha  FC"
-  // e "Resenha FC" viram duas ligas indistinguíveis na lista.
+/** Validates names using the same constraints enforced by the database. */
+export function validateLeagueName(nome: string): string {
   const limpo = String(nome ?? '').replace(/\s+/g, ' ').trim();
   if (limpo.length < 3 || limpo.length > 24) {
     throw new LeagueNameInvalidError('o nome da liga precisa ter de 3 a 24 caracteres');
   }
-  // Caractere de controle vira nome INVISÍVEL na lista: dois nomes diferentes
-  // aparecem idênticos na tela e o fã não distingue a própria liga.
-  //
-  // O teste é por codepoint, e não por regex, de propósito: escape de controle
-  // em regex literal é fácil de escrever errado, e o erro passa despercebido —
-  // a regex compila e simplesmente não casa com nada.
+  // Inspect code points so all control characters are rejected.
   for (const ch of limpo) {
     const c = ch.codePointAt(0) ?? 0;
     if (c < 0x20 || c === 0x7f) {
@@ -109,11 +78,7 @@ export function createLeagueRepo(db: Db) {
       return rows[0] ? mapLeague(rows[0]) : null;
     },
 
-    /**
-     * Busca protegida pela associação. Junta o antigo isMember()+findById()
-     * numa ida ao Postgres e mantém o mesmo contrato de privacidade: sem linha
-     * significa tanto "não existe" quanto "você não é membro".
-     */
+    /** A missing row deliberately hides whether the league exists. */
     async findForMember(id: string, userId: string): Promise<League | null> {
       const rows = await db.query(
         `select ${COLS}
@@ -126,7 +91,7 @@ export function createLeagueRepo(db: Db) {
       return rows[0] ? mapLeague(rows[0]) : null;
     },
 
-    /** Quantas ligas o fã CRIOU. É este número que o gate do free enxerga. */
+    /** Counts leagues owned by the user for free-tier enforcement. */
     async countOwned(userId: string): Promise<number> {
       const rows = await db.query(`select count(*)::int as n from leagues where owner_id = $1`, [
         userId,
@@ -134,7 +99,7 @@ export function createLeagueRepo(db: Db) {
       return Number(rows[0]?.n ?? 0);
     },
 
-    /** Contagem barata para cabeçalho/estado; não carrega cada liga só para usar `.length`. */
+    /** Returns a count without loading all memberships. */
     async countForUser(userId: string): Promise<number> {
       const rows = await db.query(
         `select count(*)::int as n from league_members where user_id = $1`,
@@ -143,12 +108,7 @@ export function createLeagueRepo(db: Db) {
       return Number(rows[0]?.n ?? 0);
     },
 
-    /**
-     * As ligas do fã: as que ele criou E as que ele entrou por convite.
-     *
-     * `iLead` sai da tabela, não de `ownerId === userId` na tela: quem lidera é
-     * um dado do banco, e o índice parcial da 0002 garante que é um só.
-     */
+    /** Lists every league the user belongs to, including invited leagues. */
     async listForUser(userId: string): Promise<(League & { iLead: boolean })[]> {
       const rows = await db.query(
         `select ${COLS}, m.role
@@ -162,24 +122,11 @@ export function createLeagueRepo(db: Db) {
     },
 
     /**
-     * Cria a liga e põe o dono como membro, numa transação só.
-     *
-     * ─── por que o `for update` na linha do fã ───
-     *
-     * O gate do free ("1 liga") é um contador, e contador lido fora de trava
-     * perde corrida em silêncio: dois POST simultâneos do MESMO fã leem 0 os
-     * dois, e os dois criam — o fã free fica com 2 ligas e ninguém vê erro
-     * nenhum. É o mesmo defeito do SELECT-antes-de-UPDATE que o `setHandle`
-     * recusa.
-     *
-     * Aqui não dá para delegar ao UNIQUE (o limite não é "um nome único", é uma
-     * contagem, e ela muda quando o fã vira premium), então a trava é explícita:
-     * as duas transações disputam a MESMA linha de `users`, e a segunda só lê o
-     * contador depois que a primeira gravou. Sem a trava, o CHECK não existiria
-     * em lugar nenhum do sistema — o gate seria só um `if` no browser.
+     * Creates the league and its owner membership atomically.
+     * Locking the owner row serializes free-tier quota checks.
      */
     async create(ownerId: string, name: string): Promise<League> {
-      const nome = validarNomeDeLiga(name);
+      const nome = validateLeagueName(name);
 
       const id = await db.withTx(async (tx: Executor) => {
         const [dono] = await tx.query(`select is_premium from users where id = $1 for update`, [
@@ -187,8 +134,6 @@ export function createLeagueRepo(db: Db) {
         ]);
         if (!dono) throw new UserNotFoundError(ownerId);
 
-        // Premium cria quantas quiser; o free tem a cota. A pergunta é feita ao
-        // banco, sob a trava — nunca ao cliente.
         if (!dono.is_premium) {
           const [c] = await tx.query(`select count(*)::int as n from leagues where owner_id = $1`, [
             ownerId,
@@ -196,11 +141,7 @@ export function createLeagueRepo(db: Db) {
           if (Number(c?.n ?? 0) >= LIGAS_FREE) throw new LeagueLimitError();
         }
 
-        // O código é aleatório e o UNIQUE do banco é quem decide se colidiu —
-        // não um "select where invite_code = ..." antes de gravar, que é a
-        // corrida de sempre. Colisão em 31^6 é rara, e é justamente por ser rara
-        // que ela não pode ser tratada com esperança: o SAVEPOINT deixa tentar
-        // outro código sem derrubar a transação inteira.
+        // The unique constraint is authoritative; savepoints allow collision retries.
         for (let tentativa = 0; tentativa < TENTATIVAS_CODIGO; tentativa++) {
           await tx.query('savepoint liga_codigo');
           try {
@@ -210,13 +151,8 @@ export function createLeagueRepo(db: Db) {
                returning id`,
               [nome, ownerId, gerarCodigo()]
             );
-            // `insert ... returning` sem linha só acontece se o insert não
-            // gravou — e aí seguir em frente criaria a liga fantasma que a
-            // tela lista e o banco não tem.
             if (!liga) throw new Error('[db] insert da liga não devolveu id');
             const novoId = String(liga.id);
-            // O dono é membro como qualquer um: é o que faz `count(*)` ser o
-            // número de gente na liga, sem "+1" em lugar nenhum.
             await tx.query(
               `insert into league_members (league_id, user_id, role) values ($1, $2, 'owner')`,
               [novoId, ownerId]
@@ -225,9 +161,7 @@ export function createLeagueRepo(db: Db) {
             return novoId;
           } catch (e) {
             await tx.query('rollback to savepoint liga_codigo');
-            // Só a colisão de código merece outra tentativa. Qualquer outra
-            // violação (a PK de league_members, por exemplo) é bug, e bug tem
-            // que subir barulhento em vez de virar 5 tentativas silenciosas.
+            // Retry only invitation-code collisions; surface every other failure.
             if (isUniqueViolation(e) && constraintName(e) === 'leagues_invite_code_key') continue;
             throw e;
           }
@@ -240,21 +174,9 @@ export function createLeagueRepo(db: Db) {
       return liga;
     },
 
-    /**
-     * Entra numa liga pelo código do convite.
-     *
-     * ENTRAR NÃO GASTA A COTA DO FREE, e isto é decisão de produto, não
-     * esquecimento: a cota é sobre a liga que você CRIA ("seu grupo, seu
-     * escudo"). Se entrar contasse, o primeiro amigo que você chamasse — que
-     * provavelmente já tem a própria liga — não conseguiria aceitar o convite, e
-     * o "chame a galera" morreria no primeiro convidado.
-     *
-     * Idempotente: quem já é membro e clica no link de novo entra na mesma liga,
-     * sem erro e sem duplicar. Quem faz isso é o `on conflict do nothing` sobre
-     * a PK (league_id, user_id).
-     */
+    /** Joining by invitation is idempotent and does not consume the owner quota. */
     async joinByCode(userId: string, code: string): Promise<League> {
-      const codigo = normalizarCodigo(code);
+      const codigo = normalizeLeagueCode(code);
       const rows = await db.query(`select id from leagues where invite_code = $1`, [codigo]);
       if (!rows[0]) throw new InviteCodeInvalidError();
 
@@ -271,18 +193,8 @@ export function createLeagueRepo(db: Db) {
     },
 
     /**
-     * Apaga a liga — só o LÍDER pode.
-     *
-     * A posse é conferida NA PRÓPRIA QUERY (`owner_id = $2`), não num SELECT
-     * antes: entre o SELECT e o DELETE mora a corrida de sempre. Os membros
-     * saem junto pela FK da 0002 (`league_members.league_id on delete
-     * cascade`) — e a cota do free volta sozinha, porque `countOwned` conta
-     * linhas de `leagues` e a linha some.
-     *
-     * Quando nada foi apagado, a resposta não pode vazar existência: quem não
-     * é membro recebe o MESMO 404 de liga inexistente. O 403 é só para quem
-     * está DENTRO da liga e não lidera — esse já vê o nome e o convite, não há
-     * o que esconder, e um 404 para ele mentiria ("a liga sumiu?").
+     * Deletes only when ownership matches. The fallback error preserves league
+     * existence privacy for non-members.
      */
     async delete(id: string, userId: string): Promise<void> {
       const rows = await db.query(`delete from leagues where id = $1 and owner_id = $2 returning id`, [
@@ -290,13 +202,11 @@ export function createLeagueRepo(db: Db) {
         userId,
       ]);
       if (rows[0]) return;
-      // Nada apagado. A consulta de associação aqui é só para ESCOLHER o erro —
-      // a decisão de apagar já foi tomada, atomicamente, pela query acima.
       if (await repo.isMember(id, userId)) throw new LeagueNotOwnerError();
       throw new LeagueNotFoundError();
     },
 
-    /** A liga é PRIVADA: quem não é membro não vê nem o nome, nem o convite. */
+    /** Private leagues expose neither their name nor invitation to non-members. */
     async isMember(leagueId: string, userId: string): Promise<boolean> {
       const rows = await db.query(
         `select 1 from league_members where league_id = $1 and user_id = $2`,
@@ -317,9 +227,6 @@ export function createLeagueRepo(db: Db) {
       );
       return rows.map((r) => ({
         userId: String(r.user_id),
-        // NULL fica NULL: o fã que ainda não escolheu apelido aparece como "sem
-        // apelido" na tela. Inventar um nome aqui (ou pior, tirar do e-mail —
-        // E12) mentiria para a liga inteira.
         handle: (r.handle as string | null) ?? null,
         role: r.role as LeagueRole,
         joinedAt: Math.round(Number(r.joined_ms)),

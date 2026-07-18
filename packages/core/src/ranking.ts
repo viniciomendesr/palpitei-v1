@@ -1,6 +1,6 @@
 import type { User } from "./types.ts";
 
-// Espelha a semântica do sorted set do Redis (ZINCRBY/ZREVRANGE).
+// Mirrors Redis sorted-set semantics (ZINCRBY/ZREVRANGE).
 export class Ranking {
   private scores = new Map<string, number>();
 
@@ -12,7 +12,7 @@ export class Ranking {
     return this.scores.get(member) ?? 0;
   }
 
-  /** Desc por score; empate desempatado por member asc (determinístico). */
+  /** Descending score; member ascending breaks ties deterministically. */
   top(n: number): { member: string; score: number }[] {
     return [...this.scores.entries()]
       .map(([member, score]) => ({ member, score }))
@@ -21,18 +21,12 @@ export class Ranking {
   }
 }
 
-// ---------------------------------------------------------------------------
-// XP e nível — regra de domínio, não de armazenamento.
-// No v0 isto morava no singleton `store`; aqui é função pura sobre o User, para
-// o motor de perguntas creditar XP sem conhecer repositório nenhum.
-// ---------------------------------------------------------------------------
-
-/** Curva de nível: cada nível custa progressivamente mais XP (raiz). */
+/** Level curve: each level requires progressively more XP. */
 export function levelForXp(xp: number): number {
   return Math.floor(Math.sqrt(xp / 100)) + 1;
 }
 
-/** Credita XP e recalcula o nível. Muta o objeto; persistir é com quem chamou. */
+/** Credits XP and recalculates the level. Persistence remains the caller's job. */
 export function addXp(user: User, amount: number): void {
   user.xp += amount;
   user.level = levelForXp(user.xp);

@@ -1,23 +1,11 @@
-/**
- * Cotações que podem alimentar o palpite pré-jogo.
- *
- * Esta leitura usa o snapshot da TxLINE — foto atual para uma tela pré-jogo,
- * não a série /updates usada pelo replay/explicador. Só devolvemos a projeção
- * que a UI consome (linha + chances), nunca o payload cru licenciado. Arrays
- * paralelos incompletos, `Pct: "NA"`, linhas inteiras e linhas asiáticas são
- * AUSÊNCIA de mercado, não zero nem uma estimativa nossa (G8).
- */
+/** Projects usable pregame markets from the TxLINE snapshot without exposing raw licensed payloads. Invalid feed data means unavailable, never zero. */
 
 import { TxlineHttpError, fetchOddsSnapshot, warn } from '@palpitei/txline';
 
-export type ChancesResultado = { home: number; draw: number; away: number };
-export type ChancesAcimaAbaixo = { line: number; over: number; under: number };
+export type ResultProbabilities = { home: number; draw: number; away: number };
+export type OverUnderProbabilities = { line: number; over: number; under: number };
 
-/**
- * A lista é o contrato da tela: só entram mercados que a TxLINE cotou por
- * completo E que o Palpitei sabe liquidar. O front não reserva cartões para
- * uma categoria que a fonte não abriu.
- */
+/** Includes only fully quoted markets that Palpitei can settle. */
 export type PregameMarket =
   | {
       id: 'result';
@@ -33,104 +21,100 @@ export type PregameMarket =
 
 export interface PregameOddsRead {
   markets: PregameMarket[];
-  /** false = a TxLINE não respondeu; lista vazia não é uma lista de zeros. */
+  /** False means TxLINE did not respond; an empty list never represents zero values. */
   txlineAvailable: boolean;
 }
 
-/** Contadores seguros para investigar falha de cotação sem expor payload/segredo. */
+/** Safe counters for diagnosing quote availability without exposing payloads or secrets. */
 export interface PregameOddsStatus {
-  consultasTxline: number;
+  txlineQueries: number;
   cacheHits: number;
-  indisponibilidades: number;
-  ultimoMotivo: string | null;
-  ultimaIndisponibilidadeEm: number | null;
+  unavailableResponses: number;
+  lastUnavailableReason: string | null;
+  lastUnavailableAt: number | null;
 }
 
-export const SEM_MERCADOS: PregameMarket[] = [];
+export const NO_PREGAME_MARKETS: PregameMarket[] = [];
 
-const MERCADO_RESULTADO = '1X2_PARTICIPANT_RESULT';
-const MERCADO_GOLS = 'OVERUNDER_PARTICIPANT_GOALS';
-const MERCADO_ESCANTEIOS = 'OVERUNDER_PARTICIPANT_CORNERS';
+const RESULT_MARKET = '1X2_PARTICIPANT_RESULT';
+const GOALS_MARKET = 'OVERUNDER_PARTICIPANT_GOALS';
+const CORNERS_MARKET = 'OVERUNDER_PARTICIPANT_CORNERS';
 const TTL_MS = Math.max(1_000, Number(process.env.TXLINE_PREGAME_ODDS_CACHE_MS ?? 15_000) || 15_000);
 
 type Cache = Map<number, { value: PregameOddsRead; expiresAt: number; inFlight: Promise<PregameOddsRead> | null }>;
-const CHAVE = '__palpitei_pregame_odds_cache__' as const;
-const CHAVE_STATUS = '__palpitei_pregame_odds_status__' as const;
-type GlobalComCache = typeof globalThis & { [CHAVE]?: Cache };
-type GlobalComStatus = typeof globalThis & { [CHAVE_STATUS]?: PregameOddsStatus };
+const CACHE_KEY = '__palpitei_pregame_odds_cache__' as const;
+const STATUS_KEY = '__palpitei_pregame_odds_status__' as const;
+type GlobalWithCache = typeof globalThis & { [CACHE_KEY]?: Cache };
+type GlobalWithStatus = typeof globalThis & { [STATUS_KEY]?: PregameOddsStatus };
 
 function cache(): Cache {
-  const g = globalThis as GlobalComCache;
-  return (g[CHAVE] ??= new Map());
+  const global = globalThis as GlobalWithCache;
+  return (global[CACHE_KEY] ??= new Map());
 }
 
-function statusInterno(): PregameOddsStatus {
-  const g = globalThis as GlobalComStatus;
-  return (g[CHAVE_STATUS] ??= {
-    consultasTxline: 0,
+function internalStatus(): PregameOddsStatus {
+  const global = globalThis as GlobalWithStatus;
+  return (global[STATUS_KEY] ??= {
+    txlineQueries: 0,
     cacheHits: 0,
-    indisponibilidades: 0,
-    ultimoMotivo: null,
-    ultimaIndisponibilidadeEm: null,
+    unavailableResponses: 0,
+    lastUnavailableReason: null,
+    lastUnavailableAt: null,
   });
 }
 
-/** Estado observável do snapshot pré-jogo, sem resposta crua da TxLINE. */
-export function statusOddsPregameTxline(): Readonly<PregameOddsStatus> {
-  return { ...statusInterno() };
+/** Observable pregame snapshot status without raw TxLINE responses. */
+export function getPregameOddsStatus(): Readonly<PregameOddsStatus> {
+  return { ...internalStatus() };
 }
 
-/** Isola testes de cache/telemetria; não é chamado pelo fluxo de produção. */
-export function resetOddsPregameTxlineParaTeste(): void {
+/** Isolates cache and telemetry tests; production code never calls this. */
+export function resetPregameOddsForTest(): void {
   cache().clear();
-  const status = statusInterno();
-  status.consultasTxline = 0;
+  const status = internalStatus();
+  status.txlineQueries = 0;
   status.cacheHits = 0;
-  status.indisponibilidades = 0;
-  status.ultimoMotivo = null;
-  status.ultimaIndisponibilidadeEm = null;
+  status.unavailableResponses = 0;
+  status.lastUnavailableReason = null;
+  status.lastUnavailableAt = null;
 }
 
-function motivoSeguroDaIndisponibilidade(erro: unknown): string {
-  if (erro instanceof TxlineHttpError) return `HTTP ${erro.status}`;
-  if (erro instanceof DOMException && erro.name === 'TimeoutError') return 'timeout';
-  if (erro instanceof Error && erro.name === 'AbortError') return 'timeout';
+function safeUnavailableReason(error: unknown): string {
+  if (error instanceof TxlineHttpError) return `HTTP ${error.status}`;
+  if (error instanceof DOMException && error.name === 'TimeoutError') return 'timeout';
+  if (error instanceof Error && error.name === 'AbortError') return 'timeout';
   return 'rede/cliente';
 }
 
-function texto(v: unknown): string {
-  return typeof v === 'string' ? v.trim().toLowerCase() : '';
+function normalizedText(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-function numero(v: unknown): number | null {
-  if (typeof v !== 'number' && typeof v !== 'string') return null;
-  const n = Number(v);
+function finiteNumber(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
-/** `MarketParameters` da TxLINE é hoje uma string (`line=2.5`), não objeto. */
-export function linhaDoMercado(params: unknown): number | null {
-  let bruto: unknown = null;
+/** TxLINE `MarketParameters` is currently a string such as `line=2.5`, not an object. */
+export function extractMarketLine(params: unknown): number | null {
+  let rawLine: unknown = null;
   if (typeof params === 'string') {
     const match = /(?:^|[,&;\s])line\s*=\s*(-?(?:\d+(?:\.\d+)?|\.\d+))(?=$|[,&;\s])/i.exec(params);
-    bruto = match?.[1] ?? null;
+    rawLine = match?.[1] ?? null;
   } else if (params && typeof params === 'object') {
-    bruto = (params as { line?: unknown }).line ?? null;
+    rawLine = (params as { line?: unknown }).line ?? null;
   }
-  const line = numero(bruto);
-  // Linhas .5 não empatam; .0, .25 e .75 exigem regra de push/meio ganho.
+  const line = finiteNumber(rawLine);
+  // Only half-goal lines avoid push and half-win settlement rules.
   if (line === null || line < 0 || line > 20 || Number.isInteger(line)) return null;
   return Math.abs(line * 2 - Math.round(line * 2)) < 1e-9 ? line : null;
 }
 
-type Precos = Map<string, number>;
+type PricesByName = Map<string, number>;
 
-/**
- * Monta o mapa de chances só se TODAS as três listas paralelas forem válidas.
- * `Prices` ainda é checado embora a UI não o mostre: Pct sem preço é um estado
- * inconsistente do feed, não uma cotação verificável.
- */
-function precosValidos(raw: Record<string, unknown>): Precos | null {
+/** Builds probabilities only when all parallel feed arrays are complete and consistent. */
+function validPrices(raw: Record<string, unknown>): PricesByName | null {
   const names = raw.PriceNames ?? raw.priceNames;
   const prices = raw.Prices ?? raw.prices;
   const pcts = raw.Pct ?? raw.pct;
@@ -139,19 +123,19 @@ function precosValidos(raw: Record<string, unknown>): Precos | null {
 
   const out = new Map<string, number>();
   for (let i = 0; i < names.length; i++) {
-    const name = texto(names[i]);
-    const price = numero(prices[i]);
-    const pct = numero(pcts[i]);
+    const name = normalizedText(names[i]);
+    const price = finiteNumber(prices[i]);
+    const pct = finiteNumber(pcts[i]);
     if (!name || price === null || price <= 0 || pct === null || pct <= 0 || pct > 100 || out.has(name)) return null;
     out.set(name, pct);
   }
   return out;
 }
 
-function chanceResultado(raw: Record<string, unknown>): ChancesResultado | null {
-  if (String(raw.SuperOddsType ?? raw.superOddsType ?? '') !== MERCADO_RESULTADO) return null;
+function resultProbabilities(raw: Record<string, unknown>): ResultProbabilities | null {
+  if (String(raw.SuperOddsType ?? raw.superOddsType ?? '') !== RESULT_MARKET) return null;
   if ((raw.MarketPeriod ?? raw.marketPeriod) != null) return null;
-  const p = precosValidos(raw);
+  const p = validPrices(raw);
   if (!p) return null;
   const home = p.get('part1') ?? p.get('participant1') ?? p.get('home');
   const draw = p.get('draw');
@@ -159,43 +143,42 @@ function chanceResultado(raw: Record<string, unknown>): ChancesResultado | null 
   return home == null || draw == null || away == null ? null : { home, draw, away };
 }
 
-function chanceAcimaAbaixo(raw: Record<string, unknown>, tipo: string): ChancesAcimaAbaixo | null {
-  if (String(raw.SuperOddsType ?? raw.superOddsType ?? '') !== tipo) return null;
+function overUnderProbabilities(raw: Record<string, unknown>, marketType: string): OverUnderProbabilities | null {
+  if (String(raw.SuperOddsType ?? raw.superOddsType ?? '') !== marketType) return null;
   if ((raw.MarketPeriod ?? raw.marketPeriod) != null) return null;
-  const line = linhaDoMercado(raw.MarketParameters ?? raw.marketParameters);
-  const p = precosValidos(raw);
+  const line = extractMarketLine(raw.MarketParameters ?? raw.marketParameters);
+  const p = validPrices(raw);
   if (line === null || !p) return null;
   const over = p.get('over');
   const under = p.get('under');
   return over == null || under == null ? null : { line, over, under };
 }
 
-/** A linha mais equilibrada é a pergunta mais justa entre as que a TxLINE abriu. */
-function maisEquilibrada(candidatas: ChancesAcimaAbaixo[]): ChancesAcimaAbaixo | null {
-  return candidatas.reduce<ChancesAcimaAbaixo | null>((melhor, atual) => {
-    if (!melhor) return atual;
-    const desequilibrioAtual = Math.abs(atual.over - atual.under);
-    const desequilibrioMelhor = Math.abs(melhor.over - melhor.under);
-    if (desequilibrioAtual < desequilibrioMelhor) return atual;
-    // Empate raro: a menor linha resolve a escolha sem injetar uma preferência
-    // de produto e mantém a resposta estável entre renders.
-    return desequilibrioAtual === desequilibrioMelhor && atual.line < melhor.line ? atual : melhor;
+/** Selects the most balanced TxLINE line for the fairest question. */
+function mostBalanced(candidates: OverUnderProbabilities[]): OverUnderProbabilities | null {
+  return candidates.reduce<OverUnderProbabilities | null>((best, current) => {
+    if (!best) return current;
+    const currentImbalance = Math.abs(current.over - current.under);
+    const bestImbalance = Math.abs(best.over - best.under);
+    if (currentImbalance < bestImbalance) return current;
+    // Resolve exact ties deterministically without a product preference.
+    return currentImbalance === bestImbalance && current.line < best.line ? current : best;
   }, null);
 }
 
-/** Projeção pura — exportada para teste sem chamar a rede. */
-export function extrairMercadosPregame(rows: unknown[]): PregameMarket[] {
-  let result: ChancesResultado | null = null;
-  const goals: ChancesAcimaAbaixo[] = [];
-  const corners: ChancesAcimaAbaixo[] = [];
+/** Pure projection exported for network-free tests. */
+export function extractPregameMarkets(rows: unknown[]): PregameMarket[] {
+  let result: ResultProbabilities | null = null;
+  const goals: OverUnderProbabilities[] = [];
+  const corners: OverUnderProbabilities[] = [];
 
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
     const raw = row as Record<string, unknown>;
-    result ??= chanceResultado(raw);
-    const goal = chanceAcimaAbaixo(raw, MERCADO_GOLS);
+    result ??= resultProbabilities(raw);
+    const goal = overUnderProbabilities(raw, GOALS_MARKET);
     if (goal) goals.push(goal);
-    const corner = chanceAcimaAbaixo(raw, MERCADO_ESCANTEIOS);
+    const corner = overUnderProbabilities(raw, CORNERS_MARKET);
     if (corner) corners.push(corner);
   }
 
@@ -211,7 +194,7 @@ export function extrairMercadosPregame(rows: unknown[]): PregameMarket[] {
       ],
     });
   }
-  const goalsMarket = maisEquilibrada(goals);
+  const goalsMarket = mostBalanced(goals);
   if (goalsMarket) {
     markets.push({
       id: 'goals',
@@ -223,7 +206,7 @@ export function extrairMercadosPregame(rows: unknown[]): PregameMarket[] {
       ],
     });
   }
-  const cornersMarket = maisEquilibrada(corners);
+  const cornersMarket = mostBalanced(corners);
   if (cornersMarket) {
     markets.push({
       id: 'corners',
@@ -238,45 +221,41 @@ export function extrairMercadosPregame(rows: unknown[]): PregameMarket[] {
   return markets;
 }
 
-/**
- * Snapshot atual, com cache curto por fixture. Se a TxLINE falhar, não servimos
- * cache velho como se fosse atual: a tela recebe mercados indisponíveis e segue
- * permitindo somente o que não depende de cotação (placar exato).
- */
-type BuscarOddsSnapshot = (fixtureId: number) => Promise<unknown[]>;
+/** Fetches a short-lived fixture snapshot without presenting stale data as current. */
+type FetchOddsSnapshot = (fixtureId: number) => Promise<unknown[]>;
 
-export async function oddsPregameTxline(
+export async function fetchPregameOdds(
   fixtureId: number,
-  buscarOddsSnapshot: BuscarOddsSnapshot = fetchOddsSnapshot,
+  fetchSnapshot: FetchOddsSnapshot = fetchOddsSnapshot,
 ): Promise<PregameOddsRead> {
   const c = cache();
-  const status = statusInterno();
+  const status = internalStatus();
   const now = Date.now();
-  const anterior = c.get(fixtureId);
-  if (anterior && now < anterior.expiresAt) {
+  const previous = c.get(fixtureId);
+  if (previous && now < previous.expiresAt) {
     status.cacheHits += 1;
-    return anterior.value;
+    return previous.value;
   }
-  if (anterior?.inFlight) {
+  if (previous?.inFlight) {
     status.cacheHits += 1;
-    return anterior.inFlight;
+    return previous.inFlight;
   }
 
-  const entry = anterior ?? { value: { markets: SEM_MERCADOS, txlineAvailable: false }, expiresAt: 0, inFlight: null };
-  status.consultasTxline += 1;
-  const emVoo = buscarOddsSnapshot(fixtureId)
-    .then((rows) => ({ markets: extrairMercadosPregame(rows), txlineAvailable: true }))
-    .catch((erro: unknown) => {
-      const motivo = motivoSeguroDaIndisponibilidade(erro);
-      status.indisponibilidades += 1;
-      status.ultimoMotivo = motivo;
-      status.ultimaIndisponibilidadeEm = Date.now();
-      // Nunca logar corpo HTTP, URL assinada, JWT ou payload da TxLINE.
+  const entry = previous ?? { value: { markets: NO_PREGAME_MARKETS, txlineAvailable: false }, expiresAt: 0, inFlight: null };
+  status.txlineQueries += 1;
+  const inFlight = fetchSnapshot(fixtureId)
+    .then((rows) => ({ markets: extractPregameMarkets(rows), txlineAvailable: true }))
+    .catch((error: unknown) => {
+      const reason = safeUnavailableReason(error);
+      status.unavailableResponses += 1;
+      status.lastUnavailableReason = reason;
+      status.lastUnavailableAt = Date.now();
+      // Never log HTTP bodies, signed URLs, JWTs, or TxLINE payloads.
       warn(
-        `[pregame-odds] snapshot indisponível para fixture ${fixtureId} (${motivo}); ` +
+        `[pregame-odds] snapshot unavailable for fixture ${fixtureId} (${reason}); ` +
           'mercados dinâmicos não serão exibidos',
       );
-      return { markets: SEM_MERCADOS, txlineAvailable: false };
+      return { markets: NO_PREGAME_MARKETS, txlineAvailable: false };
     })
     .then((value) => {
       entry.value = value;
@@ -284,16 +263,16 @@ export async function oddsPregameTxline(
       entry.inFlight = null;
       return value;
     });
-  entry.inFlight = emVoo;
+  entry.inFlight = inFlight;
   c.set(fixtureId, entry);
-  return emVoo;
+  return inFlight;
 }
 
-/** Compara uma linha recebida do cliente com a linha que a TxLINE acabou de abrir. */
-export function mercadoPorId<T extends PregameMarket['id']>(markets: PregameMarket[], id: T): Extract<PregameMarket, { id: T }> | null {
+/** Checks a client-submitted line against the currently quoted TxLINE market. */
+export function marketById<T extends PregameMarket['id']>(markets: PregameMarket[], id: T): Extract<PregameMarket, { id: T }> | null {
   return (markets.find((market) => market.id === id) as Extract<PregameMarket, { id: T }> | undefined) ?? null;
 }
 
-export function mesmaLinha(recebida: number | null, cotada: Extract<PregameMarket, { kind: 'over_under' }> | null): boolean {
-  return recebida !== null && cotada !== null && Math.abs(recebida - cotada.line) < 1e-9;
+export function matchesMarketLine(received: number | null, quoted: Extract<PregameMarket, { kind: 'over_under' }> | null): boolean {
+  return received !== null && quoted !== null && Math.abs(received - quoted.line) < 1e-9;
 }

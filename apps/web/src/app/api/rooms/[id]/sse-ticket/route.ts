@@ -1,4 +1,3 @@
-/** Emite um ticket curto e de uso único para abrir um SSE autenticado. */
 
 import { didVerificado } from '@/server/http';
 import { ehFinalidadeTicketSse, emitirTicketSse } from '@/server/sse-ticket';
@@ -22,8 +21,6 @@ export async function POST(
     return Response.json({ error: 'sala, grupo ou finalidade inválidos' }, { status: 400 });
   }
 
-  // A filiação continua sendo validada no stream antes de qualquer estado da
-  // sala/lobby; este ticket só transporta a identidade verificada até lá.
   return Response.json({
     ticket: emitirTicketSse({ did, purpose: body.purpose, roomId, partyId }),
   });

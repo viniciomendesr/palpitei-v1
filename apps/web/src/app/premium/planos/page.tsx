@@ -1,6 +1,5 @@
 'use client';
 
-/** PREMIUM · PLANOS — anual (padrão, com 7 dias grátis) ou mensal. */
 
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ds';

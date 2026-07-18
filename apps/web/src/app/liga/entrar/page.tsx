@@ -1,13 +1,5 @@
 'use client';
 
-/**
- * ENTRAR NUMA LIGA — o outro lado do "chame a galera".
- *
- * Entrar NÃO gasta a cota do free: a cota é sobre a liga que você CRIA. Se
- * gastasse, o primeiro amigo que você chamasse — que provavelmente já tem a
- * própria liga — não conseguiria aceitar o convite, e o convite morreria no
- * primeiro convidado. Por isso esta tela não tem gate nenhum.
- */
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,7 +10,6 @@ import { useRequireSession } from '@/lib/guard';
 import { fw } from '@/lib/tokens';
 import { api } from '@/lib/api';
 
-/** O código tem 6 caracteres — ver o ALFABETO do leagueRepo. */
 const TAM_CODIGO = 6;
 
 export default function EntrarLigaPage() {
@@ -41,8 +32,6 @@ export default function EntrarLigaPage() {
       const { league } = await api.joinLeague(codigo);
       router.replace(`/liga/${league.id}`);
     } catch (e) {
-      // 404 = código que não abre liga nenhuma. A mensagem vem do servidor, em
-      // pt-BR e sem culpar o fã: pode ser erro de quem mandou.
       setErro(e instanceof Error ? e.message : t.ligaErro);
       setEntrando(false);
     }
@@ -92,9 +81,6 @@ export default function EntrarLigaPage() {
 
       <input
         value={codigo}
-        // Maiúscula na hora: o código é gravado em maiúscula, e o servidor
-        // normaliza de novo. Aqui é só pra tela não parecer que recusou o que o
-        // fã digitou certo em minúscula.
         onChange={(e) => setCodigo(e.target.value.toUpperCase().replace(/[\s-]/g, ''))}
         maxLength={TAM_CODIGO}
         placeholder={t.entrarLigaPlaceholder}

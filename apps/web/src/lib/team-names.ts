@@ -7,11 +7,8 @@ type TeamNames = {
 };
 
 /**
- * Nomes de exibição das seleções.
- *
- * A TxLINE e o banco continuam sendo a fonte do nome canônico. Este catálogo
- * só é consultado na apresentação e aceita as formas mais comuns dos feeds em
- * português e inglês. Uma seleção desconhecida volta exatamente como chegou.
+ * Display names for national teams. TxLINE and the database remain canonical;
+ * unknown names are returned unchanged.
  */
 const TEAMS: readonly TeamNames[] = [
   { pt: 'África do Sul', en: 'South Africa' },
@@ -107,7 +104,7 @@ for (const team of TEAMS) {
   }
 }
 
-/** Traduz apenas para exibição; nunca deve ser usado antes de persistir dados. */
+/** Localizes a name for display only; never use it before persisting data. */
 export function localizeTeamName(name: string, lang: Lang): string {
   const team = BY_ALIAS.get(normalized(name));
   return team?.[lang] ?? name;

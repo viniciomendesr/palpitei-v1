@@ -88,7 +88,7 @@ test("replay ignora pré-jogo e abre a primeira pergunta no kickoff com prazo re
     ports: fake.ports,
   });
 
-  // Este era o caso dos 265s: (kickoff + 10min - primeiro evento) / 60.
+  // Regression case: (kickoff + 10 minutes - first event) / 60.
   engine.onScoreEvent(ev(1, T0, { clockRunning: false }));
   assert.equal(engine.openQuestions().length, 0, "metadado pré-jogo não abre desafio");
 
@@ -131,7 +131,7 @@ test("place: ok, opção inválida, duplicado, janela fechada, pergunta inexiste
   const badOpt = engine.place(userB, ng.id, "zz");
   assert.deepEqual(badOpt, { ok: false, error: "opção inválida" });
 
-  clock.set(T0 + 70_000); // além do closesAt (T0+65000), sem sweep
+  clock.set(T0 + 70_000); // Past closesAt (T0+65000), without a sweep.
   const late = engine.place(userB, ng.id, "p1");
   assert.deepEqual(late, { ok: false, error: "janela fechada" });
 
@@ -152,7 +152,7 @@ test("gol com a janela ABERTA anula a pergunta (regra de justiça) e reabre outr
   assert.ok(engine.place(user, ng1.id, "p1").ok);
 
   const xpBefore = user.xp;
-  // gol aos 30s — janela (65s) ainda aberta => void
+  // A goal at 30s arrives while the 65s window is still open, so void it.
   engine.onScoreEvent(ev(3, T0 + 30_000, { action: "goal", goals: { p1: 1, p2: 0 } }));
 
   assert.equal(engine.questionById(ng1.id)!.state, "void");
@@ -176,15 +176,15 @@ test("gol com a janela fechada resolve e paga XP com bônus de velocidade", () =
   clock.set(T0 + 5000);
   engine.onScoreEvent(ev(2, T0 + 5000, { action: "kickoff" }));
   const ng = engine.openQuestions().find((q) => q.type === "next_goal")!;
-  // janela: T0+5000 .. T0+65000; metade = T0+35000
+  // Window: T0+5000 through T0+65000; midpoint = T0+35000.
 
   clock.set(T0 + 10_000);
-  assert.ok(engine.place(fast, ng.id, "p2").ok); // rápido + certo => 150
+  assert.ok(engine.place(fast, ng.id, "p2").ok); // Fast and correct => 150.
 
   clock.set(T0 + 50_000);
-  assert.ok(engine.place(slow, ng.id, "p1").ok); // lento + errado => 0
+  assert.ok(engine.place(slow, ng.id, "p1").ok); // Slow and incorrect => 0.
 
-  engine.onScoreEvent(ev(3, T0 + 70_000)); // sweep fecha a janela
+  engine.onScoreEvent(ev(3, T0 + 70_000)); // Sweep closes the window.
   assert.equal(engine.questionById(ng.id)!.state, "closed");
 
   engine.onScoreEvent(ev(4, T0 + 120_000, { action: "goal", goals: { p1: 0, p2: 1 } }));
@@ -215,7 +215,7 @@ test("hilo_corners: 'yes' dentro do horizonte; 'no' via sweep após o deadline",
   clock.set(T0 + 5000);
   engine.onScoreEvent(ev(2, T0 + 5000, { action: "kickoff" }));
 
-  // 1º escanteio abre a hilo (janela 45s, horizonte 10 min)
+  // First corner opens hilo (45s window, 10-minute horizon).
   engine.onScoreEvent(ev(3, T0 + 100_000, { action: "corner", corners: { p1: 1, p2: 0 } }));
   const hilo1 = engine.openQuestions().find((q) => q.type === "hilo_corners")!;
   assert.equal(hilo1.closesAt, T0 + 145_000);
@@ -223,10 +223,10 @@ test("hilo_corners: 'yes' dentro do horizonte; 'no' via sweep após o deadline",
   clock.set(T0 + 110_000);
   assert.ok(engine.place(user, hilo1.id, "yes").ok);
 
-  engine.onScoreEvent(ev(4, T0 + 150_000)); // fecha a janela
+  engine.onScoreEvent(ev(4, T0 + 150_000)); // Closes the window.
   assert.equal(engine.questionById(hilo1.id)!.state, "closed");
 
-  // 2º escanteio dentro do horizonte => "yes" e abre nova hilo
+  // A second corner within the horizon resolves "yes" and opens another hilo.
   engine.onScoreEvent(ev(5, T0 + 300_000, { action: "corner", corners: { p1: 1, p2: 1 } }));
   const q1 = engine.questionById(hilo1.id)!;
   assert.equal(q1.state, "resolved");
@@ -236,7 +236,7 @@ test("hilo_corners: 'yes' dentro do horizonte; 'no' via sweep após o deadline",
   const hilo2 = engine.openQuestions().find((q) => q.type === "hilo_corners")!;
   assert.equal(hilo2.opensAt, T0 + 300_000);
 
-  // nenhum escanteio até o deadline (T0+900000) => sweep resolve "no"
+  // No corner until the deadline (T0+900000), so sweep resolves "no".
   engine.onScoreEvent(ev(6, T0 + 901_000));
   const q2 = engine.questionById(hilo2.id)!;
   assert.equal(q2.state, "resolved");
@@ -255,7 +255,7 @@ test("next_goal atravessa o intervalo e acerta p1 quando p1 faz o próximo gol",
   clock.set(T0 + 10_000);
   assert.ok(engine.place(user, ng.id, "p1").ok);
 
-  engine.onScoreEvent(ev(3, T0 + 70_000)); // fecha a janela
+  engine.onScoreEvent(ev(3, T0 + 70_000)); // Closes the window.
   engine.onScoreEvent(ev(4, T0 + 80_000, { action: "halftime_finalised" }));
 
   assert.equal(
@@ -293,19 +293,17 @@ test("next_goal atravessa o intervalo e acerta p1 quando p1 faz o próximo gol",
 });
 
 test("game_finalised com a final_result ABERTA anula (regra de justiça), não paga", () => {
-  // Sem kickoff que feche a janela, o fim de jogo chegava com a final_result
-  // ainda aberta e a RESOLVIA — pagando XP a quem palpitou com a janela aberta.
-  // next_goal e hilo já anulavam nesse caso; a final_result era a exceção calada.
+  // A final result that remains open at game end must be voided for fairness.
   const { engine, clock, emitted, createUser } = makeEngine();
   const user = createUser("ivo_q");
 
-  engine.onScoreEvent(ev(1, T0)); // abre final_result (fecha em T0+600_000)
+  engine.onScoreEvent(ev(1, T0)); // Opens final_result (closes at T0+600_000).
   const final = engine.openQuestions().find((q) => q.type === "final_result")!;
 
   clock.set(T0 + 1000);
   assert.ok(engine.place(user, final.id, "p1").ok);
 
-  // Fim de jogo aos 200s, SEM kickoff: janela ainda aberta.
+  // Game ends at 200s without kickoff, while the window is still open.
   clock.set(T0 + 200_000);
   engine.onScoreEvent(
     ev(2, T0 + 200_000, {
@@ -323,7 +321,7 @@ test("game_finalised com a final_result ABERTA anula (regra de justiça), não p
   assert.ok(
     emitted.some((m) => m.type === "question_void" && m.question.id === final.id)
   );
-  // O jogo termina do mesmo jeito.
+  // The game still ends.
   assert.equal(engine.finished, true);
   assert.equal(emitted[emitted.length - 1].type, "game_end");
 });
@@ -336,19 +334,19 @@ test("game_finalised resolve tudo pelo placar e emite game_end por último", () 
   engine.onScoreEvent(ev(1, T0));
   const final = engine.openQuestions().find((q) => q.type === "final_result")!;
   clock.set(T0 + 1000);
-  assert.ok(engine.place(userA, final.id, "p1").ok); // primeira metade => bônus
+  assert.ok(engine.place(userA, final.id, "p1").ok); // First half => bonus.
 
   clock.set(T0 + 5000);
   engine.onScoreEvent(ev(2, T0 + 5000, { action: "kickoff" }));
 
-  // gol com janela aberta => void da NG1, abre NG2
+  // A goal during the open window voids NG1 and opens NG2.
   engine.onScoreEvent(ev(3, T0 + 30_000, { action: "goal", goals: { p1: 1, p2: 0 } }));
   const ng2 = engine.openQuestions().find((q) => q.type === "next_goal")!;
 
   clock.set(T0 + 40_000);
-  assert.ok(engine.place(userB, ng2.id, "none").ok); // primeira metade => bônus
+  assert.ok(engine.place(userB, ng2.id, "none").ok); // First half => bonus.
 
-  engine.onScoreEvent(ev(4, T0 + 100_000)); // fecha NG2
+  engine.onScoreEvent(ev(4, T0 + 100_000)); // Closes NG2.
 
   engine.onScoreEvent(
     ev(5, T0 + 200_000, {
@@ -445,10 +443,10 @@ test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca
   engine.onScoreEvent(ev(3, T0 + 70_000)); // sweep fecha a janela da ng1
   engine.onScoreEvent(ev(4, T0 + 120_000, { action: "goal", goals: { p1: 1, p2: 0 } }));
 
-  // ana: final (fechada, sem veredito) + ng1 (resolvida, ganhou). bob não vaza.
+  // Ana sees final (closed, unresolved) and ng1 (resolved); Bob's data never leaks.
   const daAna = engine.respostasDe(ana.id);
   assert.equal(daAna.length, 2);
-  // ordem de palpite: quem palpitou primeiro vem primeiro
+  // Prediction order is preserved.
   assert.equal(daAna[0].question.id, final.id);
   assert.equal(daAna[0].prediction.choice, "p1");
   assert.equal(daAna[0].prediction.result, undefined, "final ainda não liquidou");
@@ -462,4 +460,40 @@ test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca
   assert.equal(doBob[0].prediction.choice, "p2");
 
   assert.deepEqual(engine.respostasDe("ninguem"), []);
+});
+
+test("snapshot restaura a mesma pergunta da sessão, sem trocar id nem esquecer palpite", () => {
+  const first = makeEngine();
+  const user = first.createUser("restaura");
+  const ids = (type: string, trigger: string) => `q_session1_${type}_${trigger}`;
+  const engine = new QuestionEngine({
+    fixture: FX,
+    clock: first.clock,
+    emit: () => {},
+    ports: first.fake.ports,
+    sessionId: 'session1',
+    templates: { next_goal: { id: 'next-goal', version: 1 } },
+    questionId: ids,
+  });
+  engine.onScoreEvent(ev(1, T0));
+  const question = engine.openQuestions()[0]!;
+  assert.equal(question.id, 'q_session1_final_result_final_result:1000000');
+  assert.equal(question.sessionId, 'session1');
+  assert.ok(engine.place(user, question.id, 'p1').ok);
+
+  const restored = new QuestionEngine({
+    fixture: FX,
+    clock: first.clock,
+    emit: () => {},
+    ports: first.fake.ports,
+    sessionId: 'session1',
+    questionId: ids,
+  });
+  const checkpoint = engine.snapshot();
+  const persisted = checkpoint.tracked[0]!.predictions;
+  checkpoint.tracked[0]!.predictions = [];
+  restored.restore(checkpoint);
+  restored.hydratePredictions(persisted);
+  assert.equal(restored.questionById(question.id)?.id, question.id);
+  assert.equal(restored.respostasDe(user.id)[0]?.prediction.choice, 'p1');
 });

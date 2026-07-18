@@ -1,9 +1,5 @@
-// @palpitei/txline — cliente da TxLINE e camada de ingestão.
-//
-// A TxLINE é a fonte primária do jogo (regra da trilha). Este pacote fala com
-// ela e devolve NormEvent do @palpitei/core; ele não conhece salas, usuários,
-// XP nem banco. O cache de partida entra por injeção (MatchCacheStore), porque
-// o payload da TxLINE não pode ser versionado (T&C §7) — quem tem SQL é o db.
+// TxLINE client and ingestion layer. It returns core NormEvent values without
+// depending on rooms, users, XP, or the database.
 
 export { config } from "./config.ts";
 export { info, warn, error, recentLogs, type LogLevel, type LogLine } from "./log.ts";
@@ -13,10 +9,10 @@ export {
   TxlineHttpError,
   TxlineSweepError,
   isHttpStatus,
-  motivo,
+  errorMessage,
 } from "./errors.ts";
 
-// Credenciamento do SERVIÇO (não é a identidade do fã — essa é o privy_did).
+// Service credentials; fan identity is the separately verified privy_did.
 export {
   authStatus,
   ensureJwt,
@@ -31,8 +27,8 @@ export {
 } from "./auth.ts";
 
 export {
-  baldes,
-  buracosDeSeq,
+  createTimeBuckets,
+  findSequenceGaps,
   fetchFixtureNames,
   fetchFixtures,
   fetchHistorical,
@@ -41,25 +37,25 @@ export {
   fetchScoresSnapshot,
   fetchScoresUpdates,
   fetchStatValidation,
-  type Balde,
+  type TimeBucket,
   type SweepStats,
 } from "./api.ts";
 
 export {
   adaptDbCacheStore,
-  cacheUtil,
+  hasUsableMatchCache,
   createFileMatchCacheStore,
   createInMemoryMatchCacheStore,
-  type MatchCacheFonte,
+  type MatchCacheSource,
   type MatchCacheRecord,
   type MatchCacheStore,
 } from "./cache.ts";
 
 export {
-  liveAtivo,
-  liveResumo,
+  isLiveIngestActive,
+  liveSummary,
   liveStatus,
-  segundosEmSilencio,
+  secondsSinceLastEvent,
   startLiveIngest,
   stopLiveIngest,
   type LiveState,
@@ -68,8 +64,8 @@ export {
 
 export {
   ReplayRunner,
-  emJogo,
-  gapTetoMs,
+  isMatchInProgress,
+  maxReplayGapMs,
   hasRealMatchContent,
   loadReplayEvents,
   type LoadReplayOpts,
@@ -77,5 +73,5 @@ export {
   type ReplaySource,
 } from "./ingest/replay.ts";
 
-// DEV-ONLY, opt-in. Ver o cabeçalho de ingest/demo.ts antes de usar.
-export { generateDemoEvents, sinteticoPermitido } from "./ingest/demo.ts";
+// Development-only and opt-in. See ingest/demo.ts before using it.
+export { generateDemoEvents, isSyntheticAllowed } from "./ingest/demo.ts";

@@ -1,12 +1,4 @@
-// userRepo — a identidade do Palpitei.
-//
-// REGRA QUE NÃO SE NEGOCIA: a identidade é o `privy_did` VERIFICADO. Nunca
-// `body.userId`, nunca a carteira. A carteira muda (a Opção B ganha uma
-// embutida por cima) e o MESMO endereço reaparece como 'external' depois que o
-// fã exporta e importa no Phantom (E16). Só o DID é estável.
-//
-// Este repositório não sabe verificar token nenhum: quem chama já tem de ter
-// passado pelo verifyAuthToken da Privy. Se um DID chegar aqui, ele é lei.
+/** User identity persistence. Callers must provide a Privy-verified DID. */
 
 import type { Db, Executor, Row } from '../pool.js';
 import type { User, WalletSource } from '../types.js';
@@ -29,11 +21,7 @@ function mapUser(r: Row): User {
     id: String(r.id),
     handle: (r.handle as string | null) ?? null,
     wallet: (r.wallet_pubkey as string | null) ?? null,
-    // NULL fica NULL. O schema guarda NULL justamente para o E2 (fã da Privy que
-    // entrou sem carteira Solana) ficar visível; um `?? 'simulated'` aqui
-    // apagaria essa evidência e ainda marcaria um `did:privy:*` real como modo
-    // demo — combinação que o próprio users_did_namespace_ck recusa gravar.
-    // Quem precisa de carteira checa por NULL; não há origem padrão.
+    // Preserve null when Privy has not provided a Solana wallet.
     walletSource: (r.wallet_source as WalletSource | null) ?? null,
     privyId: String(r.privy_did),
     isPremium: Boolean(r.is_premium),
@@ -47,8 +35,8 @@ function mapUser(r: Row): User {
   };
 }
 
-/** Regras do apelido. Ele é PÚBLICO (ranking, ligas) — por isso o onboarding pede. */
-export function validarHandle(handle: string): string {
+/** Validates public handles used in rankings and leagues. */
+export function validateHandle(handle: string): string {
   const limpo = handle.trim();
   if (limpo.length < 3 || limpo.length > 20) {
     throw new HandleInvalidError('o apelido precisa ter de 3 a 20 caracteres');
@@ -56,8 +44,6 @@ export function validarHandle(handle: string): string {
   if (!/^[\p{L}\p{N}._-]+$/u.test(limpo)) {
     throw new HandleInvalidError('o apelido aceita letras, números, ponto, hífen e underline');
   }
-  // E12: o apelido NUNCA sai do e-mail. Aqui só dá para barrar o formato óbvio —
-  // a garantia de verdade é que nada neste pacote lê e-mail nenhum.
   if (limpo.includes('@')) {
     throw new HandleInvalidError('nada de e-mail no apelido — ele aparece no ranking pra todo mundo');
   }
@@ -88,16 +74,7 @@ export function createUserRepo(db: Db) {
       return rows[0] ? mapUser(rows[0]) : null;
     },
 
-    /**
-     * O caminho do login. Cria na primeira vez, atualiza a carteira nas
-     * seguintes — e NUNCA apaga o que já sabia: se a Privy responder sem
-     * carteira desta vez (acontece), `coalesce` preserva a que estava lá.
-     * Sobrescrever com NULL seria o "ausente = zero" de novo, agora na conta
-     * do fã.
-     *
-     * Repare no que NÃO acontece aqui: nenhum apelido é inventado. O usuário
-     * nasce com handle NULL e o onboarding pede (E12).
-     */
+    /** Creates the user or updates wallet data without overwriting it with null. */
     async findOrCreateByPrivyDid(did: string, opts: FindOrCreateOpts = {}): Promise<User> {
       const didLimpo = String(did ?? '').trim();
       if (!didLimpo) throw new Error('[db] privy_did vazio — identidade sem DID não existe');
@@ -119,7 +96,6 @@ export function createUserRepo(db: Db) {
       );
 
       const id = String(rows[0]?.id);
-      // A carteira principal também entra em user_wallets: é lá que mora o 1:N.
       if (wallet && source) await repo.linkWallet(id, wallet, source, { primary: true });
 
       const user = await repo.findById(id);
@@ -127,16 +103,9 @@ export function createUserRepo(db: Db) {
       return user;
     },
 
-    /**
-     * O fã escolhe o apelido. 409 se já for de outra pessoa.
-     *
-     * A corrida entre dois fãs pedindo o mesmo apelido no mesmo instante é
-     * resolvida pelo UNIQUE do banco, não por um SELECT antes do UPDATE — o
-     * "confere e depois grava" perde essa corrida em silêncio e cria dois
-     * "craques" no ranking.
-     */
+    /** Sets a public handle; the database unique constraint resolves races. */
     async setHandle(userId: string, handle: string): Promise<User> {
-      const limpo = validarHandle(handle);
+      const limpo = validateHandle(handle);
       try {
         const rows = await db.query(
           `update users set handle = $2, updated_at = now() where id = $1 returning id`,
@@ -163,13 +132,8 @@ export function createUserRepo(db: Db) {
     },
 
     /**
-     * Soma XP. O NÍVEL não é atualizado aqui de propósito: ele é coluna GERADA
-     * pelo banco com a fórmula do v0 — floor(sqrt(xp/100)) + 1 — e por isso não
-     * tem como divergir do XP. A fórmula vive num lugar só.
-     *
-     * CUIDADO: isto é incremento cego. Serve para XP avulso (conquista, missão,
-     * bônus). Para o XP de PALPITE use predictionRepo.settle, que só paga na
-     * transição de resolução — senão o replay paga duas vezes.
+     * Adds ad-hoc XP. Use predictionRepo.settle for prediction XP because it is
+     * idempotent; the generated database column derives the user's level.
      */
     async addXp(userId: string, amount: number): Promise<User> {
       if (!Number.isFinite(amount)) throw new Error('[db] addXp: valor inválido');
@@ -187,15 +151,7 @@ export function createUserRepo(db: Db) {
       return user;
     },
 
-    /**
-     * Vincula uma carteira à conta (1:N).
-     *
-     * O mesmo endereço PODE aparecer duas vezes na mesma conta com origens
-     * diferentes: a embutida que o fã exportou e reimportou no Phantom volta
-     * como 'external' com o MESMO pubkey (E16). Por isso a chave é
-     * (user_id, pubkey, source) — deduplicar só por pubkey apagaria a
-     * proveniência, que é justamente a evidência anti-lock-in da demo.
-     */
+    /** Links a wallet using `(user_id, pubkey, source)` to retain provenance. */
     async linkWallet(
       userId: string,
       pubkey: string,
@@ -213,11 +169,7 @@ export function createUserRepo(db: Db) {
       );
     },
 
-    /**
-     * Espelha a lista de carteiras que a Privy diz serem deste DID.
-     * Só ACRESCENTA: uma resposta da Privy sem uma carteira não é prova de que
-     * o fã a desvinculou — e apagar o vínculo aqui apagaria o histórico.
-     */
+    /** Adds wallets reported by Privy without deleting historical links. */
     async syncWallets(
       userId: string,
       wallets: { pubkey: string; source: WalletSource }[]
@@ -237,7 +189,7 @@ export function createUserRepo(db: Db) {
       }));
     },
 
-    /** Ranking global por XP. O ranking da SALA é do motor; este é o da tela de ranking. */
+    /** Returns the global XP ranking; room rankings come from the game engine. */
     async topByXp(limit = 50): Promise<{ userId: string; handle: string; xp: number; level: number }[]> {
       const rows = await db.query(
         `select id, handle, xp, level
@@ -255,14 +207,7 @@ export function createUserRepo(db: Db) {
       }));
     },
 
-    /**
-     * Recalcula o XP a partir do que foi REGISTRADO (palpites resolvidos +
-     * conquistas + missões concluídas) e devolve o antes/depois.
-     *
-     * É a auditoria do invariante: `users.xp` é um cache de uma soma. Se este
-     * método mudar o valor de alguém, algum caminho pagou XP em dobro (ou de
-     * menos) — e aí temos um bug para caçar, não um número para admirar.
-     */
+    /** Recomputes XP from durable awards to audit the cached users.xp value. */
     async recomputeXp(userId: string): Promise<{ antes: number; depois: number; bateu: boolean }> {
       return db.withTx(async (tx: Executor) => {
         const [atual] = await tx.query(`select xp from users where id = $1 for update`, [userId]);

@@ -1,14 +1,8 @@
 'use client';
 
-/**
- * A marca é TIPO, não imagem: `P!` itálico-900 num quadrado lime, girado -6deg.
- * Não troque por um <img>: não existe arquivo de logo, e é de propósito.
- */
-
 import { fw } from '@/lib/tokens';
 
 interface LogoProps {
-  /** Lado do quadrado. O tipo e o raio acompanham. */
   size?: number;
   glow?: boolean;
 }
@@ -46,7 +40,6 @@ export function Logo({ size = 34, glow = false }: LogoProps) {
   );
 }
 
-/** PALPITEI por extenso — o display da marca. */
 export function Wordmark({ size = 19 }: { size?: number }) {
   return (
     <span

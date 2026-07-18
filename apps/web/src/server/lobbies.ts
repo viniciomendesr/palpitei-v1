@@ -1,14 +1,11 @@
-/**
- * Lobby efêmero por grupo. O estado autoritativo continua no servidor: presença,
- * pronto e início chegam a todos por SSE antes de o runner da partida existir.
- */
+/** Process-local group lobby state broadcast to connected clients over SSE. */
 
 export type LobbyMeta = {
   key: string;
   roomId: string;
   partyId: string;
   fixtureId: number;
-  treino: boolean;
+  training: boolean;
   teamA: string;
   teamB: string;
   hostId?: string;
@@ -31,7 +28,7 @@ export type LobbyState = {
   roomId: string;
   partyId: string;
   fixtureId: number;
-  treino: boolean;
+  training: boolean;
   teamA: string;
   teamB: string;
   phase: 'waiting' | 'started' | 'finished';
@@ -76,7 +73,7 @@ export function stateFor(lobby: Lobby, userId: string): LobbyState {
     roomId: lobby.roomId,
     partyId: lobby.partyId,
     fixtureId: lobby.fixtureId,
-    treino: lobby.treino,
+    training: lobby.training,
     teamA: lobby.teamA,
     teamB: lobby.teamB,
     phase: lobby.phase,
@@ -97,7 +94,7 @@ function broadcast(lobby: Lobby): void {
     try {
       sub.send(stateFor(lobby, sub.userId));
     } catch {
-      // Uma conexão encerrada não impede as outras de receber o lobby.
+      // One closed connection must not stop the remaining subscribers.
     }
   }
 }
@@ -121,8 +118,7 @@ export function connectLobby(
       presence: 'watching',
     });
   }
-  // Compatibilidade para lobbies efêmeros de teste/dev. Em produção o hostId
-  // vem do Postgres e nunca depende da ordem das conexões SSE.
+  // Test and development fallback; production hosts come from Postgres.
   if (!lobby.hostId) lobby.hostId = user.id;
   const sub: Subscriber = { userId: user.id, send };
   lobby.subscribers.add(sub);
@@ -162,7 +158,7 @@ export function startLobby(lobby: Lobby, userId: string): { ok: boolean; error?:
   return { ok: true };
 }
 
-/** Diferencia uma saída intencional de uma aba que apenas perdeu a conexão. */
+/** Distinguishes an intentional departure from a temporarily disconnected tab. */
 export function leaveLobby(lobby: Lobby, userId: string): boolean {
   const member = lobby.members.get(userId);
   if (!member) return false;
@@ -172,14 +168,14 @@ export function leaveLobby(lobby: Lobby, userId: string): boolean {
   return true;
 }
 
-/** Encerramento idempotente: mantém ranking/presença visíveis até todos saírem. */
+/** Idempotently marks the lobby finished while preserving visible state. */
 export function finishLobby(lobby: Lobby): void {
   if (lobby.phase === 'finished') return;
   lobby.phase = 'finished';
   broadcast(lobby);
 }
 
-/** A execução acabou e ficou vazia: o próximo grupo volta a passar pelo lobby. */
+/** Clears an empty completed lobby so the next group starts from the lobby flow. */
 export function resetLobby(key: string): void {
   all().delete(key);
 }

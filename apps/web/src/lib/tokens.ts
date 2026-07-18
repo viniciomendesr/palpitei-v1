@@ -1,4 +1,4 @@
-/** Acesso tipado aos tokens de peso; `medium` é 600, não 500. */
+/** Typed access to font-weight tokens; `medium` is 600, not 500. */
 
 import type { CSSProperties } from 'react';
 
@@ -9,12 +9,12 @@ const token = (name: string): FontWeight => `var(${name})` as unknown as FontWei
 export const fw = {
   /** 400 */
   regular: token('--fw-regular'),
-  /** 600 — não 500 */
+  /** 600, not 500. */
   medium: token('--fw-medium'),
   /** 700 */
   bold: token('--fw-bold'),
   /** 800 */
   heavy: token('--fw-heavy'),
-  /** 900 — o display e a marca */
+  /** 900 for display text and branding. */
   black: token('--fw-black'),
 } as const;

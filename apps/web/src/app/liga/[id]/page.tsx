@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * A LIGA POR DENTRO — quem está nela e o código pra chamar mais gente.
- *
- * É aqui que "Chame a galera" (mockup) deixa de ser slogan: o convite é um
- * código curto que o fã manda no grupo. Sem esta tela, criar liga privada seria
- * criar um grupo de uma pessoa só.
- *
- * A rota devolve 404 pra quem não é membro — o MESMO 404 de liga inexistente, de
- * propósito (id vaza em print e em log de proxy; um 403 confirmaria que a liga
- * existe). Esta tela não tenta distinguir os dois casos porque o servidor não
- * conta a diferença.
- */
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -32,15 +20,11 @@ export default function LigaPage() {
   const [dados, setDados] = useState<ApiLeagueDetail | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
-  // Apagar em duas etapas NA TELA (nada de window.confirm: trava a automação e
-  // é feio). O 1º toque abre o painel; só o 2º apaga de verdade.
   const [confirmando, setConfirmando] = useState(false);
   const [apagando, setApagando] = useState(false);
   const [erroApagar, setErroApagar] = useState<string | null>(null);
 
   const id = params?.id;
-  // Mesma corrida do resto do app: a sessão local revive na hora, a Privy leva
-  // uns segundos pra ficar `ready`. Buscar antes é 401 garantido.
   const podeBuscar = Boolean(id) && privy.ready && privy.authenticated;
 
   useEffect(() => {
@@ -64,8 +48,6 @@ export default function LigaPage() {
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
     } catch {
-      // Clipboard bloqueado (contexto sem HTTPS, permissão negada): o código está
-      // na tela em fonte grande, dá pra digitar. Nada de "Copiado!" mentiroso.
     }
   };
 
@@ -77,8 +59,6 @@ export default function LigaPage() {
     setErroApagar(null);
     try {
       await api.deleteLeague(id);
-      // A liga não existe mais; esta tela também não. A home relê as ligas (e o
-      // countOwned) do banco ao montar — a cota do free volta sozinha.
       router.push('/home');
     } catch (e) {
       setErroApagar(e instanceof Error ? e.message : t.ligaApagarErro);
@@ -147,7 +127,6 @@ export default function LigaPage() {
               : membros(dados.league.memberCount)}
           </div>
 
-          {/* O convite */}
           <div
             style={{
               marginTop: 22,
@@ -196,7 +175,6 @@ export default function LigaPage() {
             </div>
           </div>
 
-          {/* Quem está na liga */}
           <div
             style={{
               marginTop: 22,
@@ -228,16 +206,11 @@ export default function LigaPage() {
                   style={{
                     fontWeight: fw.heavy,
                     fontSize: 15,
-                    // Apelido ausente é dito como ausente. Inventar um nome — ou
-                    // pior, tirar do e-mail (E12) — mentiria pra liga inteira e
-                    // vazaria o endereço da pessoa.
                     color: m.handle ? 'var(--text-hi)' : 'var(--text-muted)',
                     fontStyle: m.handle ? 'normal' : 'italic',
                   }}
                 >
                   {m.handle ?? t.ligaSemApelido}
-                  {/* Quem é você na lista. O servidor é quem marca — a tela não
-                      compara id nenhum, porque não recebe id de membro. */}
                   {m.me && (
                     <span
                       style={{ color: 'var(--text-muted)', fontWeight: fw.medium, fontSize: 12.5 }}
@@ -248,8 +221,6 @@ export default function LigaPage() {
                   )}
                 </div>
               </div>
-              {/* "lidera", não "você lidera": o dono pode ser outra pessoa, e
-                  colar o rótulo da home aqui diria a todo mundo que ele é você. */}
               {m.iLead && (
                 <span
                   style={{
@@ -266,9 +237,6 @@ export default function LigaPage() {
             </div>
           ))}
 
-          {/* Apagar a liga — SÓ quem lidera vê, e o servidor confere de novo
-              (`owner_id` na query do DELETE): esconder o botão é cortesia, não
-              segurança. Confirmação em duas etapas aqui na tela. */}
           {dados.league.iLead && (
             <div style={{ marginTop: 26 }}>
               {!confirmando ? (

@@ -1,13 +1,11 @@
-// Grava a linha do tempo COMPLETA de uma partida, para o replay não depender da
-// devnet no dia da demo (o dataset ROTACIONA — A1).
+// Stores the complete match timeline so replay does not depend on the devnet.
 //
 // Uso:
 //   npm run cache:match -w @palpitei/txline -- <fixtureId>          (cache do @palpitei/db)
 //   npm run cache:match -w @palpitei/txline -- <fixtureId> --file   (arquivo, dev offline)
 //
-// O dado é da TxLINE: o T&C §7 licencia só para o hackathon e proíbe
-// redistribuição. Em produção o cache é o POSTGRES; o --file grava em .cache/,
-// que está no .gitignore e NÃO pode ir para o repositório público.
+// TxLINE data is licensed for the hackathon only. Production persistence uses
+// Postgres; `--file` writes only to the ignored local cache.
 
 import { ensureJwt } from "../src/auth.ts";
 import {
@@ -23,15 +21,9 @@ const PADRAO = 18241006;
 type StoreResolvido = { store: MatchCacheStore; onde: string; close?: () => Promise<void> };
 
 /**
- * O store do @palpitei/db se ele existir E houver DATABASE_URL; senão, arquivo
- * (dev offline). O import é dinâmico porque o db é opcional para este script.
- *
- * ATENÇÃO ao que já deu errado aqui: `createMatchCacheStore()` EXIGE uma conexão
- * `Db`. Chamado sem argumento ele não explode — devolve um store cujas queries só
- * quebram na primeira leitura. E o vocabulário do db é load/save, não get/put:
- * usar o objeto direto como se fosse esta porta faz `put` ser `undefined` e o
- * script morrer DEPOIS das ~144 requisições, jogando a varredura fora. Por isso
- * aqui se monta a camada de verdade (createPalpitei) e se adapta explicitamente.
+ * Uses the @palpitei/db store when DATABASE_URL is available; otherwise writes
+ * a local file for offline development. The dynamic import keeps db optional.
+ * The adapter preserves the txline cache-store contract over db repositories.
  */
 async function resolveStore(forcaArquivo: boolean): Promise<StoreResolvido> {
   if (!forcaArquivo) {
@@ -39,10 +31,7 @@ async function resolveStore(forcaArquivo: boolean): Promise<StoreResolvido> {
       console.warn("DATABASE_URL vazia — caindo para arquivo (dev offline). Use --file para calar este aviso.");
     } else {
       try {
-        // Especificador em variável de propósito: o db é OPCIONAL para este
-        // script (ele roda offline com --file). Import literal faria o tsc
-        // exigir o build do db para typecheckar o txline — acoplamento que não
-        // queremos.
+        // Keep the module specifier dynamic so file mode does not require db.
         const especificador = "@palpitei/db";
         const db: any = await import(especificador);
         if (typeof db.createPalpitei !== "function") {
@@ -78,8 +67,7 @@ async function main(): Promise<void> {
 
   await ensureJwt();
 
-  // O StartTime vem das próprias linhas de score: a fixture pode já ter sumido
-  // do /fixtures/snapshot e ainda ter dados (A1).
+  // Score rows retain start time after the fixture leaves the snapshot.
   const amostra = await fetchScoresSnapshot(fixtureId);
   const startTime = Number(amostra.find((l: any) => l?.StartTime)?.StartTime);
   if (!Number.isFinite(startTime)) {

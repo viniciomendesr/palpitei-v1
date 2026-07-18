@@ -1,33 +1,16 @@
-// predictionRepo — o palpite do fã e o pagamento do XP.
-//
-// ============================================================================
-// O PONTO MAIS PERIGOSO DESTA CAMADA INTEIRA
-// ============================================================================
-// No v0 o pagamento era `store.addXp(user, awardedXp)` dentro do motor: um
-// incremento cego. Em memória, sem replay, funcionava. Aqui não funcionaria:
-//
-//   · o replay REEMITE a linha do tempo — a mesma pergunta resolve de novo;
-//   · o stream SSE reconecta e REENVIA eventos;
-//   · o servidor reinicia no meio de uma partida e reprocessa o cache.
-//
-// Em qualquer um dos três, o incremento cego paga duas vezes. E paga em
-// SILÊNCIO: ninguém abre um chamado porque ganhou XP demais. O ranking do
-// jurado simplesmente estaria errado.
-//
-// Por isso o XP aqui é FUNÇÃO de (prediction_id, resolução), e não um "+=":
-// o UPDATE só morde `where result is null`. É um compare-and-swap. Se a linha
-// já tinha resolução, o update não pega ninguém, nada é devolvido, e o XP não
-// se mexe. Pagar duas vezes deixa de ser uma questão de disciplina de quem
-// chama e passa a ser impossível.
+/**
+ * Prediction persistence and XP settlement. The conditional update in
+ * `settle` is the idempotency boundary for replayed or redelivered events.
+ */
 
 import type { Db, Executor } from '../pool.js';
 import type { Prediction } from '../types.js';
 import { isForeignKeyViolation, isUniqueViolation } from '../errors.js';
 
-export type ResultadoPalpite = 'won' | 'lost' | 'void';
+export type PredictionResult = 'won' | 'lost' | 'void';
 
 export type SettleResult = {
-  /** false = já estava resolvido; o XP NÃO foi pago de novo (replay/reenvio). */
+  /** False when the prediction was already resolved and XP was not paid again. */
   pagou: boolean;
   userId?: string;
   awardedXp?: number;
@@ -35,10 +18,7 @@ export type SettleResult = {
 
 export function createPredictionRepo(db: Db) {
   const repo = {
-    /**
-     * Registra o palpite. Um por fã por pergunta — garantido pelo UNIQUE do
-     * banco, não pela memória do motor (que morre no restart).
-     */
+    /** The database unique constraint enforces one prediction per user and question. */
     async place(p: Prediction): Promise<void> {
       try {
         await db.query(
@@ -49,12 +29,9 @@ export function createPredictionRepo(db: Db) {
         );
       } catch (e) {
         if (isUniqueViolation(e)) {
-          // Bateu no UNIQUE (user_id, question_id): o fã já palpitou aqui.
           throw new Error('você já palpitou nesta pergunta');
         }
         if (isForeignKeyViolation(e)) {
-          // Diagnóstico explícito porque o sintoma é obscuro: some um palpite e
-          // ninguém sabe por quê.
           throw new Error(
             `[db] não dá para gravar o palpite ${p.id}: a pergunta ${p.questionId} ou o usuário ` +
               `${p.userId} não está no banco. Quem trata o 'question_open' precisa chamar ` +
@@ -66,22 +43,19 @@ export function createPredictionRepo(db: Db) {
     },
 
     /**
-     * Paga (ou não) o XP de um palpite. Idempotente por construção.
-     *
-     * Regra do streak: acerto soma; erro zera; ANULADA não mexe. Anulação é
-     * decisão do sistema (o evento resolvedor chegou com a janela aberta) — não
-     * é falha do fã, e não pode custar a sequência dele.
+     * Settles XP exactly once. Wins advance streaks, losses reset them, and
+     * void results preserve the current streak.
      */
     async settle(
       predictionId: string,
-      result: ResultadoPalpite,
+      result: PredictionResult,
       awardedXp: number,
       tx?: Executor
     ): Promise<SettleResult> {
       const xp = result === 'won' ? Math.max(0, Math.trunc(awardedXp)) : 0;
 
       const exec = async (q: Executor): Promise<SettleResult> => {
-        // O CAS: só resolve quem ainda não estava resolvido.
+        // The compare-and-swap only settles unresolved predictions.
         const linhas = await q.query(
           `update predictions
               set result = $2, awarded_xp = $3, resolved_at = now()
@@ -93,8 +67,6 @@ export function createPredictionRepo(db: Db) {
 
         const userId = String(linhas[0]!.user_id);
 
-        // Só chega aqui quem virou a chave. O XP segue o palpite; o nível é
-        // coluna gerada e se ajusta sozinho.
         await q.query(
           `update users
               set xp = xp + $2,
@@ -118,14 +90,11 @@ export function createPredictionRepo(db: Db) {
       return tx ? exec(tx) : db.withTx(exec);
     },
 
-    /**
-     * Resolve pelo par (usuário, pergunta) — a forma como o `question_resolved`
-     * dos motores descreve o resultado (ele traz userId, não predictionId).
-     */
+    /** Settles by user and question, matching the engine event shape. */
     async settleByUserQuestion(
       userId: string,
       questionId: string,
-      result: ResultadoPalpite,
+      result: PredictionResult,
       awardedXp: number,
       tx?: Executor
     ): Promise<SettleResult> {
@@ -141,15 +110,10 @@ export function createPredictionRepo(db: Db) {
       return tx ? exec(tx) : db.withTx(exec);
     },
 
-    /**
-     * Resolve a pergunta inteira de uma vez, numa transação só — o formato do
-     * `question_resolved`/`question_void` que a sala já difunde.
-     * Devolve quantos foram REALMENTE pagos: numa entrega duplicada isso vem 0,
-     * e é assim que se enxerga que a idempotência está viva.
-     */
+    /** Settles every prediction for a question atomically. */
     async settleQuestion(
       questionId: string,
-      results: { userId: string; result: ResultadoPalpite; awardedXp: number }[]
+      results: { userId: string; result: PredictionResult; awardedXp: number }[]
     ): Promise<{ pagos: number; jaEstavam: number }> {
       return db.withTx(async (tx) => {
         let pagos = 0;
@@ -178,7 +142,7 @@ export function createPredictionRepo(db: Db) {
         choice: String(r.choice),
         placedAt: Number(r.placed_at),
       };
-      if (r.result != null) p.result = r.result as ResultadoPalpite;
+      if (r.result != null) p.result = r.result as PredictionResult;
       if (r.awarded_xp != null) p.awardedXp = Number(r.awarded_xp);
       return p;
     },
@@ -197,7 +161,7 @@ export function createPredictionRepo(db: Db) {
           choice: String(r.choice),
           placedAt: Number(r.placed_at),
         };
-        if (r.result != null) p.result = r.result as ResultadoPalpite;
+        if (r.result != null) p.result = r.result as PredictionResult;
         if (r.awarded_xp != null) p.awardedXp = Number(r.awarded_xp);
         return p;
       });
@@ -217,13 +181,13 @@ export function createPredictionRepo(db: Db) {
           choice: String(r.choice),
           placedAt: Number(r.placed_at),
         };
-        if (r.result != null) p.result = r.result as ResultadoPalpite;
+        if (r.result != null) p.result = r.result as PredictionResult;
         if (r.awarded_xp != null) p.awardedXp = Number(r.awarded_xp);
         return p;
       });
     },
 
-    /** Aproveitamento do fã — alimenta o perfil. */
+    /** Returns the user's prediction summary for the profile. */
     async estatisticas(userId: string): Promise<{
       total: number;
       acertos: number;

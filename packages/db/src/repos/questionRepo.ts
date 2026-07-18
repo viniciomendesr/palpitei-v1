@@ -1,10 +1,5 @@
-// questionRepo — as perguntas geradas pelo motor sobre o dado real.
-//
-// ATENÇÃO À ORDEM (é um acoplamento de verdade, não teoria): `predictions`
-// referencia `questions` por chave estrangeira. Uma pergunta que nunca foi
-// gravada faz o primeiro palpite dela estourar 23503. Quem escuta o `emit` dos
-// motores TEM de gravar a pergunta no `question_open` — antes de qualquer
-// palpite. Ver enginePorts.ts, que já faz isso.
+// Questions generated from real match data. Persist questions before predictions
+// that reference them to satisfy the foreign key.
 
 import type { Db, Row } from '../pool.js';
 import type { Question, QuestionOption, QuestionType } from '../types.js';
@@ -20,6 +15,11 @@ function mapQuestion(r: Row): Question {
     closesAt: Number(r.closes_at),
     state: r.state as Question['state'],
   };
+  if (r.session_id != null) q.sessionId = String(r.session_id);
+  if (r.template_id != null && r.template_version != null) {
+    q.template = { id: String(r.template_id), version: Number(r.template_version) };
+  }
+  if (r.trigger_key != null) q.triggerKey = String(r.trigger_key);
   if (r.correct != null) q.correct = String(r.correct);
   if (r.void_reason != null) q.voidReason = String(r.void_reason);
   if (r.resolved_at != null) q.resolvedAt = Number(r.resolved_at);
@@ -27,26 +27,23 @@ function mapQuestion(r: Row): Question {
   return q;
 }
 
-const COLS = `id, fixture_id, type, prompt, options, opens_at, closes_at, state,
-              correct, void_reason, resolved_at, resolved_by_seq`;
+const COLS = `id, fixture_id, session_id, template_id, template_version, trigger_key,
+              type, prompt, options, opens_at, closes_at, state, correct, void_reason,
+              resolved_at, resolved_by_seq`;
 
 export function createQuestionRepo(db: Db) {
   const repo = {
     /**
-     * Grava/atualiza a pergunta inteira. Idempotente por id: reemitir o mesmo
-     * `question_open` num replay não cria pergunta nova.
-     *
-     * A máquina de estados só ANDA PARA A FRENTE: uma pergunta já resolvida ou
-     * anulada não volta para 'open'. Sem essa trava, um evento reprocessado
-     * reabriria a janela de um desafio já pago — e o fã veria o desafio que
-     * acabou de acertar aberto de novo, valendo XP de novo.
+     * Idempotently saves a question. State transitions are forward-only so a
+     * replayed event cannot reopen a resolved or void question.
      */
     async save(q: Question): Promise<void> {
       await db.query(
         `
-        insert into questions (id, fixture_id, type, prompt, options, opens_at, closes_at,
-                               state, correct, void_reason, resolved_at, resolved_by_seq)
-        values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
+        insert into questions (id, fixture_id, session_id, template_id, template_version, trigger_key,
+                               type, prompt, options, opens_at, closes_at, state, correct,
+                               void_reason, resolved_at, resolved_by_seq)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15, $16)
         on conflict (id) do update set
           state           = case
                               when questions.state in ('resolved', 'void') then questions.state
@@ -56,11 +53,19 @@ export function createQuestionRepo(db: Db) {
           void_reason     = coalesce(questions.void_reason, excluded.void_reason),
           resolved_at     = coalesce(questions.resolved_at, excluded.resolved_at),
           resolved_by_seq = coalesce(questions.resolved_by_seq, excluded.resolved_by_seq),
-          closes_at       = excluded.closes_at
+          closes_at       = excluded.closes_at,
+          session_id      = coalesce(questions.session_id, excluded.session_id),
+          template_id     = coalesce(questions.template_id, excluded.template_id),
+          template_version = coalesce(questions.template_version, excluded.template_version),
+          trigger_key     = coalesce(questions.trigger_key, excluded.trigger_key)
         `,
         [
           q.id,
           q.fixtureId,
+          q.sessionId ?? null,
+          q.template?.id ?? null,
+          q.template?.version ?? null,
+          q.triggerKey ?? null,
           q.type,
           q.prompt,
           JSON.stringify(q.options ?? []),
@@ -97,12 +102,7 @@ export function createQuestionRepo(db: Db) {
     },
 
     /**
-     * Quantas foram anuladas por partida, com o motivo.
-     *
-     * Anulação não é erro — é a regra de justiça funcionando (o evento
-     * resolvedor chegou com a janela aberta). Mas anulação DEMAIS quer dizer
-     * que as janelas estão mal dimensionadas e o fã está palpitando à toa.
-     * Número que sobe demais é sintoma, não troféu.
+     * Counts question states per fixture for fairness-window observability.
      */
     async contagemPorEstado(fixtureId: number): Promise<Record<string, number>> {
       const rows = await db.query(

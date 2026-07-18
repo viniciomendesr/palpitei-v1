@@ -1,12 +1,5 @@
-// marketRepo — prévia da v2 (Presságio) com USDC SIMULADO.
-//
-// NÃO há dinheiro real na v1. Isto existe porque os motores portados do v0
-// incluem o mercado paramutuel e o EnginePorts pede um `saveBet`.
-//
-// Mesma disciplina do XP: creditar/debitar saldo é irreversível na prática, e o
-// replay reemite tudo. Toda mudança de saldo aqui é presa a um CAS — o débito
-// só acontece se a aposta ENTROU agora; o pagamento só acontece se o mercado
-// virou de não-resolvido para resolvido nesta chamada.
+// v2 simulated-USDC market persistence. All balance mutations use CAS so
+// replays and retries cannot debit or pay twice.
 
 import type { Db } from '../pool.js';
 import type { Bet, Market, MarketOutcome } from '../types.js';
@@ -14,20 +7,8 @@ import type { Bet, Market, MarketOutcome } from '../types.js';
 export function createMarketRepo(db: Db) {
   const repo = {
     /**
-     * Grava o mercado (abertura, prazo, pools).
-     *
-     * `save()` NUNCA escreve state='resolved' — nem no insert, nem no update.
-     * Resolver é `resolve()`, e só ele, porque resolver É PAGAR: as duas coisas
-     * acontecem na mesma transação, sob o mesmo CAS (`where state <> 'resolved'`).
-     *
-     * Sem esta trava havia um jeito silencioso de ninguém receber: o motor marca
-     * o mercado como resolvido em memória e emite `market_resolved`; se quem
-     * escuta chamar saveMarket(m) antes de markets.resolve(market, bets), o
-     * save() vira o state para 'resolved' e QUEIMA o CAS — o resolve() seguinte
-     * não acha linha, devolve {pagou:false} e o saldo de todo mundo fica onde
-     * estava. Nada estoura. (Medido: era exatamente isso que acontecia.)
-     * Por isso 'resolved' aqui é rebaixado para 'closed' e o pagamento continua
-     * sendo a única porta que resolve.
+     * Saves market state but never persists resolved. resolve() is the sole
+     * settlement path because state transition and payouts share one CAS transaction.
      */
     async save(m: Market): Promise<void> {
       const estadoGravavel = m.state === 'resolved' ? 'closed' : m.state;
@@ -37,9 +18,8 @@ export function createMarketRepo(db: Db) {
                              pools, winner, refunded, proof, proof_error)
         values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8::jsonb, $9, $10, $11::jsonb, $12)
         on conflict (id) do update set
-          -- Mercado resolvido não volta a abrir por reprocessamento. E o caminho
-          -- inverso também está fechado: excluded.state nunca é 'resolved' (só
-          -- resolve() resolve, porque só ele paga). Ver o comentário do save().
+          -- Reprocessing cannot reopen a resolved market. Only resolve() may set
+          -- 'resolved' because settlement and payouts share that transaction.
           state       = case when markets.state = 'resolved' then markets.state else excluded.state end,
           closes_at   = coalesce(excluded.closes_at, markets.closes_at),
           pools       = excluded.pools,
@@ -67,13 +47,8 @@ export function createMarketRepo(db: Db) {
     },
 
     /**
-     * Registra a aposta e debita o saldo — os dois juntos ou nenhum dos dois.
-     * `on conflict do nothing` + `returning`: se a aposta já existia (replay,
-     * reenvio, retry), não há segundo débito.
-     *
-     * O CHECK de `balance_cents >= 0` é a última linha de defesa: se o motor
-     * achava que dava e o banco discorda, a transação estoura aqui — alto — em
-     * vez de deixar um saldo negativo passeando.
+     * Records a bet and debits balance atomically. Conflict handling prevents a
+     * second debit, while the balance constraint rejects negative balances.
      */
     async saveBet(b: Bet): Promise<boolean> {
       return db.withTx(async (tx) => {
@@ -102,12 +77,7 @@ export function createMarketRepo(db: Db) {
     },
 
     /**
-     * Resolve o mercado e paga, uma vez só.
-     *
-     * O CAS está no `where state <> 'resolved'`: se o mercado já tinha sido
-     * resolvido, nenhuma linha volta e ninguém é pago de novo. É o mesmo
-     * cuidado que o v0 tinha em memória ("resolve() duas vezes é no-op") —
-     * agora garantido pelo banco, que sobrevive ao restart.
+     * Resolves and pays once. CAS on state prevents duplicate settlement.
      */
     async resolve(
       market: Market,

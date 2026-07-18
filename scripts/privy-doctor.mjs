@@ -90,7 +90,7 @@ async function postOAuthInit(appId, origin) {
   return body.url;
 }
 
-/** Retorna a recusa OAuth a partir de `Location.authError`, ou `null` se não houver. */
+/** Returns an OAuth rejection from Location.authError, or null when absent. */
 async function googleAuthError(authUrl) {
   const res = await fetch(authUrl, {
     redirect: 'manual',
@@ -100,7 +100,7 @@ async function googleAuthError(authUrl) {
     },
   });
 
-  // Em redirects, o veredito confiável está no header `Location`.
+  // On redirects, the reliable result is in the Location header.
   const target = res.headers.get('location') || res.url || '';
   if (!target.includes('/signin/oauth/error')) return null;
 
@@ -109,7 +109,7 @@ async function googleAuthError(authUrl) {
     const authError = new URL(target).searchParams.get('authError') ?? '';
     decoded = Buffer.from(authError, 'base64').toString('utf8');
   } catch {
-    // A recusa continua válida mesmo sem um `authError` decodificável.
+    // The rejection remains valid without a decodable authError.
   }
 
   const reason = decoded.match(/[a-z][a-z_]*(?:mismatch|invalid|denied)[a-z_]*/i);

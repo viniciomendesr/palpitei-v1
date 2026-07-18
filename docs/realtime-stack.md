@@ -1,90 +1,113 @@
-# Sincronização de salas e lobby
+# Sincronização de salas, lobby e escala
 
-## Stack atual
+## Estado atual
 
-- Next.js 15 + React 19 + TypeScript 5.7.
-- Railway com uma réplica Node persistente.
-- SSE para servidor → clientes e POST autenticado para comandos.
-- Estado autoritativo do jogo no servidor (`rooms.ts`); Postgres para identidade,
-  perguntas, palpites e XP.
+Palpitei usa Next.js, SSE para servidor → cliente e POST autenticado para
+comandos. O servidor é autoritativo para o relógio, perguntas, placar,
+liquidação e XP. Postgres persiste identidade, lobbies, membros, timeline
+TxLINE, palpites, sessões e templates.
 
-O lobby usa o mesmo transporte. Cada convite recebe um código global gerado no
-servidor; a chave `fixture + treino + inviteCode` isola o runner de cada grupo.
-Postgres guarda lobby, anfitrião, associação e fase. Presença e pronto continuam
-no processo porque são estados transitórios; o host só inicia quando todos os
-presentes estão prontos.
+A chave da experiência social é `fixture + treino + partyId`: grupos que jogam
+a mesma partida não compartilham presença, perguntas, respostas ou ranking. O
+convite autoriza a entrada no grupo; a associação persistida é verificada antes
+de abrir o stream SSE ou aceitar um comando.
 
-O fluxo público é `/convite/[code]`. Ele mostra a partida antes da entrada,
-preserva o destino durante login/onboarding e só então associa o usuário. A home
-também oferece entrada manual pelo código. Abrir `/sala/...?...party=` sem ser
-membro falha fechado: conhecer a URL interna não torna o usuário participante.
+## Realtime por fixture e por sessão
 
-## Bibliotecas avaliadas
+O ingest TxLINE é organizado por fixture ativa. Cada canal de fixture recebe
+scores e odds normalizados, persiste-os de forma idempotente e só então os
+publica para as salas inscritas. Vários grupos podem assinar o mesmo canal sem
+abrir uma conexão TxLINE por grupo.
+
+Cada grupo cria ou retoma uma `game_session` persistente. A sessão contém
+cursor, snapshot, versão do motor e conjunto de templates fixado. Em caso de
+restart, a sala reidrata a sessão e recupera a timeline posterior ao cursor;
+o primeiro pacote SSE continua sendo um `room_state` completo e personalizado
+para o usuário.
+
+Com `REDIS_URL`, uma lease Redis de 15 segundos elege a única réplica que abre
+o SSE TxLINE. Após o commit no Postgres, ela publica um evento normalizado por
+fixture; as demais réplicas o recebem em `palpitei:txline:fixture:<id>` e o
+encaminham somente para suas salas locais. O payload `raw` e detalhes do
+provedor não entram no broker. Como Pub/Sub é efêmero, cada reconexão reconcilia
+a projeção do Postgres, e cursores de sala descartam eventos repetidos.
+
+Presença e o sinal de pronto são transitórios. A fonte de verdade de lobby,
+membros, host e fase está no Postgres; a lista de conexões vive no processo.
+
+## Limite operacional da entrega
+
+O broker permite distribuir **o jogo ao vivo** entre réplicas, mas a produção
+continua com **uma réplica Node persistente** até que presença e pronto sejam
+compartilhados. O requisito ainda é explícito no deploy:
+
+- conexões SSE continuam locais (o broker encaminha eventos, não conexões);
+- presença e pronto do lobby ficam em memória;
+- presença não faz broadcast entre réplicas;
+- um grupo poderia ver presença divergente se seus membros caíssem em processos
+  diferentes.
+
+O lock elimina ingestão duplicada e o Pub/Sub entrega o mesmo jogo às salas em
+processos diferentes. Sessões e timeline persistidas permitem recuperar estado
+após restart, mas não equivalem a alta disponibilidade completa do lobby.
+
+## Caminho para múltiplas réplicas
+
+Antes de alterar `numReplicas`, falta implementar:
+
+1. presença e pronto em store compartilhado com heartbeat e broadcast;
+2. worker de recuperação para retomar `game_sessions` ativas e reconciliar
+   cursors/gaps após reinício;
+3. métricas e alertas por fixture/sessão: atraso do feed, eventos duplicados,
+   gaps, falhas de checkpoint, assinantes e reconexões.
+
+O motor e a liquidação permanecem no backend Palpitei mesmo se o transporte for
+migrado. O navegador nunca é autoridade de estado.
+
+## Alternativas avaliadas
 
 ### Liveblocks
 
-Melhor encaixe futuro para presença gerenciada no stack React/Next. Oferece
-rooms, Presence, Broadcast e Storage, hooks React tipados e endpoint próprio de
-autorização. Evita que presença dependa de uma única réplica Railway.
+Boa opção para presença, broadcast e storage com hooks React. Pode substituir
+a presença process-local, mas não substitui a persistência de eventos, o motor
+autoritativo ou a liquidação no backend.
 
 - https://liveblocks.io/docs/get-started/nextjs
 - https://liveblocks.io/docs/concepts
 
 ### Ably
 
-Boa opção quando o produto precisar de pub/sub, presença e histórico de canal
-como infraestrutura geral. É mais baixo nível que Liveblocks para a UI React e
-exige desenhar o estado compartilhado do lobby por cima dos canais.
+Opção de pub/sub e presença gerenciada para distribuir SSE/WebSocket entre
+réplicas. Exige manter a fronteira clara entre mensagens de transporte e
+comandos autoritativos do backend.
 
 - https://ably.com/docs/presence-occupancy/presence
 - https://ably.com/docs/channels
 
 ### PartyKit
 
-Modelo excelente para uma sala autoritativa na borda e lógica multiplayer
-customizada. Porém moveria o runtime da sala para outra plataforma e criaria
-uma fronteira operacional adicional ao Railway/Postgres atual.
+Útil para uma sala autoritativa na borda, mas adiciona uma plataforma e uma
+fronteira operacional. Não é necessário enquanto Railway opera com uma réplica.
 
 - https://docs.partykit.io/
 
 ### Socket.IO e Yjs
 
-Socket.IO é adequado para WebSocket bidirecional self-hosted, mas exige um
-servidor customizado e um adapter externo ao escalar réplicas. Yjs resolve
-edição concorrente/CRDT; o estado de uma partida é sequencial e autoritativo,
-portanto CRDT adicionaria complexidade sem resolver o relógio do runner.
+Socket.IO é apropriado para comunicação bidirecional self-hosted, porém requer
+adapter compartilhado ao escalar. Yjs resolve edição concorrente/CRDT; uma
+partida é sequência autoritativa de eventos, logo não resolve clock, ingestão
+ou liquidação.
 
 - https://socket.io/
 - https://docs.yjs.dev/api/about-awareness
 
-## Plano de evolução
+## Operação
 
-### Fase 1 — identidade persistente (implementada)
+Mantenha SSE nesta entrega e configure `REDIS_URL=${{Redis.REDIS_URL}}` no
+serviço web. Antes de um jogo, confirme fixture ativa, sessão recuperável,
+estado `leader` do broker em uma réplica e streams TxLINE. Durante o jogo,
+acompanhe persistência antes de publicação, lease e reconexões. Após o término,
+confirme finalização da sessão, das perguntas e de pré-palpites.
 
-- `lobbies` e `lobby_members` no Postgres;
-- convite global, limite de participantes e validade de 24 horas;
-- host definido na criação, não pela ordem das conexões SSE;
-- link público, entrada manual e retorno seguro depois do login;
-- autorização de membro nas ações e no stream do lobby.
-
-### Fase 2 — presença distribuída
-
-- mover presença/pronto para Liveblocks quando houver mais de uma réplica;
-- manter comandos críticos (iniciar, palpitar, liquidar XP) no backend;
-- adicionar heartbeat e reconciliação de membros desconectados;
-- medir tempo de entrada, falha de convite e abandono no lobby.
-
-### Fase 3 — sessão de partida recuperável
-
-- persistir checkpoint do runner e cursor TxLINE;
-- recuperar a mesma execução depois de restart/deploy;
-- expirar lobbies por job e permitir revanche explícita com novo código.
-
-## Decisão
-
-Manter SSE nesta entrega: é suficiente para lobby, placar, perguntas e presença
-com a réplica única configurada em `railway.json`, sem novas credenciais nem uma
-segunda fonte de verdade. Migrar a presença para Liveblocks antes de subir
-`numReplicas` acima de 1 ou quando a sala precisar sobreviver a restart/deploy.
-O motor, XP e relógio TxLINE continuam autoritativos no backend Palpitei mesmo
-após essa migração.
+A arquitetura completa de dados, templates e recuperação está em
+[live-architecture.md](live-architecture.md).

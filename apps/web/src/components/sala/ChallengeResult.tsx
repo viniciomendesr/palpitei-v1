@@ -1,18 +1,5 @@
 'use client';
 
-/**
- * RESULTADO DO DESAFIO — tela cheia, com a LEITURA DO JOGO.
- *
- * A leitura é o coração do produto: o lance transforma uma pergunta em história
- * de futebol. Quando há série de preços, ela pode mostrar a mudança de chance;
- * no replay demo os números são explicitamente simulados.
- *
- * Voz: "atualizada ao vivo", nunca "odds". Nunca jargão de aposta.
- *
- * As duas barras (antes/agora) vêm do explicador, que na v1 lê a SÉRIE de
- * /odds/updates. Construir isso sobre /odds/snapshot deixa a feature sem dados e
- * SEM ERRO NENHUM (achado G2 do v0) — o snapshot devolve uma linha só.
- */
 
 import type { ChallengeText } from '@/lib/i18n';
 import type { ChallengeSpec } from '@/lib/mock';
@@ -36,7 +23,6 @@ interface Props {
   result: LastResult;
   level: number;
   xp: number;
-  /** Posição do fã no ranking da sala, pra fechar com a provocação. */
   myPos: number;
   onNext: () => void;
   onSeeProgress: () => void;
@@ -47,10 +33,6 @@ export function ChallengeResult({ spec, text, result, level, xp, myPos, onNext, 
 
   const win = result.correct;
   const color = win ? 'var(--lime)' : 'var(--red)';
-  // O lime tem tokens de tinta (--lime-a14/--lime-line); o --red não tem
-  // equivalente. Daí o color-mix: a cor continua saindo do TOKEN, então retunar
-  // --red retuna estas também. Escrever rgba(255,90,90,…) na mão congelaria uma
-  // cópia do token que ninguém lembra de atualizar.
   const bg = win ? 'var(--lime-a14)' : 'color-mix(in srgb, var(--red) 10%, transparent)';
   const border = win ? 'var(--lime-line)' : 'color-mix(in srgb, var(--red) 40%, transparent)';
 
@@ -90,7 +72,6 @@ export function ChallengeResult({ spec, text, result, level, xp, myPos, onNext, 
           {win ? (
             <Check size={60} width={2.6} />
           ) : result.timeout ? (
-            // Tempo esgotado não é "errou": é o relógio. O 0s diz isso melhor que um X.
             <span style={{ fontWeight: fw.black, fontStyle: 'italic', fontSize: 44, color: 'var(--red)', letterSpacing: -2 }}>
               0s
             </span>
@@ -147,7 +128,6 @@ export function ChallengeResult({ spec, text, result, level, xp, myPos, onNext, 
         </div>
       </div>
 
-      {/* LEITURA DO JOGO */}
       <div
         style={{
           marginTop: 26,
@@ -207,7 +187,6 @@ export function ChallengeResult({ spec, text, result, level, xp, myPos, onNext, 
   );
 }
 
-/** Uma barra de probabilidade da leitura do jogo (antes / agora). */
 function ProbBar({
   label,
   pct,

@@ -1,5 +1,4 @@
-// Logger com ring buffer: o servidor expõe os últimos logs numa rota de
-// diagnóstico, então tudo que passa por aqui fica observável sem SSH.
+// Ring-buffer logger exposed through the diagnostic route.
 
 export type LogLevel = "info" | "warn" | "error";
 export type LogLine = { ts: number; level: LogLevel; msg: string };
@@ -35,7 +34,7 @@ export function error(msg: string): void {
   push("error", msg, cores.red);
 }
 
-/** Últimos logs (mais antigo primeiro), para a rota de diagnóstico. */
+/** Most recent logs, oldest first, for the diagnostic route. */
 export function recentLogs(): LogLine[] {
   return ring.slice();
 }

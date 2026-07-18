@@ -1,28 +1,5 @@
 'use client';
 
-/**
- * SALA DE REPLAY — cabeçalho de placar, abas Lances/Estatísticas/Ranking e o
- * bottom sheet do desafio.
- *
- * Três fases, exatamente como o protótipo (lá eram `phase` dentro da rota `sala`,
- * e continuam sendo: são estados da MESMA sala, não páginas — a URL não muda no
- * meio de um desafio, senão o botão "voltar" do browser cai no meio do jogo):
- *
- *   question → o sheet aberto, timer correndo
- *   result   → tela cheia com a leitura do jogo
- *   fim      → fim de jogo
- *
- * ================== O QUE MUDA QUANDO O DADO REAL ENTRAR ==================
- * Hoje o motor é o array CHALLENGES e um setInterval. Na v1:
- *   - `question_open` abre o sheet e traz `closesAt` (ts do EVENTO, via Clock).
- *   - `question_resolved` traz a opção certa e o XP; `question_void` ANULA (sem
- *     XP) quando o lance resolvedor chegou com a janela aberta.
- *   - `score_event` mexe placar/minuto — e Score AUSENTE ≠ zero (A4): sem o
- *     bloco, MANTENHA o placar; zerar dá gol fantasma.
- *   - o POST /api/rooms/:id/predictions registra o palpite. Sem userId no body:
- *     quem responde é quem o Bearer diz que é.
- * =========================================================================
- */
 
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -48,43 +25,20 @@ import {
   roomRanking,
   type FeedEvent,
 } from '@/lib/mock';
-// Confere, em dev, que CHALLENGES e dict.ch descrevem os MESMOS desafios e as
-// MESMAS opções. São arrays paralelos: fora de sincronia, esta sala renderiza
-// null — tela preta sem erro nenhum (CONTEXT.md §3).
 import '@/lib/invariants';
 
 type Phase = 'question' | 'result' | 'fim';
 type SalaTab = 'lances' | 'stats' | 'ranking';
 
-/**
- * A bifurcação da sala. Duas máquinas de estado OPOSTAS, e por isso dois
- * componentes:
- *
- *   demo (§5.1)  → SalaMock: o motor mora aqui dentro (`optId === spec.correct`),
- *                  o relógio é um setInterval, e nada depende de rede. É o
- *                  caminho do jurado; é o único que não pode falhar.
- *   partida real → SalaReal: quem abre, fecha e julga é o SERVIDOR, via SSE. A
- *                  tela não decide nada, porque palpite vale XP no ranking
- *                  público e cliente que decide o próprio XP é fraude (§4).
- *
- * O id decide: as partidas reais são fixtureId da TxLINE (numérico); as do mock
- * é o alias `arg-cab`, único replay guiado da demo. Sem esta barreira, um alias
- * antigo poderia abrir Argentina × Cabo Verde no lugar de outra partida — dado
- * inventado com aparência de dado real, que é o G6 que este projeto evita.
- */
 export default function SalaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { session } = useSession();
   const ehDemo = !session || session.authMethod === 'demo';
-  // Partida real só existe atrás de login: o demo nunca chama a rota (nem tem
-  // Bearer para isso). `treino-<fixtureId>` é a MESMA partida real em modo
-  // treino (XP sempre 0) — a regra de parse é a do servidor (parseRoomId).
   if (!ehDemo && /^(treino-)?\d+$/.test(id)) return <SalaComLobby roomId={id} />;
   return <SalaMock params={params} />;
 }
 
 function SalaMock({ params }: { params: Promise<{ id: string }> }) {
-  // Next 15: params é uma Promise. `use()` desembrulha no cliente.
   const { id } = use(params);
   const router = useRouter();
   const { t, fmt, lang } = useI18n();
@@ -106,12 +60,8 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
   const spec = CHALLENGES[ci];
   const text = t.ch[ci];
 
-  /** Fecha o desafio. `optId === null` = tempo esgotado. */
   const resolveChallenge = useCallback(
     (optId: string | null) => {
-      // Reentrância: dois toques rápidos (ou o toque no mesmo tick em que o
-      // relógio zera) resolveriam o desafio duas vezes e creditariam XP dobrado.
-      // O protótipo tinha essa guarda; ela não é opcional.
       if (phase !== 'question') return;
       if (!spec || !session) return;
 
@@ -120,10 +70,6 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
       const r = spec.resolve;
 
       setMinute(r.minute);
-      // Ausente ≠ zero (A4): o lance que NÃO mexe no placar (escanteio, chute pra
-      // fora) simplesmente omite o campo, e omitido quer dizer "não mudou" — não
-      // quer dizer 0. Por isso o teste é `!== undefined` e não um `||`/falsy: um
-      // placar de 0 é placar de verdade, e zerar aqui daria gol fantasma.
       if (r.scoreA !== undefined) setScoreA(r.scoreA);
       if (r.scoreB !== undefined) setScoreB(r.scoreB);
 
@@ -142,8 +88,6 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
         final: !!r.final,
       });
 
-      // XP e sequência são do fã, não da sala: sobem pra sessão.
-      // Errar ZERA a sequência — é o que dá peso ao acerto seguido.
       update({
         xp: session.xp + gained,
         streak: correct ? session.streak + 1 : 0,
@@ -154,29 +98,20 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
     [phase, spec, session, update],
   );
 
-  // Entrar/sair da sala. Hoje só marca a fronteira; quando o backend existir é
-  // aqui que o join/leave e a assinatura do WS /ws acontecem.
   useEffect(() => {
-    // TODO: api.joinRoom(id) + abrir o WS da sala; leave no cleanup.
     void id;
   }, [id]);
 
-  // A home demo expõe apenas o replay que este roteiro reproduz. Não aceitar
-  // um apelido antigo evita trocar silenciosamente outra partida por Argentina
-  // × Cabo Verde, que seria um fato inventado com aparência de dado real.
   useEffect(() => {
     if (id !== 'arg-cab') router.replace('/home');
   }, [id, router]);
 
-  // O relógio da janela. Só corre na fase de pergunta.
   useEffect(() => {
     if (phase !== 'question') return;
     const timer = setInterval(() => setSecs((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(timer);
   }, [phase, ci]);
 
-  // Zerou: resolve como tempo esgotado. Separado do intervalo de propósito —
-  // disparar efeito de dentro de um updater de estado não é seguro.
   useEffect(() => {
     if (phase === 'question' && secs === 0) resolveChallenge(null);
   }, [secs, phase, resolveChallenge]);
@@ -192,7 +127,6 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
   };
 
   const leave = () => {
-    // TODO: POST /api/rooms/:id/leave quando o backend existir.
     router.push('/home');
   };
 
@@ -237,7 +171,6 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
-      {/* cabeçalho do placar */}
       <div
         style={{
           flex: 'none',
@@ -314,8 +247,6 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
         />
       </div>
 
-      {/* O padding de 380px no rodapé é o que deixa o último item legível por
-          cima do sheet. Sem ele o desafio tapa o conteúdo. */}
       <Screen padding="14px 18px 380px">
         {salaTab === 'lances' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

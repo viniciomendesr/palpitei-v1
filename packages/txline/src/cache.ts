@@ -1,26 +1,14 @@
-// Cache de partida: busca a linha do tempo completa UMA vez e guarda.
-//
-// Motivo: o dataset da devnet ROTACIONA (A1) — a fixture 18241006 já sumiu da
-// lista e hoje só os endpoints de dados a servem. Depender da devnet no dia da
-// demo é apostar que ela não vai mudar. Com cache, o replay é reproduzível,
-// instantâneo e roda offline. Continua sendo dado real da TxLINE, só gravado.
-//
-// T&C §7: o payload é licenciado só para o hackathon e a redistribuição é
-// PROIBIDA. Na v1 o cache é POSTGRES — não `.cache/` versionado. Este arquivo
-// define só a PORTA; o SQL mora no pacote db.
+// Match-timeline cache. TxLINE payloads are licensed for the hackathon and must
+// remain in Postgres, never in versioned local files. This module defines ports;
+// SQL lives in @palpitei/db.
 
 import { info, warn } from "./log.ts";
 
 /**
- * Origem do que foi gravado. Espelha o CacheSource do @palpitei/db de propósito:
- * o db é quem implementa esta porta, e tipo divergente entre os dois pacotes só
- * apareceria como erro na hora de ligar um no outro. Se mexer aqui, mexa lá.
- *
- * Na prática só gravamos "txline-updates" — é a única fonte que vale cachear
- * (a linha do tempo completa). As outras existem para o registro ser honesto
- * caso um dia se grave outra coisa: rótulo de proveniência não pode mentir (G6).
+ * Source of persisted data. Keep this union aligned with @palpitei/db CacheSource
+ * so origin labels remain accurate.
  */
-export type MatchCacheFonte =
+export type MatchCacheSource =
   | "txline-updates"
   | "txline-cache"
   | "txline-historical"
@@ -34,25 +22,24 @@ export type MatchCacheRecord = {
   p2: string;
   startTime: number;
   gravadoEm: number;
-  fonte: MatchCacheFonte;
-  /** Payloads CRUS da TxLINE (normalizados na leitura, pelo core). */
+  fonte: MatchCacheSource;
+  /** Raw TxLINE payloads, normalized by core when read. */
   scores: unknown[];
   odds: unknown[];
 };
 
 /**
- * A porta que o @palpitei/db implementa (Postgres). O pacote txline nunca
- * escreve SQL: ele só sabe pedir "me dá a fixture X" e "guarda esta aqui".
+ * Port implemented by @palpitei/db. This package never executes SQL.
  */
 export type MatchCacheStore = {
   get(fixtureId: number): Promise<MatchCacheRecord | null>;
   put(record: MatchCacheRecord): Promise<void>;
-  /** Ids em cache — para a aba "Replays" listar o que roda offline. */
+  /** Cached IDs for listing offline-capable replays. */
   list?(): Promise<number[]>;
 };
 
-/** Registro utilizável? Sem scores não há linha do tempo. */
-export function cacheUtil(c: MatchCacheRecord | null): c is MatchCacheRecord {
+/** A record requires score events to represent a usable timeline. */
+export function hasUsableMatchCache(c: MatchCacheRecord | null): c is MatchCacheRecord {
   if (!c) return false;
   if (!Array.isArray(c.scores) || c.scores.length === 0) {
     warn(`[cache] fixture ${c.fixtureId} sem eventos de placar — ignorando`);
@@ -62,23 +49,8 @@ export function cacheUtil(c: MatchCacheRecord | null): c is MatchCacheRecord {
 }
 
 /**
- * O vocabulário do @palpitei/db, adaptado para esta porta.
- *
- * POR QUE ISTO EXISTE: o db implementa a MESMA ideia com OUTROS nomes —
- * `load`/`save`/`list` (+ os apelidos do v0 `lerCache`/`salvarCache`/
- * `listarCache`). Esta porta fala `get`/`put`/`list`. Os TIPOS batem
- * (MatchCacheRecord ≡ MatchCache, MatchCacheFonte ≡ CacheSource), mas os
- * MÉTODOS não — e nada no sistema de tipos ligava um no outro, porque o db
- * entra por import dinâmico (`any`).
- *
- * O modo de falha era silencioso e caro: passar o store do db direto para
- * `loadReplayEvents({ cache })` fazia `cache.get(...)` ser `undefined`, o
- * TypeError caía no `catch` que existe para tolerar cache indisponível, e o
- * replay varria 144 requisições A CADA VEZ, dizendo só "cache indisponível".
- * O cache — que é O caminho da demo — nunca era usado, e nada quebrava.
- *
- * Por isso o adaptador VALIDA e explode na cara de quem liga errado, em vez de
- * devolver um objeto que só falha lá na frente.
+ * Adapts @palpitei/db's load/save/list vocabulary to this get/put/list port.
+ * Validate method presence eagerly because dynamic imports bypass type checking.
  */
 export function adaptDbCacheStore(dbStore: any): MatchCacheStore {
   const ler = dbStore?.load ?? dbStore?.lerCache;
@@ -95,7 +67,7 @@ export function adaptDbCacheStore(dbStore: any): MatchCacheStore {
 
   return {
     get: (fixtureId) => ler.call(dbStore, fixtureId),
-    // O save() do db devolve estatísticas; a porta promete void.
+    // The database save returns stats; this port promises void.
     put: async (record) => {
       await gravar.call(dbStore, record);
     },
@@ -103,7 +75,7 @@ export function adaptDbCacheStore(dbStore: any): MatchCacheStore {
   };
 }
 
-/** Store em memória — testes e desenvolvimento. Não persiste nada. */
+/** In-memory store for tests and development. */
 export function createInMemoryMatchCacheStore(
   inicial: MatchCacheRecord[] = []
 ): MatchCacheStore & { size(): number } {
@@ -125,11 +97,8 @@ export function createInMemoryMatchCacheStore(
 }
 
 /**
- * Store em arquivo — DESENVOLVIMENTO OFFLINE, nada mais.
- *
- * Existe porque o `cache:match` precisa rodar antes de o Postgres estar de pé, e
- * porque dev sem rede ainda quer ver a partida. O diretório está no .gitignore:
- * versionar payload da TxLINE viola o T&C §7. Em produção, use o store do db.
+ * File store for offline development only. Its directory must stay gitignored;
+ * production uses the database-backed store.
  */
 export function createFileMatchCacheStore(dir: string): MatchCacheStore {
   const arquivo = async (fixtureId: number): Promise<string> => {

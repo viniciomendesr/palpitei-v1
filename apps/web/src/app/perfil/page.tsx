@@ -1,18 +1,5 @@
 'use client';
 
-/**
- * PERFIL — apelido, números, missões e ajustes.
- *
- * O selo de autenticação diz COMO a conta entrou, e importa: no modo demo ele
- * diz "demo · carteira simulada" com todas as letras. O jurado tem que
- * conseguir ver que aquela conta não tem carteira de verdade — a §5.1 permite
- * testar sem carteira, mas não deixa a gente fingir que tem uma.
- *
- * O apelido é editável aqui, e continua sendo escolha do fã (E12): nunca sai do
- * e-mail. Salvar grava no SERVIDOR primeiro (POST /api/account/handle) e só
- * fecha o painel quando ele aceita — a versão local-primeiro pintava o nome na
- * tela com o banco dizendo outro, que é a tela mentindo sobre o que persiste.
- */
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -39,8 +26,6 @@ export default function PerfilPage() {
   const [erroNome, setErroNome] = useState<string | null>(null);
   const [carteiraCopiada, setCarteiraCopiada] = useState(false);
 
-  // Os números desta tela são do BANCO (o motor liquida XP lá): realinha o
-  // cache local ao entrar. Para o demo é no-op — a conta de teste é local (§5.1).
   useEffect(() => {
     void refreshState();
   }, [refreshState]);
@@ -57,10 +42,6 @@ export default function PerfilPage() {
         ? '7xKq…9fPz · Solana'
         : t.walletDemo;
 
-  // Nome/e-mail são dados privados para o próprio fã reconhecer a conta. O
-  // apelido público continua sendo o que ele escolheu — nunca derivamos um do
-  // outro (E12). A conta demo recebe o mesmo bloco para demonstrar a interface,
-  // mas os dados e o código deixam claro que não há carteira real vinculada.
   const emDemo = session.authMethod === 'demo';
   const mostrarDadosConta = emDemo || (privy.ready && privy.authenticated);
   const nomeDaConta = emDemo ? t.profileDemoName : (privy.profile.name ?? t.profileNotProvided);
@@ -75,8 +56,6 @@ export default function PerfilPage() {
       setCarteiraCopiada(true);
       window.setTimeout(() => setCarteiraCopiada(false), 2_000);
     } catch {
-      // Clipboard pode estar bloqueado por permissão do navegador. Não fingimos
-      // cópia concluída; o endereço segue visível para seleção manual.
       setCarteiraCopiada(false);
     }
   };
@@ -91,16 +70,12 @@ export default function PerfilPage() {
     if (invalid || salvando) return;
     const novo = draft.trim();
 
-    // A conta de teste do demo é local por regra (§5.1) — não há Bearer nem rota.
     if (session.authMethod === 'demo') {
       update({ nickname: novo });
       setEditing(false);
       return;
     }
 
-    // SERVIDOR primeiro, tela depois — a mesma ordem do onboarding, pelo mesmo
-    // motivo: local antes do POST deixaria o apelido na tela mesmo com o 409
-    // (apelido de outra pessoa) recusando.
     setSalvando(true);
     setErroNome(null);
     const { api, ApiError } = await import('@/lib/api');
@@ -109,8 +84,6 @@ export default function PerfilPage() {
       update({ nickname: novo });
       setEditing(false);
     } catch (e) {
-      // A mensagem do ApiError é a do domínio (pt-BR); erro de rede cru em
-      // inglês não é coisa de se jogar na cara de ninguém.
       setErroNome(e instanceof ApiError ? e.message : t.nameSaveFailed);
     } finally {
       setSalvando(false);
@@ -118,8 +91,6 @@ export default function PerfilPage() {
   };
 
   const onLogout = async () => {
-    // await: `logout` também derruba a sessão da Privy, e navegar antes disso
-    // faz o login reconhecer o fã ainda autenticado e devolvê-lo pro onboarding.
     await logout();
     router.replace('/');
   };
@@ -133,7 +104,6 @@ export default function PerfilPage() {
 
   return (
     <Screen padding="16px 18px 20px">
-      {/* identidade */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <div
           style={{
@@ -264,7 +234,6 @@ export default function PerfilPage() {
         </section>
       )}
 
-      {/* editar apelido */}
       {editing && (
         <div
           style={{
@@ -283,7 +252,6 @@ export default function PerfilPage() {
             value={draft}
             onChange={(v) => {
               setDraft(v);
-              // Digitou outro apelido: a recusa anterior já não fala deste.
               setErroNome(null);
             }}
             invalid={invalid}
@@ -319,16 +287,12 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {/* números */}
       <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
         <StatBox value={fmt(session.xp)} label={t.xpTotal} color="var(--gold)" />
         <StatBox value={`${t.lv} ${session.level}`} label={t.nivel} />
         <StatBox value={String(session.streak)} label={t.sequencia} color="var(--orange)" />
       </div>
 
-      {/* aproveitamento — só para conta real, e só o que o BANCO contou. O demo
-          não ganha esta fileira: inventar aproveitamento para a conta de teste
-          seria número falso com cara de real (G6). */}
       {session.authMethod !== 'demo' && serverStats && serverStats.total > 0 && (
         <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
           <StatBox value={String(serverStats.acertos)} label={t.statAcertos} color="var(--lime)" />
@@ -337,7 +301,6 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {/* premium */}
       {session.isPremium ? (
         <div
           style={{
@@ -387,7 +350,6 @@ export default function PerfilPage() {
         </button>
       )}
 
-      {/* missões */}
       <SectionLabel>{t.missionsHdr}</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {missions.map((m) => (
@@ -411,7 +373,6 @@ export default function PerfilPage() {
         ))}
       </div>
 
-      {/* ajustes */}
       <SectionLabel>{t.settingsHdr}</SectionLabel>
       <div
         style={{

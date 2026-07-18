@@ -1,16 +1,9 @@
 'use client';
 
-/**
- * As peças visuais da tela de palpite pré-jogo — o que o design system não tem
- * pronto (stepper, segmentado, avatares empilhados, o card de mercado e o toast
- * local). Tudo por token, zero hex, sem emoji (ícone é SVG).
- */
-
 import type { ReactNode } from 'react';
 import { fw } from '@/lib/tokens';
 import { Check, Star } from '@/components/Icons';
 
-/** Relógio pequeno para a pill "Fecha em …". */
 export function ClockIcon({ size = 13, color = 'var(--lime)' }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -20,7 +13,6 @@ export function ClockIcon({ size = 13, color = 'var(--lime)' }: { size?: number;
   );
 }
 
-/** Botões segmentados: 3 (resultado) ou 2 (Acima/Abaixo). Um selecionado por vez. */
 export function Segmentado<T extends string>({
   options,
   value,
@@ -93,7 +85,6 @@ function passoStyle(disabled: boolean) {
   } as const;
 }
 
-/** Um lado do placar exato: sigla + [− valor +]. */
 export function Stepper({
   code,
   color,
@@ -127,7 +118,6 @@ export function Stepper({
   );
 }
 
-/** Avatares empilhados dos amigos (iniciais + cor). */
 export function AvataresEmpilhados({ items }: { items: { label: string; color: string; ink: string }[] }) {
   return (
     <div style={{ display: 'flex', flex: 'none' }}>
@@ -156,7 +146,6 @@ export function AvataresEmpilhados({ items }: { items: { label: string; color: s
   );
 }
 
-/** O card de um mercado: cabeçalho (rótulo · palpite dado · vale N XP) + sub + controle. */
 export function MercadoCard({
   label,
   sub,
@@ -203,7 +192,6 @@ export function MercadoCard({
   );
 }
 
-/** Toast local (a tela não tem toast global): banner que sobe e some sozinho. */
 export function ToastBanner({ title, sub }: { title: string; sub: string }) {
   return (
     <div

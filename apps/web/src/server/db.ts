@@ -1,13 +1,4 @@
-/**
- * Pool compartilhado pelo processo web.
- *
- * `createDb()` do pacote db cria um Pool de verdade. Chamá-lo em toda rota
- * multiplicava handshakes e o teto de conexões (10 por request/sala). Esta
- * fachada mantém um único Pool e transforma `close()` em no-op: uma request
- * não é dona da conexão do processo e portanto não pode encerrá-la.
- *
- * O holder em globalThis também sobrevive ao hot reload do Next em dev.
- */
+/** Process-wide database pool. Per-request close is a no-op because requests do not own the pool. */
 import { createDb as createPgDb, type Db } from '@palpitei/db';
 
 const CHAVE = '__palpitei_web_db__' as const;
@@ -19,7 +10,7 @@ function compartilhado(): Db {
   return globalComDb[CHAVE];
 }
 
-/** Mesma interface esperada pelas rotas, mas sem transferir a posse do Pool. */
+/** Route-facing database interface that preserves process ownership of the pool. */
 export function createDb(): Db {
   const db = compartilhado();
   return {

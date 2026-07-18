@@ -17,8 +17,7 @@ export function useLobby(roomId: string, partyId: string, active: boolean) {
     const connect = async () => {
       let ticket: string;
       try {
-        // EventSource não carrega o Bearer da Privy. Cada conexão troca o
-        // Bearer atual por um ticket curto e de uso único no servidor.
+        // EventSource cannot send the Privy bearer, so each connection exchanges it for a short-lived server ticket.
         ({ ticket } = await api.sseTicket(roomId, partyId, 'lobby'));
       } catch (e) {
         if (!alive) return;

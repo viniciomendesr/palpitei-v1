@@ -1,31 +1,26 @@
-/**
- * O id da sala na URL: `18241006` (valendo) ou `treino-18241006` (treino).
- * Qualquer outra coisa é inválida — e a MESMA regra vale para lobby, stream e
- * palpite, senão cada rota poderia abrir uma sala diferente.
- */
-export function parseRoomId(id: string): { fixtureId: number; treino: boolean } | null {
+/** Parses ranked and training room IDs consistently across lobby, stream, and prediction routes. */
+export type RoomIdentity = { fixtureId: number; training: boolean };
+
+export function parseRoomId(id: string): RoomIdentity | null {
   const match = /^(treino-)?(\d+)$/.exec(id);
   if (!match) return null;
-  return { fixtureId: Number(match[2]), treino: Boolean(match[1]) };
+  return { fixtureId: Number(match[2]), training: Boolean(match[1]) };
 }
 
-/**
- * Regra de produto da execução: só a rota explícita `treino-*` desliga XP e
- * persistência. Histórico da fixture e código da party não mudam esta decisão.
- */
-export function politicaDaSala(treino: boolean): { pagaXp: boolean; persiste: boolean } {
-  return treino
-    ? { pagaXp: false, persiste: false }
-    : { pagaXp: true, persiste: true };
+/** Only the explicit `treino-*` route disables XP and persistence. */
+export function roomPolicy(training: boolean): { paysXp: boolean; persists: boolean } {
+  return training
+    ? { paysXp: false, persists: false }
+    : { paysXp: true, persists: true };
 }
 
-/** Código curto e seguro para URL que identifica um grupo dentro da fixture. */
+/** URL-safe code that identifies a group within a fixture. */
 export function parsePartyId(value: string | null | undefined): string | null {
   if (!value) return null;
   const normalized = value.trim().toUpperCase();
   return /^[A-Z0-9]{6,12}$/.test(normalized) ? normalized : null;
 }
 
-/** Dois convites da mesma partida nunca compartilham runner ou placar. */
-export const chaveDaSala = (fixtureId: number, treino: boolean, partyId = 'PUBLIC'): string =>
-  `${treino ? `treino-${fixtureId}` : String(fixtureId)}:${partyId}`;
+/** Separate invitations for a fixture never share a runner or score. */
+export const roomKey = (fixtureId: number, training: boolean, partyId = 'PUBLIC'): string =>
+  `${training ? `treino-${fixtureId}` : String(fixtureId)}:${partyId}`;

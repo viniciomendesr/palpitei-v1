@@ -1,4 +1,4 @@
-/** Emite um certificado de desenvolvimento para localhost e IPs LAN atuais. */
+/** Creates a development certificate for localhost and current LAN IPs. */
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -10,12 +10,12 @@ const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const certDir = resolve(raiz, 'apps/web/certificates');
 const certFile = resolve(certDir, 'localhost.pem');
 const keyFile = resolve(certDir, 'localhost-key.pem');
-/** Lista de hosts que gerou o certificado atual. */
+/** Lists hosts included in the current certificate. */
 const marcaFile = resolve(certDir, '.hosts.json');
 
 const PORT = process.env.PORT || '3000';
 
-/** Usa o mkcert baixado pelo Next ou disponível no PATH. */
+/** Uses mkcert downloaded by Next.js or available on PATH. */
 function acharMkcert() {
   const doNext = resolve(
     os.homedir(),

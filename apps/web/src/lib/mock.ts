@@ -1,37 +1,21 @@
 /**
- * Dado de exemplo — a mecânica que o protótipo tinha hardcoded.
- *
- * Isto é ANDAIME. Na v1 os desafios vêm do motor de perguntas (@palpitei/core)
- * sobre o dado real da TxLINE, e as porcentagens vêm do explicador. Cada função
- * aqui tem um equivalente no contrato REST/WS em ./api.ts — a troca é substituir
- * a origem, não a tela.
- *
- * §7 do T&C: nada aqui é payload da TxLINE. Os fatos de futebol do replay foram
- * conferidos em fontes públicas da FIFA; a interação (XP e janelas de resposta)
- * continua sendo uma simulação local e é sinalizada como demo na interface.
+ * Demo-only sample data. Production challenges and percentages are supplied by
+ * the question engine and TxLINE-backed APIs; this module never contains TxLINE payloads.
  */
 
 import type { Dict } from './i18n';
 
-/** Mecânica de um desafio. O texto correspondente está em `Dict.ch[i]`. */
+/** Challenge mechanics; the matching copy is in `Dict.ch[i]`. */
 export interface ChallengeSpec {
   xp: number;
   correct: string;
   optIds: string[];
   /**
-   * Chance de cada opção, "atualizada ao vivo" (nunca chame de odds na tela).
-   *
-   * `number | null` de propósito, espelhando `QuestionOpenEvent.options[].pct`
-   * do contrato: `null` = a TxLINE não mandou preço pra essa opção (o caso
-   * `Prices: []` com `PriceNames` cheio, G8). AUSENTE ≠ 0% — quem renderizar
-   * `?? 0` aqui inventa "a chance caiu pra zero" e repete o bug do v0.
+   * Option chance, where `null` means the source did not provide a price.
+   * Missing values must never be rendered as 0%.
    */
   pct: Record<string, number | null>;
-  /**
-   * Probabilidade antes e depois do lance. O replay demo não carrega preços
-   * licenciados. No demo os números são uma simulação plausível, sempre
-   * rotulada como tal, e nunca são apresentados como cotação da TxLINE.
-   */
+  /** Demo-only plausible probabilities before and after the event. */
   before: number | null;
   after: number | null;
   resolve: { minute: number; scoreA?: number; scoreB?: number; final?: boolean };
@@ -86,11 +70,7 @@ export const CHALLENGES: ChallengeSpec[] = [
   },
 ];
 
-/** Duração da janela do palpite, em segundos.
- *
- * ATENÇÃO: isto é o contador da TELA, não a regra. Quando o WS entrar, o prazo
- * vem do `question_open` (ts do evento da TxLINE via Clock) e este número some.
- * Os motores nunca leem o relógio de parede — CONTEXT.md §3. */
+/** Demo prediction-window duration in seconds. */
 export const COUNTDOWN_SECONDS = 12;
 
 export interface FeedEvent {
@@ -104,7 +84,7 @@ export const feedInit = (): FeedEvent[] => [
   { t: "29'", pt: 'Gol da Argentina: Lionel Messi', en: 'Argentina goal: Lionel Messi' },
 ];
 
-/** Estado inicial da partida da sala de demonstração. */
+/** Initial match state for the demo room. */
 export const MATCH_START = { minute: 64, scoreA: 1, scoreB: 1 } as const;
 
 export interface FixtureView {
@@ -117,20 +97,13 @@ export interface FixtureView {
   scoreA: string | number;
   scoreB: string | number;
   cta: string;
-  /** Instante da partida, para travar o palpite local após o apito. */
+  /** Kickoff instant used to close local pre-match picks. */
   startTs?: number;
-  /**
-   * Selo de origem, exigido pela §2 ("badge de fonte em cada sala") e pelo G6
-   * ("rótulo de proveniência não pode mentir"). Aparece na linha do grupo — o
-   * MatchCard do ds não tem prop de origem e o contrato dele é o .d.ts.
-   *
-   * No demo o selo deixa claro que a interação é local, enquanto os fatos
-   * esportivos vieram de relatórios públicos da FIFA — nunca da TxLINE.
-   */
+  /** Source label displayed with the fixture. */
   source: string;
 }
 
-/** As três abas da home. GET /api/fixtures devolve isto no lugar. */
+/** Home tabs; `GET /api/fixtures` replaces this data in production. */
 export function fixtures(t: Dict): Record<'live' | 'next' | 'replays', FixtureView[]> {
   return {
     live: [],
@@ -184,10 +157,7 @@ export interface StatRow {
   bFlex: number;
 }
 
-/**
- * Estatísticas plausíveis para o ponto de partida do replay (64', 1-1).
- * Não são dados oficiais nem payload da TxLINE; a tela mostra esse aviso.
- */
+/** Plausible demo statistics for the replay starting state (64', 1-1). */
 export function liveStats(t: Dict): StatRow[] {
   return (
     [
@@ -214,7 +184,7 @@ export interface RoomRankRow {
   pos: number;
 }
 
-/** Ranking da sala. `salaXp` é o que você fez nesta partida. */
+/** Room ranking; `salaXp` is the XP earned in this match. */
 export function roomRanking(t: Dict, salaXp: number): RoomRankRow[] {
   return [{ id: 'me', name: t.you, xp: salaXp, pos: 1 }];
 }
@@ -247,5 +217,5 @@ export function globalRanking(
   ].map((r, i) => ({ ...r, pos: i + 1 }));
 }
 
-/** No demo não inventamos participantes que não existem na sessão local. */
+/** Demo mode does not fabricate participants outside the local session. */
 export const ROOM_SIZE = 1;

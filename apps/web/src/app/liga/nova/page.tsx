@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * CRIAR LIGA — o nome, e só.
- *
- * Por que esta tela existe: a liga precisa de um NOME, e o botão do protótipo
- * criava "Minha Liga" sem perguntar nada porque não criava liga nenhuma — só
- * incrementava um contador local. Liga de verdade tem nome que a galera
- * reconhece no grupo do zap.
- *
- * O gate do free é do SERVIDOR (402, sob trava no banco). A home evita trazer o
- * fã até aqui quando ele já gastou a cota, mas quem responde é a rota — por isso
- * o 402 é tratado aqui, e não presumido impossível.
- */
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -43,12 +31,8 @@ export default function NovaLigaPage() {
     setErro(null);
     try {
       const { league } = await api.createLeague(nome);
-      // Vai direto pra liga: quem acabou de criar quer o código pra chamar a
-      // galera, não a home.
       router.replace(`/liga/${league.id}`);
     } catch (e) {
-      // 402 é o paywall, não um erro do fã: manda pro /premium em vez de mostrar
-      // uma mensagem vermelha sobre algo que ele não fez de errado.
       if (e instanceof ApiError && e.status === 402) {
         router.replace('/premium');
         return;
@@ -101,8 +85,6 @@ export default function NovaLigaPage() {
           padding: '0 14px',
           borderRadius: 'var(--r-xl)',
           background: 'var(--surface-sunken)',
-          // A borda é o feedback, igual ao campo do apelido: cinza enquanto
-          // curto, lime quando vale.
           border: `1.5px solid ${valido ? 'var(--lime-line)' : 'var(--border-2)'}`,
           color: 'var(--text-hi)',
           fontFamily: 'var(--font-sans)',

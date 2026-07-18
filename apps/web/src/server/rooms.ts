@@ -1,4 +1,4 @@
-/** Sala autoritativa: o servidor ancora o relógio no feed e decide XP. */
+/** Authoritative room: server anchors time to the feed and decides XP. */
 
 import {
   OddsExplainer,
@@ -6,6 +6,8 @@ import {
   XP_BASE,
   cursorClock,
   type Clock,
+  type QuestionEngineSnapshot,
+  type QuestionTemplateRef,
   type ReplayCursor,
 } from '@palpitei/core';
 import type {
@@ -22,33 +24,36 @@ import { ReplayRunner } from '@palpitei/txline';
 import {
   createEnginePorts,
   createEventRepo,
+  createGameSessionRepo,
   createLobbyRepo,
   createMatchRepo,
   createOddsRepo,
+  createPredictionRepo,
+  createQuestionTemplateRepo,
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
-import { criarDedupeDeKickoff, criarFiltroDeLances } from './lances';
-import { assinarCanalAoVivo, fixtureTemCanalAoVivo } from './live';
+import { createKickoffDeduper, createMatchEventFilter } from './lances';
+import { assinarCanalAoVivo, garantirCanalAoVivo } from './live';
 import {
-  atualizarPct1x2,
-  mesclarLinhaDoTempo,
-  registrarLeitura,
-  type LeituraDeChance,
+  update1x2Percentages,
+  mergeTimeline,
+  recordChanceReading,
+  type ChanceReading,
   type Pct1x2,
 } from './chances';
 import { createDb } from './db';
 import { resetLobby } from './lobbies';
-import { chaveDaSala, politicaDaSala } from './room-id';
+import { roomKey, roomPolicy } from './room-id';
 import {
   WATCHDOG_MARGIN_MS,
-  agendarEncerramentoSeVazia,
-  agendarLimpezaFinal,
-  cancelarEncerramento,
+  scheduleShutdownIfEmpty,
+  scheduleFinishedRoomCleanup,
+  cancelShutdown,
 } from './room-lifecycle';
 
-export { chaveDaSala, parsePartyId, parseRoomId } from './room-id';
+export { roomKey, parsePartyId, parseRoomId } from './room-id';
 
-/** 60 = um minuto de jogo por segundo real. O mesmo default do config da txline. */
+/** 60 game minutes per real second, matching the TxLINE configuration default. */
 const REPLAY_SPEED = Number(process.env.REPLAY_SPEED ?? 60) || 60;
 
 export type RoomState = {
@@ -57,73 +62,117 @@ export type RoomState = {
   teamB: string;
   source: string;
   score: { p1: number; p2: number };
-  /** Minuto do relógio do FEED. null antes do apito. */
+  /** Feed clock minute; `null` before kickoff. */
   minute: number | null;
-  /** Segundos de jogo do último evento com relógio; o cliente interpola a partir daqui. */
+  /** Game seconds from the latest clocked event; the client interpolates from this anchor. */
   clockSeconds: number | null;
-  /** Minutos de jogo por segundo real (12 no replay padrão; 1 ao vivo). */
+  /** Game minutes per real second: standard replay is 12, live is 1. */
   replaySpeed: number;
-  /** Último relógio REAL conhecido na timeline; a UI nunca interpola além. */
+  /** Last known timeline clock; UI must not interpolate beyond it. */
   clockMaxSeconds: number | null;
   finished: boolean;
   questions: Question[];
   feed: { minute: number | null; action: string; goals: { p1: number; p2: number } | null }[];
-  /** Totais acumulados por chave do feed; chaves ausentes não viram zero. */
+  /** Feed totals accumulated by key; missing keys never become zero. */
   totals: { p1: Record<string, number>; p2: Record<string, number> };
-  /** Leituras de odds emitidas, da mais recente para a mais antiga (cap 60). */
-  chances: LeituraDeChance[];
+  /** Emitted odds readings, newest first, capped to 60. */
+  chances: ChanceReading[];
 };
 
-/** Assinante individual; mensagens personalizadas não expõem resultados alheios. */
+/** Individual subscriber; personalized messages do not expose other users' results. */
 type Sub = { userId: string | null; enviar: (msg: RoomMessage) => void };
 
 type Room = {
   fixtureId: number;
-  /** Código do grupo: dois convites da mesma fixture nunca compartilham runner. */
+  /** Party code keeps invitations for the same fixture on separate runners. */
   partyId: string;
-  /** Treino não persiste nem concede XP. */
-  treino: boolean;
-  /** Fatos do feed no instante da liquidação, usados pela explicação da UI. */
+  /** Training neither persists state nor awards XP. */
+  training: boolean;
+  /** Feed facts at settlement time, used by UI explanations. */
   fatos: Map<string, FatosDaResolucao>;
-  /** Último 1X2 por opção; ausência permanece `null` na UI. */
+  /** Latest 1X2 value by option; missing values stay `null` in UI. */
   pct1x2: Pct1x2;
   engine: QuestionEngine;
-  /** null na sala AO VIVO: o alimentador é o canal (live.ts), não o runner. */
+  /** `null` for live rooms: the channel feeder, not the runner, supplies events. */
   runner: ReplayRunner | null;
   ports: EnginePorts;
   db: Db;
   cursor: ReplayCursor;
-  /** Relógio usado pelo motor e para converter prazos para tempo real. */
+  /** Clock used by the engine and to convert deadlines to real time. */
   clock: Clock;
   state: RoomState;
   subs: Set<Sub>;
-  /** XP desta sala, não o acumulado global do fã. */
+  /** XP for this room, not the user's global total. */
   xpDaSala: Map<string, number>;
-  /** Apelidos públicos; e-mail e identificadores internos não saem para a UI. */
+  /** Public nicknames only; email and internal identifiers never reach UI. */
   apelidos: Map<string, string>;
-  /** Timer da carência: sala vazia espera antes de morrer (um F5 não é adeus). */
-  desligar: ReturnType<typeof setTimeout> | null;
-  /** Limite contra timer adormecido/processo zumbi. */
+  /** Grace-period timer keeps an empty room alive through a reload. */
+  shutdownTimer: ReturnType<typeof setTimeout> | null;
+  /** Guard against stalled timers and zombie processes. */
   watchdog: ReturnType<typeof setTimeout> | null;
-  /** Quem desliga tudo quando o último fã sai ou o jogo acaba. */
-  encerrar: () => void;
+  /** Cleans up when the last user leaves or the fixture ends. */
+  close: () => void;
+  /** Serialized execution checkpoint; no-op in training. */
+  checkpoint: () => void;
+  sessionId: string | null;
+  lastScoreSeq: number | null;
+  lastOddsTs: number | null;
+  lastOddsMessageId: string | null;
 };
 
-/** O que o jogo dizia quando a pergunta liquidou. null = o feed não contou. */
+type SnapshotDaSessao = {
+  engine?: QuestionEngineSnapshot;
+  room?: RoomState;
+  cursor?: ReplayCursor;
+  fatos?: [string, FatosDaResolucao][];
+  xp?: [string, number][];
+  apelidos?: [string, string][];
+  pct1x2?: Pct1x2;
+};
+
+function objeto(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function snapshotDaSessao(value: Record<string, unknown>): SnapshotDaSessao | null {
+  const snapshot = objeto(value);
+  return snapshot as SnapshotDaSessao | null;
+}
+
+function templatesPorTipo(
+  templates: { id: string; version: number; questionType: Question['type'] }[],
+): Partial<Record<Question['type'], QuestionTemplateRef>> {
+  const out: Partial<Record<Question['type'], QuestionTemplateRef>> = {};
+  for (const template of templates) out[template.questionType] = { id: template.id, version: template.version };
+  return out;
+}
+
+function templatesDoSnapshot(value: Record<string, unknown>): Partial<Record<Question['type'], QuestionTemplateRef>> {
+  const out: Partial<Record<Question['type'], QuestionTemplateRef>> = {};
+  for (const type of ['final_result', 'next_goal', 'hilo_corners'] as const) {
+    const ref = objeto(value[type]);
+    if (ref && typeof ref.id === 'string' && typeof ref.version === 'number' && Number.isInteger(ref.version) && ref.version > 0) {
+      out[type] = { id: ref.id, version: ref.version };
+    }
+  }
+  return out;
+}
+
+/** Game facts at question settlement; `null` means the feed did not provide them. */
 export type FatosDaResolucao = {
   minute: number | null;
   score: { p1: number; p2: number };
-  /** Do Total acumulado; ausente ≠ zero (G7/A4) — null quando não veio. */
+  /** Derived from accumulated totals; `null` when the feed omitted the key. */
   corners: { p1: number; p2: number } | null;
 };
 
 const salas = new Map<string, Room>();
-/** Promessas em voo evitam duas criações simultâneas da mesma sala. */
+/** In-flight promises prevent concurrent creation of the same room. */
 const salasEmCriacao = new Map<string, Promise<Room | null>>();
 
 const ehScore = (ev: NormEvent): ev is ScoreEvent => ev.kind === 'score';
 
-/** Portas de treino: exercitam o motor sem persistir perguntas, palpites ou XP. */
+/** Training ports exercise the engine without persisting questions, predictions, or XP. */
 function portsDeTreino(): EnginePorts {
   let n = 0;
   return {
@@ -138,13 +187,13 @@ function portsDeTreino(): EnginePorts {
   };
 }
 
-async function criarSala(fixtureId: number, treino: boolean, partyId: string): Promise<Room | null> {
+async function createRoom(fixtureId: number, training: boolean, partyId: string): Promise<Room | null> {
   const db = createDb();
 
-  // O canal ativo, não a env crua, decide entre ingestão ao vivo e replay.
-  const aoVivo = fixtureTemCanalAoVivo(fixtureId);
+  // The active persisted channel, not raw environment configuration, selects live ingest or replay.
+  const aoVivo = await garantirCanalAoVivo(fixtureId);
 
-  // Assina antes da leitura para não perder eventos entre o snapshot e o catch-up.
+  // Subscribe before reading so events are not lost between snapshot and catch-up.
   const bufferDoCatchUp: NormEvent[] = [];
   let entregar: (ev: NormEvent) => void = (ev) => bufferDoCatchUp.push(ev);
   const desassinar = aoVivo ? assinarCanalAoVivo(fixtureId, (ev) => entregar(ev)) : null;
@@ -156,39 +205,56 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     return null;
   }
   const eventos = await createEventRepo(db).listReplayByFixture(fixtureId);
-  // Replay sem timeline é inválido; ao vivo pode começar sem eventos.
+  // Replay requires a timeline; live rooms may begin before any event arrives.
   if (!eventos.length && !aoVivo) {
     await db.close?.();
     return null;
   }
 
-  // Odds vêm da projeção normalizada; ausência de preço não é chance zero.
+  // Odds use the normalized projection; a missing price is not zero probability.
   const odds: OddsEvent[] = await createOddsRepo(db).listReplayByFixture(fixtureId);
-  // No empate de timestamp, o lance precede a cotação para preservar o contexto.
-  const linhaDoTempo = mesclarLinhaDoTempo(eventos, odds);
+  // On timestamp ties, score events precede odds to preserve context.
+  const linhaDoTempo = mergeTimeline(eventos, odds);
 
-  const ehLance = criarFiltroDeLances();
-  // A política centraliza a diferença entre treino e partidas valendo XP.
-  const politica = politicaDaSala(treino);
-  const ports = politica.persiste ? createEnginePorts(db) : portsDeTreino();
-  // Ao vivo sem eventos usa o kickoff; o primeiro evento real reancora o relógio.
+  const ehLance = createMatchEventFilter();
+  // Policy centralizes the distinction between training and XP-bearing rooms.
+  const politica = roomPolicy(training);
+  // Sessions pin template versions so catalog changes cannot alter announced questions, XP, or settlement.
+  const templatesAtivos = politica.persists && aoVivo ? await createQuestionTemplateRepo(db).listActive() : [];
+  const templates = templatesPorTipo(templatesAtivos);
+  const templateSet = Object.fromEntries(
+    Object.entries(templates).map(([type, ref]) => [type, ref]),
+  );
+  const session = politica.persists && aoVivo
+    ? await createGameSessionRepo(db).findOrCreateActive({
+      fixtureId,
+      partyId,
+      treino: training,
+      engineVersion: 'questions-v2',
+      templateSet,
+    })
+    : null;
+  const templatesFixados = session ? templatesDoSnapshot(session.templateSet) : templates;
+  const recuperado = session ? snapshotDaSessao(session.snapshot) : null;
+  const ports = politica.persists ? createEnginePorts(db) : portsDeTreino();
+  // Live rooms use kickoff until the first real event reanchors the clock.
   const cursor: ReplayCursor = {
-    matchTs: linhaDoTempo.length ? linhaDoTempo[0]!.ts : fixture.startTime ?? Date.now(),
-    realAt: Date.now(),
+    matchTs: recuperado?.cursor?.matchTs ?? (linhaDoTempo.length ? linhaDoTempo[0]!.ts : fixture.startTime ?? Date.now()),
+    realAt: recuperado?.cursor?.realAt ?? Date.now(),
   };
-  // Partida ao vivo sempre usa velocidade 1, independente da env de replay.
+  // Live fixtures always run at speed 1, independent of replay configuration.
   const clock = cursorClock(cursor, aoVivo ? 1 : REPLAY_SPEED);
-  // Replay limita a interpolação ao último relógio recebido; ao vivo não tem teto.
+  // Replay bounds interpolation to its last clock; live does not.
   const clockMaxSeconds = eventos.reduce<number | null>(
     (max, event) => typeof event.clockSeconds === 'number' ? Math.max(max ?? 0, event.clockSeconds) : max,
     null,
   );
 
-  const state: RoomState = {
+  const state: RoomState = recuperado?.room && recuperado.room.fixtureId === fixtureId ? recuperado.room : {
     fixtureId,
     teamA: fixture.p1,
     teamB: fixture.p2,
-    // O selo ao vivo não é herdado de um possível cache pós-jogo.
+    // Live provenance must not inherit a possible post-match cache label.
     source: aoVivo
       ? 'txline-live'
       : (fixture as { cacheSource?: string }).cacheSource ?? 'txline-cache',
@@ -207,7 +273,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
   const sala: Room = {
     fixtureId,
     partyId,
-    treino,
+    training,
     fatos: new Map(),
     pct1x2: {},
     db,
@@ -218,16 +284,25 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     subs: new Set(),
     xpDaSala: new Map(),
     apelidos: new Map(),
-    desligar: null,
+    shutdownTimer: null,
     watchdog: null,
     engine: null as unknown as QuestionEngine,
     runner: null,
-    encerrar: () => {},
+    close: () => {},
+    checkpoint: () => {},
+    sessionId: session?.id ?? null,
+    lastScoreSeq: session?.lastScoreSeq ?? null,
+    lastOddsTs: session?.lastOddsTs ?? null,
+    lastOddsMessageId: session?.lastOddsMessageId ?? null,
   };
 
-  /** Traduz uma mensagem do motor para o evento visível a este fã. */
-  /** Só a sala explicitamente marcada como treino fica sem pagamento. */
-  const semXpPara = (): boolean => !politica.pagaXp;
+  if (recuperado?.fatos) sala.fatos = new Map(recuperado.fatos);
+  if (recuperado?.xp) sala.xpDaSala = new Map(recuperado.xp);
+  if (recuperado?.apelidos) sala.apelidos = new Map(recuperado.apelidos);
+  if (recuperado?.pct1x2) sala.pct1x2 = { ...recuperado.pct1x2 };
+
+  /** Training rooms are the only rooms that do not award XP. */
+  const semXpPara = (): boolean => !politica.paysXp;
 
   const paraOFa = (msg: RoomMessage, userId: string | null): RoomMessage | null => {
     const ts = cursor.matchTs;
@@ -238,17 +313,17 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         type: 'question_open',
         ts,
         questionId: q.id,
-        // `type` já identifica o evento SSE; o tipo da pergunta segue em `qtype`.
+        // `type` identifies the SSE event; question type is carried in `qtype`.
         qtype: q.type,
         prompt: q.prompt,
-        // Só `final_result` usa 1X2; opção ainda não cotada segue `null`.
+        // Only `final_result` uses 1X2; unquoted options remain `null`.
         options: q.options.map((o) => ({
           id: o.id,
           label: o.label,
           pct:
             q.type === 'final_result' ? sala.pct1x2[o.id as keyof Pct1x2] ?? null : null,
         })),
-        // O piso de XP vem do motor; treino sempre anuncia zero.
+        // Base XP comes from the engine; training always emits zero.
         xp: semXpPara() ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
         closesAt: q.closesAt,
         closesInRealMs: msg.closesInRealMs as number,
@@ -268,11 +343,11 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         ts,
         questionId: q.id,
         correctOptionId: q.correct,
-        // A UI recebe rótulos e fatos, não somente identificadores.
+        // UI receives labels and facts, not only identifiers.
         options: q.options.map((o) => ({ id: o.id, label: o.label })),
         facts: sala.fatos.get(q.id) ?? null,
         qtype: q.type,
-        // Sem palpite deste fã, o ganho é zero.
+        // Users without a prediction receive zero XP.
         gained: meu?.awardedXp ?? 0,
       };
     }
@@ -294,7 +369,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       return { type: 'game_end', ts, scoreA: state.score.p1, scoreB: state.score.p2 };
     }
 
-    // Mensagens internas do motor não são eventos de fã.
+    // Internal engine messages are not client events.
     return null;
   };
 
@@ -305,18 +380,18 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       try {
         sub.enviar(dele);
       } catch {
-        // Um assinante morto não pode derrubar a sala dos outros.
+        // A stale subscriber must not disrupt other room members.
       }
     }
   };
 
-  /** Eventos SSE compartilhados por todos os assinantes. */
+  /** SSE events shared by every subscriber. */
   const publicarBruto = (msg: RoomMessage) => {
     for (const sub of sala.subs) {
       try {
         sub.enviar(msg);
       } catch {
-        // idem
+        // Isolate stale subscribers.
       }
     }
   };
@@ -329,50 +404,52 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     if (sala.watchdog) clearTimeout(sala.watchdog);
     sala.watchdog = null;
     publicarBruto({ type: 'replay_done', ts: cursor.matchTs, source: state.source });
-    // O servidor fecha o lobby mesmo sem a aba do anfitrião.
+    // Server closes the lobby even without the host tab.
     void createLobbyRepo(db).markFinishedBySystem(partyId).catch(() => {});
+    sala.checkpoint();
+    if (sala.sessionId) void createGameSessionRepo(db).finish(sala.sessionId).catch(() => {});
     void ports.flush().catch(() => {});
-    if (sala.subs.size === 0) agendarLimpezaFinal(sala);
+    if (sala.subs.size === 0) scheduleFinishedRoomCleanup(sala);
   };
 
-  /** O core define as emissões de chance; a sala as armazena e transmite. */
+  /** Core emits chance readings; the room stores and broadcasts them. */
   const explicador = new OddsExplainer({
     fixture,
     emit: (msg) => {
       if (msg.type !== 'odds_explain') return;
-      const leitura: LeituraDeChance = {
+      const leitura: ChanceReading = {
         id: `${String(msg.messageId ?? msg.ts)}:${String(msg.priceName)}`,
         ts: msg.ts as number,
         minute: state.minute,
         priceName: msg.priceName as string,
         fromPct: msg.fromPct as number,
         toPct: msg.toPct as number,
-        // Texto é fallback; a UI prefere os campos estruturados para traduzir.
+        // Text is fallback only; UI localizes structured fields.
         text: msg.text as string,
       };
-      // Omitir contexto é diferente de serializar um valor inexistente.
+      // Omitted context differs from serializing a nonexistent value.
       if (msg.contextAction) leitura.contextAction = msg.contextAction as string;
-      registrarLeitura(state.chances, leitura);
+      recordChanceReading(state.chances, leitura);
       publicarBruto({ type: 'odds_explain', ...leitura });
     },
   });
 
-  /** Acumula o XP decidido pelo motor, sem recalcular bônus na camada de sala. */
+  /** Accumulates engine-decided XP without recalculating room-level bonuses. */
   const registrarNoRanking = (results: ResolvedResult[]) => {
     for (const r of results) {
       sala.xpDaSala.set(r.userId, (sala.xpDaSala.get(r.userId) ?? 0) + r.awardedXp);
-      // Valores sentinela não apagam nem viram apelido público.
+      // Sentinel values neither clear nor become public nicknames.
       if (r.handle && r.handle !== '?') sala.apelidos.set(r.userId, r.handle);
     }
   };
 
-  /** O ranking, por assinante — porque `me` é escrito na primeira pessoa (§8). */
+  /** Ranking is personalized because `me` is subscriber-specific. */
   const publicarRanking = () => {
     for (const sub of sala.subs) {
       try {
-        sub.enviar(rankingDaSala(sala, sub.userId));
+        sub.enviar(roomRanking(sala, sub.userId));
       } catch {
-        // idem
+        // Isolate stale subscribers.
       }
     }
   };
@@ -381,19 +458,25 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     fixture,
     clock,
     ports,
-    // Só treino não paga; persistência mantém idempotência por pergunta.
-    pagaXp: () => politica.pagaXp,
+    ...(session ? {
+      sessionId: session.id,
+      templates: templatesFixados,
+      questionId: (type: Question['type'], triggerKey: string) =>
+        `q_${session.id.replace(/-/g, '')}_${type}_${triggerKey.replace(/[^a-zA-Z0-9_:-]/g, '_')}`,
+    } : {}),
+    // Only training does not award XP; persistence keeps questions idempotent.
+    pagaXp: () => politica.paysXp,
     emit: (msg) => {
-      // Persiste abertura e desfecho: predictions dependem da pergunta e o estado final é auditável.
+      // Persist opens and outcomes: predictions depend on questions and final state remains auditable.
       if (msg.question && (msg.type === 'question_open' || msg.type === 'question_resolved' || msg.type === 'question_void')) {
         ports.saveQuestion(msg.question as Question);
       }
       if (msg.type === 'game_end') state.finished = true;
       state.questions = sala.engine.allQuestions();
-      // Atualiza o ranking antes de publicar a resolução.
+      // Update ranking before broadcasting settlement.
       if (msg.type === 'question_resolved' || msg.type === 'question_void') {
         registrarNoRanking((msg.results ?? []) as ResolvedResult[]);
-        // Fatos da liquidação usam totais acumulados; escanteios ausentes seguem `null`.
+        // Settlement facts use accumulated totals; missing corners stay `null`.
         const c1 = state.totals.p1.Corners;
         const c2 = state.totals.p2.Corners;
         sala.fatos.set((msg.question as Question).id, {
@@ -406,7 +489,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       if (msg.type === 'question_resolved' || msg.type === 'question_void') {
         publicarRanking();
       }
-      // Ao vivo encerra pelo feed, mas conserva o contrato SSE `replay_done`.
+      // Live ends from the feed while preserving the `replay_done` SSE contract.
       if (msg.type === 'game_end' && aoVivo) {
         finalizarSala();
         void createMatchRepo(db)
@@ -418,25 +501,68 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     },
   });
 
-  /** Processa eventos de replay e ao vivo pelo mesmo caminho. */
+  if (recuperado?.engine) {
+    sala.engine.restore(recuperado.engine);
+    // Rehydrate persisted predictions after restart; they may have committed before the checkpoint.
+    const predictions = await Promise.all(
+      sala.engine.allQuestions().map((question) => createPredictionRepo(db).listByQuestion(question.id)),
+    );
+    sala.engine.hydratePredictions(predictions.flat());
+    state.questions = sala.engine.allQuestions();
+  }
+
+  /** Checkpoint cursor and engine state together; recovery resumes the same question IDs. */
+  sala.checkpoint = () => {
+    if (!session) return;
+    const snapshot: SnapshotDaSessao = {
+      engine: sala.engine.snapshot(),
+      room: state,
+      cursor: { ...cursor },
+      fatos: [...sala.fatos.entries()],
+      xp: [...sala.xpDaSala.entries()],
+      apelidos: [...sala.apelidos.entries()],
+      pct1x2: { ...sala.pct1x2 },
+    };
+    void createGameSessionRepo(db)
+      .checkpoint(session.id, snapshot as Record<string, unknown>, {
+        lastScoreSeq: sala.lastScoreSeq,
+        lastOddsTs: sala.lastOddsTs,
+        lastOddsMessageId: sala.lastOddsMessageId,
+      })
+      .catch((e: unknown) => console.warn(`[sala ${fixtureId}] checkpoint falhou:`, e instanceof Error ? e.message : e));
+  };
+
+  /** Processes replay and live events through the same path. */
   const processarEvento = (ev: NormEvent): void => {
-    // Atualize a âncora antes do motor calcular janelas.
+    // Redis Pub/Sub is ephemeral; durable cursors make redelivery forward-only.
+    if (ev.kind === 'score' && sala.lastScoreSeq !== null && ev.seq <= sala.lastScoreSeq) return;
+    if (
+      ev.kind === 'odds' &&
+      sala.lastOddsTs !== null &&
+      (ev.ts < sala.lastOddsTs || (ev.ts === sala.lastOddsTs && (ev.messageId ?? null) === sala.lastOddsMessageId))
+    ) return;
+
+    // Update the anchor before the engine evaluates windows.
     cursor.matchTs = ev.ts;
     cursor.realAt = Date.now();
 
-    // Odds atualizam chances, nunca placar, totais ou perguntas.
+    // Odds update chances only, never score, totals, or questions.
     if (ev.kind === 'odds') {
-      atualizarPct1x2(sala.pct1x2, ev);
+      sala.lastOddsTs = ev.ts;
+      sala.lastOddsMessageId = ev.messageId ?? null;
+      update1x2Percentages(sala.pct1x2, ev);
       explicador.onOddsEvent(ev);
+      sala.checkpoint();
       return;
     }
 
     if (!ehScore(ev)) return;
+    sala.lastScoreSeq = ev.seq;
     sala.engine.onScoreEvent(ev);
-    // O explicador guarda o último lance como contexto.
+    // Explainer retains the latest play as context.
     explicador.onScoreEvent(ev);
 
-    // `hasScore` sem `Goals` não informa 0–0: evite regredir o placar com placeholders.
+    // `hasScore` without `Goals` does not mean 0–0; never regress score from placeholders.
     const falaDeGols =
       ev.totals?.p1?.Goals !== undefined || ev.totals?.p2?.Goals !== undefined;
     const mudou =
@@ -449,7 +575,7 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       state.clockSeconds = ev.clockSeconds;
     }
 
-    // Totais do feed são parciais: faça merge por chave e nunca sobrescreva o mapa.
+    // Feed totals are partial: merge by key and never replace the map.
     if (ev.hasScore && ev.totals) {
       state.totals = {
         p1: { ...state.totals.p1, ...ev.totals.p1 },
@@ -469,16 +595,17 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
         type: 'score_event',
         ts: ev.ts,
         minute: state.minute,
-        // Sem relógio neste evento, o cliente conserva a âncora anterior.
+        // Without a clock, the client keeps its previous anchor.
         clockSeconds: typeof ev.clockSeconds === 'number' ? ev.clockSeconds : null,
-        // `null` indica placar não informado neste evento, não zero.
+        // `null` means score unavailable in this event, not zero.
         scoreA: mudou ? state.score.p1 : null,
         scoreB: mudou ? state.score.p2 : null,
         lance,
-        // Envia o acumulado para a UI se recuperar de qualquer evento perdido.
+        // Send accumulated totals so UI can recover from missed events.
         totals: state.totals,
       });
     }
+    sala.checkpoint();
   };
 
   if (!aoVivo) {
@@ -487,37 +614,48 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
     });
   }
 
-  sala.encerrar = () => {
-    if (sala.desligar) clearTimeout(sala.desligar);
-    sala.desligar = null;
+  sala.close = () => {
+    if (sala.shutdownTimer) clearTimeout(sala.shutdownTimer);
+    sala.shutdownTimer = null;
     if (sala.watchdog) clearTimeout(sala.watchdog);
     sala.watchdog = null;
     sala.runner?.stop();
     desassinar?.();
-    const key = chaveDaSala(fixtureId, treino, partyId);
+    const key = roomKey(fixtureId, training, partyId);
     salas.delete(key);
     resetLobby(key);
     void ports.flush().catch(() => {}).finally(() => void db.close?.());
   };
 
   if (aoVivo) {
-    // Reaplica o snapshot pelo mesmo handler e deduplica kickoff antes do catch-up.
-    const ehKickoffDuplicado = criarDedupeDeKickoff();
+    // Reapply the snapshot through the same handler and dedupe kickoff before catch-up.
+    const ehKickoffDuplicado = createKickoffDeduper();
     const aoEvento = (ev: NormEvent): void => {
       if (ev.kind === 'score' && ehKickoffDuplicado(ev)) return;
       processarEvento(ev);
     };
-    for (const ev of linhaDoTempo) aoEvento(ev);
-    // Eventos recebidos durante a leitura são deduplicados por seq/messageId.
-    const ultimoSeq = eventos.length ? eventos[eventos.length - 1]!.seq : -1;
+    const jaNoCheckpoint = (ev: NormEvent): boolean => {
+      if (!session) return false;
+      if (ev.kind === 'score') return sala.lastScoreSeq !== null && ev.seq <= sala.lastScoreSeq;
+      if (sala.lastOddsTs === null) return false;
+      return ev.ts < sala.lastOddsTs || (ev.ts === sala.lastOddsTs && ev.messageId === sala.lastOddsMessageId);
+    };
+    for (const ev of linhaDoTempo) {
+      if (!jaNoCheckpoint(ev)) aoEvento(ev);
+    }
+    // Events received during reads are deduplicated by sequence/message ID.
+    let ultimoSeq = Math.max(sala.lastScoreSeq ?? -1, eventos.length ? eventos[eventos.length - 1]!.seq : -1);
     const oddsVistas = new Set(odds.map((o) => o.messageId).filter(Boolean));
     for (const ev of bufferDoCatchUp) {
       if (ev.kind === 'score' && ev.seq <= ultimoSeq) continue;
       if (ev.kind === 'odds' && ev.messageId && oddsVistas.has(ev.messageId)) continue;
       aoEvento(ev);
+      // Update marks inside the buffer to deduplicate repeated redelivery before the final handler is installed.
+      if (ev.kind === 'score') ultimoSeq = ev.seq;
+      else if (ev.messageId) oddsVistas.add(ev.messageId);
     }
     bufferDoCatchUp.length = 0;
-    // Após o catch-up, eventos do canal seguem direto ao handler.
+    // After catch-up, channel events go directly to the handler.
     entregar = aoEvento;
   } else {
     const runner = sala.runner!;
@@ -527,47 +665,47 @@ async function criarSala(fixtureId: number, treino: boolean, partyId: string): P
       Math.max(30_000, runner.estimatedDurationMs + WATCHDOG_MARGIN_MS),
     );
   }
-  salas.set(chaveDaSala(fixtureId, treino, partyId), sala);
+  salas.set(roomKey(fixtureId, training, partyId), sala);
   return sala;
 }
 
-/** A sala desta partida, criando-a (e dando o apito inicial) na primeira visita. */
-export async function abrirSala(
+/** Returns the fixture room, creating and starting it on first access. */
+export async function openRoom(
   fixtureId: number,
-  treino = false,
+  training = false,
   partyId = 'PUBLIC',
 ): Promise<Room | null> {
-  const chave = chaveDaSala(fixtureId, treino, partyId);
+  const chave = roomKey(fixtureId, training, partyId);
   const aberta = salas.get(chave);
   if (aberta) return aberta;
 
   const existente = salasEmCriacao.get(chave);
   if (existente) return existente;
 
-  const criacao = criarSala(fixtureId, treino, partyId).finally(() => {
+  const criacao = createRoom(fixtureId, training, partyId).finally(() => {
     if (salasEmCriacao.get(chave) === criacao) salasEmCriacao.delete(chave);
   });
   salasEmCriacao.set(chave, criacao);
   return criacao;
 }
 
-/** Serializa uma pergunta com prazo convertido para milissegundos reais. */
+/** Serializes a question with its deadline converted to real milliseconds. */
 function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
   return {
     id: q.id,
     type: q.type,
     prompt: q.prompt,
-    // Só `final_result` recebe 1X2; ausência de cotação segue `null`.
+    // Only `final_result` receives 1X2; missing quotes remain `null`.
     options: q.options.map((o) => ({
       id: o.id,
       label: o.label,
       pct: q.type === 'final_result' ? sala.pct1x2[o.id as keyof Pct1x2] ?? null : null,
     })),
-    // O piso vem do motor; treino anuncia zero.
+    // Base XP comes from the engine; training emits zero.
     xp: semXp ? 0 : (XP_BASE[q.type as keyof typeof XP_BASE] ?? 0),
     state: q.state,
     closesAt: q.closesAt,
-    // Prazo calculado pelo relógio autoritativo; pergunta fechada tem zero restante.
+    // Deadline uses the authoritative clock; closed questions have no remaining time.
     closesInRealMs:
       q.state === 'open'
         ? Math.max(0, sala.clock.toRealMs(Math.max(0, q.closesAt - sala.clock.now())))
@@ -575,13 +713,13 @@ function perguntaDoPacote(sala: Room, q: Question, semXp: boolean) {
   };
 }
 
-/** Primeiro pacote personalizado: estado, recibos e resultados deste fã. */
-export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage {
+/** First personalized packet: state, receipts, and this user's results. */
+export function roomStateFor(sala: Room, userId: string | null): RoomMessage {
   const respostas = userId ? sala.engine.respostasDe(userId) : [];
   const minhasPorId = new Set(respostas.map((r) => r.question.id));
-  const semXp = sala.treino;
+  const semXp = sala.training;
 
-  // Mantém também perguntas fechadas respondidas para restaurar o recibo após reload.
+  // Keep answered closed questions to restore receipts after reload.
   const questions = sala.engine
     .allQuestions()
     .filter((q) => q.state === 'open' || (q.state === 'closed' && minhasPorId.has(q.id)))
@@ -591,7 +729,7 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
     .filter((r) => r.question.state === 'open' || r.question.state === 'closed')
     .map((r) => ({ questionId: r.question.id, choice: r.prediction.choice }));
 
-  // Resultados já liquidados, do mais recente para o mais antigo.
+  // Settled results, newest first.
   const resultados = respostas
     .filter((r) => r.question.state === 'resolved' || r.question.state === 'void')
     .sort((a, b) => (b.question.resolvedAt ?? 0) - (a.question.resolvedAt ?? 0))
@@ -601,10 +739,10 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
       qtype: r.question.type,
       correctOptionId: r.question.correct,
       voidReason: r.question.voidReason,
-      // XP é o valor decidido pelo motor, nunca recalculado nesta camada.
+      // XP is decided by the engine and never recalculated here.
       gained: r.prediction.awardedXp ?? 0,
       choice: r.prediction.choice,
-      // Inclui rótulos e fatos para restaurar uma explicação completa.
+      // Include labels and facts to restore a complete explanation.
       options: r.question.options.map((o) => ({ id: o.id, label: o.label })),
       facts: sala.fatos.get(r.question.id) ?? null,
     }));
@@ -615,42 +753,42 @@ export function estadoDaSalaPara(sala: Room, userId: string | null): RoomMessage
     state: { ...sala.state, questions },
     minhas,
     resultados,
-    // A política da sala é a fonte de verdade do modo de treino.
-    treino: semXp,
+    // Room policy is the source of truth for training mode.
+    training: semXp,
   };
 }
 
-/** Registra o apelido atual sem sobrescrever um valor conhecido por vazio. */
-export function registrarApelido(sala: Room, userId: string, handle: string | null): void {
+/** Registers the current nickname without overwriting a known value with empty input. */
+export function registerHandle(sala: Room, userId: string, handle: string | null): void {
   if (handle) sala.apelidos.set(userId, handle);
 }
 
-/** Ranking personalizado; apenas apelidos públicos e `me` saem para o navegador. */
-export function rankingDaSala(sala: Room, userId: string | null): RoomMessage {
+/** Personalized ranking exposes only public nicknames and `me`. */
+export function roomRanking(sala: Room, userId: string | null): RoomMessage {
   const rows = [...sala.xpDaSala.entries()]
     .map(([id, xp]) => ({
       name: sala.apelidos.get(id) ?? '',
       xp,
       me: userId !== null && id === userId,
     }))
-    // Empates preservam a ordem de entrada, graças ao sort estável e ao Map.
+    // Stable sort and Map preserve insertion order for ties.
     .sort((a, b) => b.xp - a.xp);
   return { type: 'ranking', ts: sala.cursor.matchTs, rows };
 }
 
-/** Mantém uma sala vazia durante a carência para que reload não reinicie a partida. */
-export function assinar(sala: Room, sub: Sub): () => void {
+/** Keeps an empty room during the grace period so reloads do not restart the fixture. */
+export function subscribe(sala: Room, sub: Sub): () => void {
   sala.subs.add(sub);
-  cancelarEncerramento(sala);
+  cancelShutdown(sala);
   return () => {
     sala.subs.delete(sub);
-    // O runner drena a partida se ninguém reconectar durante a carência.
-    agendarEncerramentoSeVazia(sala);
+    // Runner drains the fixture when nobody reconnects during the grace period.
+    scheduleShutdownIfEmpty(sala);
   };
 }
 
-/** O palpite. Devolve o veredito do MOTOR — a tela não decide nada. */
-export async function palpitar(
+/** Places a prediction; the engine decides the outcome. */
+export async function placePrediction(
   sala: Room,
   user: User,
   questionId: string,
@@ -658,7 +796,8 @@ export async function palpitar(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const r = sala.engine.place(user, questionId, choice);
   if (!r.ok) return r;
-  // Aguarda a escrita deste palpite; `flushDe` não entrega ao fã o erro de outro.
+  // Wait for this prediction only; `flushDe` does not surface another user's error.
   await sala.ports.flushDe(r.prediction.id);
+  sala.checkpoint();
   return { ok: true };
 }

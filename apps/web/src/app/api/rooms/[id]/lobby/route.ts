@@ -1,9 +1,9 @@
-/** Lobby sincronizado por SSE. O runner só nasce depois do `start` do host. */
 
 import { createLobbyRepo, createMatchRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { didVerificado } from '@/server/http';
 import { PULSO, iniciarPulso } from '@/server/pulso';
+import { ativarFixtureAoVivo } from '@/server/live';
 import { consumirTicketSse } from '@/server/sse-ticket';
 import {
   connectLobby,
@@ -14,7 +14,7 @@ import {
   setReady,
   startLobby,
 } from '@/server/lobbies';
-import { chaveDaSala, parsePartyId, parseRoomId } from '@/server/rooms';
+import { roomKey, parsePartyId, parseRoomId } from '@/server/rooms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic';
 type ContextoErro = { error: string; status: number };
 type ContextoBase = {
   rawRoomId: string;
-  room: { fixtureId: number; treino: boolean };
+  room: { fixtureId: number; training: boolean };
   partyId: string;
 };
 type ContextoAutenticado = ContextoBase & { did: string };
@@ -85,7 +85,7 @@ export async function GET(
     if (
       !persistent ||
       persistent.fixtureId !== ctx.room.fixtureId ||
-      persistent.treino !== ctx.room.treino ||
+      persistent.treino !== ctx.room.training ||
       persistent.expiresAt <= Date.now() ||
       !['waiting', 'started', 'finished'].includes(persistent.phase)
     ) {
@@ -93,11 +93,11 @@ export async function GET(
     }
 
     const lobby = openLobby({
-      key: chaveDaSala(ctx.room.fixtureId, ctx.room.treino, ctx.partyId),
+      key: roomKey(ctx.room.fixtureId, ctx.room.training, ctx.partyId),
       roomId: ctx.rawRoomId,
       partyId: ctx.partyId,
       fixtureId: ctx.room.fixtureId,
-      treino: ctx.room.treino,
+      training: ctx.room.training,
       teamA: fixture.p1,
       teamB: fixture.p2,
       hostId: persistent.hostUserId,
@@ -116,7 +116,6 @@ export async function GET(
           try {
             controller.enqueue(enc.encode(`data: ${JSON.stringify(state)}\n\n`));
           } catch {
-            // conexão encerrada
           }
         };
         disconnect = connectLobby(
@@ -131,7 +130,6 @@ export async function GET(
           try {
             controller.close();
           } catch {
-            // já fechada
           }
         });
       },
@@ -162,7 +160,7 @@ export async function POST(
   const body = (await req.json().catch(() => null)) as
     | { action?: unknown; ready?: unknown }
     | null;
-  const lobby = getLobby(chaveDaSala(ctx.room.fixtureId, ctx.room.treino, ctx.partyId));
+  const lobby = getLobby(roomKey(ctx.room.fixtureId, ctx.room.training, ctx.partyId));
   if (!lobby) return Response.json({ error: 'lobby não está aberto' }, { status: 404 });
 
   const db = createDb();
@@ -172,7 +170,7 @@ export async function POST(
     if (
       !persistent ||
       persistent.fixtureId !== ctx.room.fixtureId ||
-      persistent.treino !== ctx.room.treino
+      persistent.treino !== ctx.room.training
     ) {
       return Response.json({ error: 'você não participa desse lobby' }, { status: 403 });
     }
@@ -184,6 +182,7 @@ export async function POST(
     if (body?.action === 'start') {
       const result = startLobby(lobby, user.id);
       if (!result.ok) return Response.json({ error: result.error }, { status: 409 });
+      if (!ctx.room.training) await ativarFixtureAoVivo(ctx.room.fixtureId);
       await createLobbyRepo(db).markStarted(ctx.partyId, user.id);
       return Response.json({ ok: true });
     }

@@ -1,19 +1,5 @@
 'use client';
 
-/**
- * A sala da partida REAL — a mesma casca da sala do mock, outro motor.
- *
- * Vive separada de propósito. A sala do mock resolve o desafio DENTRO do
- * componente (`const correct = optId === spec.correct`) e roda um setInterval
- * como relógio; aqui quem abre, fecha e julga é o servidor, e a tela só desenha
- * o que chega pelo SSE. São duas máquinas de estado opostas — enfiar as duas no
- * mesmo componente com `if (demo)` seria o jeito mais rápido de quebrar o
- * caminho do jurado, que é o único que não pode falhar (§5.1).
- *
- * O que a tela NÃO faz, e é o ponto: não decide acerto, não credita XP, não
- * fecha janela. Se o cronômetro daqui zerar antes do servidor, o palpite ainda
- * vale; se o servidor fechar antes, o POST volta 409 e o fã ouve a verdade.
- */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -40,7 +26,8 @@ import type { LobbyState } from '@/lib/api';
 
 type SalaTab = 'desafios' | 'lances' | 'stats' | 'chances' | 'ranking';
 
-/** O nome do lance na voz do fã. Gíria de futebol, nunca jargão de aposta. */
+// This screen renders server-authoritative state; it never settles predictions or XP.
+
 function textoDoLance(
   l: SalaLance,
   t: ReturnType<typeof useI18n>['t'],
@@ -65,12 +52,6 @@ function textoDoLance(
 
 type Dicionario = ReturnType<typeof useI18n>['t'];
 
-/**
- * A pergunta redigida AQUI, por tipo — não o prompt cru do servidor. O motor
- * grava pt fixo; a tela é bilíngue e o fã de EN lê no idioma dele. Tipo
- * desconhecido cai no prompt do servidor: texto verdadeiro vale mais que
- * texto bonito.
- */
 function textoDaPergunta(
   type: string,
   promptDoServidor: string,
@@ -90,7 +71,6 @@ function textoDaPergunta(
   }
 }
 
-/** O rótulo de uma opção: p1/p2 são os TIMES; o resto sai do dicionário. */
 function rotuloDaOpcao(
   id: string,
   t: Dicionario,
@@ -116,11 +96,6 @@ function rotuloDaOpcao(
   }
 }
 
-/**
- * A explicação do resultado: FATOS do feed no instante da liquidação, que o
- * servidor capturou (minuto, placar, escanteios). Sem fatos, sem frase — uma
- * explicação inventada seria o G6 dentro da tela de resultado.
- */
 function explicacaoDoResultado(
   r: SalaResultado,
   t: Dicionario,
@@ -155,7 +130,6 @@ function explicacaoDoResultado(
   }
 }
 
-/** Uma dupla de barras no estilo da aba Estatísticas — reusada na tela cheia. */
 function BarraDupla({ label, a, b }: { label: string; a: number; b: number }) {
   return (
     <div>
@@ -165,6 +139,7 @@ function BarraDupla({ label, a, b }: { label: string; a: number; b: number }) {
         <span style={{ fontWeight: fw.black, fontSize: 14, color: 'var(--text-1)' }}>{b}</span>
       </div>
       <div style={{ display: 'flex', gap: 6, height: 8 }}>
+        {/* Keep zero-valued stats visible without changing the displayed value. */}
         <div style={{ flex: Math.max(a, 0.4), background: 'var(--lime)', borderRadius: '99px 4px 4px 99px' }} />
         <div style={{ flex: Math.max(b, 0.4), background: 'var(--surface-2)', borderRadius: '4px 99px 99px 4px' }} />
       </div>
@@ -172,13 +147,6 @@ function BarraDupla({ label, a, b }: { label: string; a: number; b: number }) {
   );
 }
 
-/**
- * A TELA CHEIA de um desafio liquidado — o card da lista é só a manchete; o
- * toque abre isto, na dinâmica do protótipo. Tudo aqui é dado REAL: veredito,
- * o que você disse × o que o jogo disse, e a leitura com os números do
- * instante da liquidação. Nada de porcentagem inventada — o explicador de
- * odds não roda nesta sala, e % de mentira é o G6 (a razão de o app existir).
- */
 function DetalheDoResultado({
   r,
   teamA,
@@ -239,7 +207,6 @@ function DetalheDoResultado({
           <div style={{ fontWeight: fw.black, fontStyle: 'italic', fontSize: 30, letterSpacing: -1, color: corTitulo, textWrap: 'pretty' }}>
             {titulo}
           </div>
-          {/* O pill do XP conta a verdade inteira: pago, treino, ou nada. */}
           <div
             style={{
               display: 'inline-flex',
@@ -299,7 +266,6 @@ function DetalheDoResultado({
           </div>
         </div>
 
-        {/* A leitura do jogo — só FATOS do feed no instante da liquidação. */}
         {(leitura || r.voidReason || r.facts) && (
           <div
             style={{
@@ -360,12 +326,6 @@ function DetalheDoResultado({
   );
 }
 
-/**
- * Uma barrinha de chance antes→agora, no estilo do ProbBar do protótipo
- * (ChallengeResult): trilho fundo, preenchimento proporcional ao pct, número
- * ao lado. Cinza para o "antes", lime para o "agora". O número é o DADO com 1
- * casa — o clamp é só do desenho (largura não passa do trilho), nunca do valor.
- */
 function BarraDeChance({
   label,
   pct,
@@ -405,11 +365,6 @@ function BarraDeChance({
   );
 }
 
-/**
- * Uma leitura na linha do tempo da aba Chances: minuto, a frase redigida na
- * tela (bilíngue, pelos campos estruturados — nunca o `text` pt do core), e as
- * barrinhas antes→agora. Sem causa quando o dado não trouxe contextAction.
- */
 function LinhaDeChance({ c, teamA, teamB }: { c: SalaChance; teamA: string; teamB: string }) {
   const { t } = useI18n();
   return (
@@ -439,17 +394,6 @@ function LinhaDeChance({ c, teamA, teamB }: { c: SalaChance; teamA: string; team
 
 type LinhaDeStat = { chave: string; label: string; a: number; b: number; aFlex: number; bFlex: number };
 
-/**
- * Uma linha por chave que o feed DESTA partida trouxe — nunca uma lista fixa.
- * Medido no England × Argentina: o Total é `{ Goals, Corners, YellowCards }` e
- * mais nada. Uma linha de "Posse de bola" com 0% aqui seria número inventado
- * sobre partida real, que é o G6 — o motivo de o projeto existir.
- *
- * A ORDEM sai do próprio dicionário: o mapa de rótulos já está na ordem em que o
- * fã espera ler (gol antes de cartão), e as chaves acumuladas chegam na ordem em
- * que o feed as revelou (`Corners` antes de `Goals`, porque o 1º gol só saiu no
- * seq 539). Chave sem rótulo vai para o fim, em ordem alfabética, e aparece CRUA.
- */
 function linhasDeStats(totals: SalaTotais, rotulos: Record<string, string>): LinhaDeStat[] {
   const ordem = Object.keys(rotulos);
   const posicao = (k: string) => {
@@ -460,26 +404,19 @@ function linhasDeStats(totals: SalaTotais, rotulos: Record<string, string>): Lin
   return [...new Set([...Object.keys(totals.p1), ...Object.keys(totals.p2)])]
     .sort((a, b) => posicao(a) - posicao(b) || a.localeCompare(b))
     .map((chave) => {
-      // Aqui, DENTRO do Total, ausente = zero (G7) — o oposto do bloco Score
-      // ausente (A4). Um lado pode contar e o outro não ter chegado a contar.
       const a = totals.p1[chave] ?? 0;
       const b = totals.p2[chave] ?? 0;
       return {
         chave,
-        // Sem rótulo, o nome cru. Esconder a chave desconhecida seria a
-        // estatística sumindo da tela sem ninguém ver — exatamente o G7.
         label: rotulos[chave] ?? chave,
         a,
         b,
-        // Piso de 0.4: com flex 0 a barra some e o zero fica invisível.
         aFlex: Math.max(a, 0.4),
         bFlex: Math.max(b, 0.4),
       };
     });
 }
 
-/** As iniciais do time. Bandeira de verdade só existe para Argentina e Cabo
- *  Verde no ds — e inventar uma bandeira errada é pior que não ter. */
 function Escudo({ nome }: { nome: string }) {
   return (
     <div
@@ -503,12 +440,11 @@ function Escudo({ nome }: { nome: string }) {
   );
 }
 
-/** Segundos que faltam, do prazo real que o servidor mandou. Cosmético: quem
- *  fecha a janela é o servidor, nunca este contador. */
 function useSegundos(fechaEm: number | null): number {
   const [secs, setSecs] = useState(0);
   useEffect(() => {
     if (fechaEm == null) return;
+    // The countdown is cosmetic; the server remains authoritative for closure.
     const tick = () => setSecs(Math.max(0, Math.ceil((fechaEm - Date.now()) / 1000)));
     tick();
     const timer = setInterval(tick, 500);
@@ -517,7 +453,6 @@ function useSegundos(fechaEm: number | null): number {
   return secs;
 }
 
-/** Um desafio: aberto para responder, ou o recibo do que eu já mandei. */
 function CardDoDesafio({
   d,
   onResponder,
@@ -531,15 +466,12 @@ function CardDoDesafio({
   onResponder: (optionId: string) => void;
   enviando: boolean;
   recusa: string | null;
-  /** Sem pagamento (sala de treino explícita): o card não promete XP nenhum. */
   treino: boolean;
   teamA: string;
   teamB: string;
 }) {
   const { t } = useI18n();
   const secs = useSegundos(d.fechaEm);
-  // O rótulo sai do TIPO que o motor deu à pergunta. Sem correspondência, cai no
-  // genérico — nunca inventa um nome bonito para um tipo que não conheço.
   const rotulo: Record<string, string> = {
     next_goal: t.qNextGoal,
     hilo_corners: t.qHiloCorners,
@@ -558,12 +490,8 @@ function CardDoDesafio({
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 10.5, fontWeight: fw.black, letterSpacing: 1, color: 'var(--lime)' }}>
-          {/* "+0 XP" seria promessa quebrada com cara de prêmio: no treino a
-              etiqueta diz TREINO, e valor só aparece quando há valor. */}
           {rotulo[d.type] ?? t.salaChallenge} · {treino ? t.treinoTag : `+${d.xp} XP`}
         </span>
-        {/* Janela fechada não tem contagem regressiva: o que falta agora é o
-            LANCE, não o tempo. Um "0s" parado ali diria que o fã perdeu o prazo. */}
         <span style={{ fontSize: 12, fontWeight: fw.black, color: d.fechado ? 'var(--text-muted)' : secs <= 3 ? 'var(--red)' : 'var(--text-2)' }}>
           {d.fechado ? t.salaClosedWindow : `${secs}s`}
         </span>
@@ -573,9 +501,6 @@ function CardDoDesafio({
         {textoDaPergunta(d.type, d.prompt, t, teamA, teamB)}
       </p>
 
-      {/* O RECIBO. Sem isto o fã toca e a tela não reage: o servidor só volta a
-          falar quando o LANCE resolve, e isso leva minutos de jogo. O recibo não
-          é o motor — é o que eu mandei; quem julga continua sendo o servidor. */}
       {respondido ? (
         <div
           style={{
@@ -607,10 +532,6 @@ function CardDoDesafio({
                 }}
               >
                 <span>{rotuloDaOpcao(o.id, t, teamA, teamB, d.options)}</span>
-                {/* A chance da opção, como no protótipo ("Argentina  58%") —
-                    e SÓ quando o número VEIO do dado (último 1X2 conhecido).
-                    null = a TxLINE não mandou preço (G8), e AUSENTE não é 0%:
-                    mostrar "0%" aqui seria a explicação fantasma do v0. */}
                 {typeof o.pct === 'number' && (
                   <span style={{ fontSize: 12.5, fontWeight: fw.heavy, color: 'var(--text-muted)' }}>
                     {Math.round(o.pct)}%
@@ -727,15 +648,6 @@ export function SalaReal({
   const { t, fmt, lang } = useI18n();
   const { session, addXp } = useSession();
   const privy = usePrivyAuth();
-  // Espera a ilha ficar pronta ANTES de abrir o stream. O React roda efeitos de
-  // baixo pra cima: no primeiro mount, o efeito desta tela corre antes de o
-  // PrivyIsland (mãe) registrar o authTokenProvider — o token sai null, o SSE vai
-  // sem Bearer e o fã LOGADO lê "sem sessão verificada". É a mesma corrida que
-  // derrubou a home; a lição é a mesma.
-  //
-  // `addXp` no terceiro argumento: quando o motor paga, o contador do cabeçalho
-  // acompanha na hora — antes ele mostrava o XP de quando a sessão nasceu, e o
-  // fã via "+75" no resultado com o total parado.
   const {
     state,
     desafios,
@@ -743,7 +655,7 @@ export function SalaReal({
     ranking,
     chances,
     erro,
-    treino,
+    training: treino,
     segundosVivos,
     palpitar,
   } = useSala(fixtureId, partyId, privy.ready && privy.authenticated, addXp);
@@ -751,11 +663,7 @@ export function SalaReal({
   const [tab, setTab] = useState<SalaTab>('desafios');
   const [enviando, setEnviando] = useState<string | null>(null);
   const [recusa, setRecusa] = useState<Record<string, string>>({});
-  // Se todos saírem, o servidor conclui a timeline real e guarda o resumo.
-  // O fã confirma SABENDO, num painel da tela. Jogo encerrado sai direto.
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
-  // O resultado ABERTO em tela cheia. A lista é só manchete (pergunta some,
-  // texto some); o toque abre o detalhe com veredito, leitura e números.
   const [detalhe, setDetalhe] = useState<SalaResultado | null>(null);
   const [resumoAberto, setResumoAberto] = useState(false);
   const saidaEmAndamento = useRef(false);
@@ -766,19 +674,12 @@ export function SalaReal({
     try {
       await onLeaveLobby();
     } catch {
-      // Sair não pode prender o fã porque a confirmação do servidor caiu.
     } finally {
       router.push('/home');
     }
   };
 
-  // A aba NÃO rouba mais o foco quando abre desafio. Quem chama o fã é o
-  // OVERLAY: a janela dura ~96s de tempo real e ele não pode ter que procurar
-  // uma aba. Trocar a aba embaixo dele ainda por cima tirava o feed da tela no
-  // meio do lance que o desafio pergunta.
 
-  // Antes do early return: hook não pode rodar condicionalmente. Lista vazia
-  // enquanto não há estado — a aba só desenha depois da guarda abaixo.
   const stats = useMemo(
     () => (state ? linhasDeStats(state.totals, t.statKeys) : []),
     [state?.totals, t.statKeys],
@@ -803,7 +704,6 @@ export function SalaReal({
     setEnviando(questionId);
     const r = await palpitar(questionId, optionId);
     setEnviando(null);
-    // "janela fechada", "você já palpitou": é o servidor falando. Mostra.
     if (!r.ok) setRecusa((p) => ({ ...p, [questionId]: r.error ?? '' }));
   };
 
@@ -828,21 +728,11 @@ export function SalaReal({
     );
   }
 
-  // O estado mantém os nomes canônicos recebidos da TxLINE. Daqui para baixo,
-  // as variantes localizadas existem só para apresentação e para as opções
-  // p1/p2; o palpite enviado ao servidor continua sendo o id estável.
   const teamA = localizeTeamName(state.teamA, lang);
   const teamB = localizeTeamName(state.teamB, lang);
 
   const selo = state.source === 'txline-live' ? t.srcTxline : t.srcReplay;
   const abertos = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).length;
-  /**
-   * O overlay mostra UM: o mais recente ainda sem resposta.
-   *
-   * O motor abre janelas sobrepostas (próximo gol + escanteio), e empilhar todas
-   * por cima do jogo taparia justamente o lance que elas perguntam. O resto vive
-   * na aba Desafios, com o contador no rótulo — some da frente, não da vista.
-   */
   const noOverlay = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).at(-1) ?? null;
 
   if (resumoAberto) {
@@ -889,9 +779,6 @@ export function SalaReal({
           >
             <ChevronLeft size={18} />
           </button>
-          {/* Uma partida GRAVADA não é "ao vivo", por mais que o relógio corra.
-              O cronômetro é o INTERPOLADO (MM:SS): entre um lance e outro ele
-              continua andando — o do servidor é o piso, nunca o teto. */}
           <Badge tone={state.finished ? 'neutral' : 'live'} dot={!state.finished}>
             {state.finished
               ? t.lanceEnd
@@ -917,7 +804,6 @@ export function SalaReal({
             <span style={{ fontSize: 10, fontWeight: fw.heavy, letterSpacing: 0.8, color: 'var(--text-muted)', marginTop: 4 }}>
               {selo}
             </span>
-            {/* SEM XP tem que estar escrito ANTES do primeiro palpite no treino. */}
             {treino && (
               <span style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 0.8, color: 'var(--orange)', marginTop: 3 }}>
                 {t.treinoSelo}
@@ -939,9 +825,6 @@ export function SalaReal({
         </div>
       )}
 
-      {/* CINCO abas não cabem lado a lado nos 384px úteis do frame (o SegTabs
-          não encolhe rótulo): o trilho rola na horizontal DENTRO do frame, como
-          toda lista de pills mobile — nada estoura pra fora dos 420px. */}
       <div
         style={{
           flex: 'none',
@@ -953,9 +836,6 @@ export function SalaReal({
       >
         <SegTabs
           tabs={[
-            // O contador diz quantas janelas estão abertas AGORA. O motor abre
-            // várias ao mesmo tempo (próximo gol + escanteio), e antes disto só
-            // a última aparecia — as outras sumiam com o XP junto.
             { label: abertos ? `${t.salaTabChallenges} (${abertos})` : t.salaTabChallenges, value: 'desafios' },
             { label: t.salaTabPlays, value: 'lances' },
             { label: t.salaTabStats, value: 'stats' },
@@ -970,8 +850,6 @@ export function SalaReal({
       <Screen padding={noOverlay ? '14px 18px 300px' : '14px 18px 24px'}>
         {tab === 'desafios' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* O que está no overlay sai da lista: mostrar o mesmo desafio duas
-                vezes na mesma tela é o fã achando que são dois. */}
             {desafios.filter((d) => d.questionId !== noOverlay?.questionId).map((d) => (
               <CardDoDesafio
                 key={d.questionId}
@@ -991,16 +869,12 @@ export function SalaReal({
               </p>
             )}
 
-            {/* Os resultados dos MEUS palpites, quando o lance resolve. */}
             {resultados.length > 0 && (
               <>
                 <div style={{ fontSize: 10.5, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-muted)', marginTop: 10 }}>
                   {t.salaResultsHdr}
                 </div>
                 {resultados.map((r) => {
-                  // Acerto é comparar com o GABARITO do servidor — não com o
-                  // XP: no treino o acerto paga 0, e `gained > 0` como régua
-                  // diria "Errou" para um palpite certo.
                   const acertou =
                     !r.voidReason &&
                     r.correctOptionId !== undefined &&
@@ -1011,9 +885,6 @@ export function SalaReal({
                     final_result: t.qFinalResult,
                   };
                   return (
-                    // Só a MANCHETE: tipo + veredito. O toque abre a tela cheia
-                    // com pergunta, leitura e números — texto acumulado no card
-                    // vira parede que ninguém lê.
                     <button
                       key={r.questionId}
                       onClick={() => setDetalhe(r)}
@@ -1093,7 +964,6 @@ export function SalaReal({
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <span style={{ fontWeight: fw.heavy, fontSize: 13, color: 'var(--text-1)' }}>{teamA}</span>
-                {/* "AO VIVO" não: esta sala roda replay, e selo de origem não mente (G6). */}
                 <span style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)' }}>
                   {t.statsMatchHdr}
                 </span>
@@ -1118,16 +988,12 @@ export function SalaReal({
               </div>
             </>
           ) : (
-            /* Nenhum total ainda: a partida não mandou o bloco Score. Uma tabela
-               de zeros aqui seria invenção, não espera. */
             <p style={{ textAlign: 'center', padding: 28, fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-muted)' }}>
               {t.salaStatsWaiting}
             </p>
           ))}
         {tab === 'chances' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* Mais recente PRIMEIRO, como o hook guarda. Chave ts+priceName:
-                é o mesmo par do dedup — dois eventos legítimos nunca colidem. */}
             {chances.map((c) => (
               <LinhaDeChance
                 key={`${c.ts}-${c.priceName}`}
@@ -1137,9 +1003,6 @@ export function SalaReal({
               />
             ))}
             {!chances.length && (
-              /* Vazio HONESTO: o explicador só fala quando a chance mexe de
-                 verdade (≥3pp). Lista vazia = ainda não mexeu — não é erro,
-                 e um número de enfeite aqui seria o G6. */
               <p style={{ textAlign: 'center', padding: 28, fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-muted)' }}>
                 {t.salaChancesEmpty}
               </p>
@@ -1152,8 +1015,6 @@ export function SalaReal({
             <div style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)', marginBottom: 10 }}>
               {t.roomRanking}
             </div>
-            {/* O XP continua vindo do motor. O lobby apenas completa quem ainda
-                está em 0 e acrescenta presença; ele nunca calcula pontuação. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {rankingComPresenca.map((r, i) => {
                 const pos = i + 1;
@@ -1183,9 +1044,6 @@ export function SalaReal({
                         flex: 1,
                         fontWeight: fw.bold,
                         fontSize: 14,
-                        // Apelido vazio = o fã não passou pelo passo do apelido.
-                        // Dizer "sem apelido" é a leitura honesta; inventar um
-                        // nome (ou sacar do e-mail) é o E12 (§4).
                         fontStyle: r.name ? 'normal' : 'italic',
                         color: r.me ? 'var(--lime)' : r.name ? 'var(--text-hi)' : 'var(--text-muted)',
                       }}
@@ -1212,13 +1070,6 @@ export function SalaReal({
 
       </Screen>
 
-      {/* O DESAFIO, POR CIMA DE TUDO.
-          A janela dura ~96s reais e fecha sozinha: o fã não pode ter que achar
-          uma aba pra palpitar. Fica aqui, sobre qualquer aba, até ele responder
-          — e some assim que responde, liberando a tela pro lance que resolve.
-          Só o MAIS RECENTE: o motor abre janelas sobrepostas, e empilhar todas
-          taparia justamente o jogo que elas perguntam. As outras seguem na aba
-          Desafios, contadas no rótulo. */}
       {noOverlay && (
         <div
           style={{
@@ -1244,7 +1095,6 @@ export function SalaReal({
         </div>
       )}
 
-      {/* O DETALHE DO RESULTADO, em tela cheia — aberto pelo toque na manchete. */}
       {detalhe && (
         <DetalheDoResultado
           r={detalhe}
@@ -1254,8 +1104,6 @@ export function SalaReal({
         />
       )}
 
-      {/* Se todos saírem, o servidor conclui a timeline e preserva o resumo.
-          O painel diz isso antes; um F5 ainda usa a carência de 30 segundos. */}
       {confirmandoSaida && (
         <div
           style={{

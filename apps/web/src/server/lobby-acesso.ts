@@ -1,31 +1,21 @@
-/**
- * A associação persistida é a autoridade para entrar na sala. O Map em
- * `server/lobbies.ts` só guarda presença e broadcast do processo: ele não prova
- * que quem conhece o código do grupo participou do convite, nem sobrevive a um
- * restart. Esta checagem é compartilhada pelas rotas de stream e palpite para
- * que as duas portas apliquem exatamente a mesma regra.
- */
+/** Persistent membership authorizes room access; process-local lobby presence does not. */
 
 import type { Lobby } from '@palpitei/db';
 
-type EscopoDaSala = { fixtureId: number; treino: boolean };
-type LobbyPersistido = Pick<Lobby, 'fixtureId' | 'treino' | 'phase' | 'expiresAt'>;
+export type RoomScope = { fixtureId: number; training: boolean };
+type PersistedLobby = Pick<Lobby, 'fixtureId' | 'treino' | 'phase' | 'expiresAt'>;
 
-/**
- * Só o membro ativo de um convite ainda válido, da mesma partida/modo e já
- * iniciado pode acompanhar ou palpitar. `null` é tanto desconhecido quanto
- * ex-membro: `findForMember` já exclui vínculos com `left_at` preenchido.
- */
-export function podeAcessarLobbyIniciado(
-  lobby: LobbyPersistido | null,
-  sala: EscopoDaSala,
-  agora = Date.now(),
+/** Requires active membership in the started lobby for the same fixture and mode. */
+export function canAccessStartedLobby(
+  lobby: PersistedLobby | null,
+  room: RoomScope,
+  now = Date.now(),
 ): boolean {
   return Boolean(
     lobby &&
-      lobby.fixtureId === sala.fixtureId &&
-      lobby.treino === sala.treino &&
+      lobby.fixtureId === room.fixtureId &&
+      lobby.treino === room.training &&
       lobby.phase === 'started' &&
-      lobby.expiresAt > agora,
+      lobby.expiresAt > now,
   );
 }

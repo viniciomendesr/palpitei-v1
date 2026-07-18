@@ -1,17 +1,15 @@
 import type { Bet, EngineEmit, Fixture, Market, MarketOutcome, User } from "./types.ts";
 import type { EnginePorts } from "./ports.ts";
 
-const RAKE_BPS = 500; // 5% de rake da casa
+const RAKE_BPS = 500; // 5% house rake
 const OUTCOMES: MarketOutcome[] = ["p1", "draw", "p2"];
 
-/** Saldo inicial de USDC SIMULADO de cada conta (100 USDC em centavos). */
+/** Initial simulated USDC balance per account (100 USDC in cents). */
 export const START_BALANCE_CENTS = 10000;
 
 /**
- * Prévia da v2: mercado paramutuel de resultado final com USDC SIMULADO.
- * Não há dinheiro real na v1 — isto é vitrine do que a v2 (Presságio) fará.
- * Toda a matemática é em centavos inteiros (Math.floor) — determinística e
- * auditável, espelhando o que o contrato Anchor fará on-chain na v2.
+ * Preview of v2's simulated-USDC final-result parimutuel market. Calculations
+ * use integer cents for deterministic, auditable settlement.
  */
 export class MarketEngine {
   market: Market;
@@ -20,7 +18,7 @@ export class MarketEngine {
   private fixture: Fixture;
   private emit: EngineEmit;
   private ports: EnginePorts;
-  private users = new Map<string, User>(); // p/ handle e crédito de saldo
+  private users = new Map<string, User>(); // handle and balance credits
 
   constructor(opts: { fixture: Fixture; emit: EngineEmit; ports: EnginePorts }) {
     this.fixture = opts.fixture;
@@ -38,7 +36,7 @@ export class MarketEngine {
     };
   }
 
-  /** Define o prazo (kickoff). O prazo fecha ANTES do evento resolvedor. */
+  /** Sets the kickoff deadline, which closes before the resolving event. */
   setCloseAt(ts: number): void {
     this.market.closesAt = ts;
     this.emitUpdate();
@@ -93,7 +91,7 @@ export class MarketEngine {
 
   resolve(winner: MarketOutcome): void {
     if (this.market.state === "resolved") {
-      // Resolver duas vezes NÃO pode pagar em dobro — segunda chamada é no-op.
+      // Settlement is idempotent: resolving twice must not pay twice.
       this.emit({
         type: "log",
         level: "warn",
@@ -111,7 +109,7 @@ export class MarketEngine {
     const byUser = new Map<string, number>();
 
     if (winnersPool === 0) {
-      // Ninguém acertou: reembolso integral, SEM rake.
+      // No winners: refund every bet without rake.
       m.refunded = true;
       for (const bet of this.bets) {
         bet.payoutCents = bet.amountCents;
@@ -131,7 +129,7 @@ export class MarketEngine {
           this.ports.saveBet(bet);
           continue;
         }
-        // floor por aposta: a sobra (dust) fica na casa junto com o rake.
+        // Per-bet flooring leaves rounding dust with the house rake.
         const payout = Math.floor((bet.amountCents * distributable) / winnersPool);
         bet.payoutCents = payout;
         const u = this.users.get(bet.userId);
@@ -160,7 +158,7 @@ export class MarketEngine {
     });
   }
 
-  /** Anexa o recibo (prova de Merkle da TxLINE) ou o erro de obtenção. */
+  /** Attaches a TxLINE Merkle proof or its retrieval error. */
   attachProof(proof: any | null, error?: string): void {
     if (proof) this.market.proof = proof;
     if (error) this.market.proofError = error;

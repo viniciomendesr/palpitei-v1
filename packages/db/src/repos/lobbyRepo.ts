@@ -41,20 +41,20 @@ function gerarCodigo(): string {
   return codigo;
 }
 
-export function normalizarCodigoLobby(value: string): string {
+export function normalizeLobbyCode(value: string): string {
   return String(value ?? '').replace(/[\s-]/g, '').toUpperCase();
 }
 
 export function createLobbyRepo(db: Db) {
   const repo = {
     async findByCode(code: string): Promise<Lobby | null> {
-      const normalized = normalizarCodigoLobby(code);
+      const normalized = normalizeLobbyCode(code);
       const rows = await db.query(`select ${COLUNAS} from lobbies l where l.invite_code = $1`, [normalized]);
       return rows[0] ? mapLobby(rows[0]) : null;
     },
 
     async findForMember(code: string, userId: string): Promise<Lobby | null> {
-      const normalized = normalizarCodigoLobby(code);
+      const normalized = normalizeLobbyCode(code);
       const rows = await db.query(
         `select ${COLUNAS}
            from lobbies l
@@ -102,7 +102,7 @@ export function createLobbyRepo(db: Db) {
     },
 
     async joinByCode(userId: string, code: string): Promise<Lobby> {
-      const normalized = normalizarCodigoLobby(code);
+      const normalized = normalizeLobbyCode(code);
       const id = await db.withTx(async (tx: Executor) => {
         const [lobby] = await tx.query(
           `select id, phase, max_players, expires_at from lobbies
@@ -147,7 +147,7 @@ export function createLobbyRepo(db: Db) {
     },
 
     async markStarted(code: string, hostUserId: string): Promise<void> {
-      const normalized = normalizarCodigoLobby(code);
+      const normalized = normalizeLobbyCode(code);
       const rows = await db.query(
         `update lobbies
             set phase = 'started', updated_at = now()
@@ -159,7 +159,7 @@ export function createLobbyRepo(db: Db) {
     },
 
     async markLeft(code: string, userId: string): Promise<void> {
-      const normalized = normalizarCodigoLobby(code);
+      const normalized = normalizeLobbyCode(code);
       const rows = await db.query(
         `update lobby_members lm
             set left_at = now(), ready = false, last_seen_at = now()
@@ -173,7 +173,7 @@ export function createLobbyRepo(db: Db) {
     },
 
     async markFinished(code: string, hostUserId: string): Promise<void> {
-      const normalized = normalizarCodigoLobby(code);
+      const normalized = normalizeLobbyCode(code);
       const rows = await db.query(
         `update lobbies
             set phase = 'finished', updated_at = now()
@@ -184,9 +184,9 @@ export function createLobbyRepo(db: Db) {
       if (!rows[0]) throw new LobbyUnavailableError('só o anfitrião pode encerrar essa partida');
     },
 
-    /** Encerramento autoritativo do runner — não é uma ação exposta ao fã. */
+    /** Authoritative runner shutdown; not an action exposed to fans. */
     async markFinishedBySystem(code: string): Promise<void> {
-      const normalized = normalizarCodigoLobby(code);
+      const normalized = normalizeLobbyCode(code);
       await db.query(
         `update lobbies
             set phase = 'finished', updated_at = now()

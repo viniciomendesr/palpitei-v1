@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agendarEncerramentoSeVazia,
-  cancelarEncerramento,
+  scheduleShutdownIfEmpty,
+  cancelShutdown,
 } from '../src/server/room-lifecycle.ts';
 
 function salaFake(finished = false, aoVivo = false, runnerAtivo = !finished) {
@@ -10,12 +10,12 @@ function salaFake(finished = false, aoVivo = false, runnerAtivo = !finished) {
   let encerrou = 0;
   const sala = {
     subs: new Set(),
-    desligar: null,
+    shutdownTimer: null,
     state: { finished },
     runner: aoVivo
       ? null
-      : { emAndamento: runnerAtivo, finishNow: () => { drenou++; } },
-    encerrar: () => { encerrou++; },
+      : { isRunning: runnerAtivo, finishNow: () => { drenou++; } },
+    close: () => { encerrou++; },
   };
   return { sala, drenou: () => drenou, encerrou: () => encerrou };
 }
@@ -23,7 +23,7 @@ function salaFake(finished = false, aoVivo = false, runnerAtivo = !finished) {
 test('sala vazia drena o replay após a carência em vez de permitir reinício', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake();
-  agendarEncerramentoSeVazia(fake.sala);
+  scheduleShutdownIfEmpty(fake.sala);
 
   t.mock.timers.tick(29_999);
   assert.equal(fake.drenou(), 0);
@@ -35,9 +35,9 @@ test('sala vazia drena o replay após a carência em vez de permitir reinício',
 test('reconectar durante a carência preserva o replay em andamento', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake();
-  agendarEncerramentoSeVazia(fake.sala);
+  scheduleShutdownIfEmpty(fake.sala);
   fake.sala.subs.add({});
-  cancelarEncerramento(fake.sala);
+  cancelShutdown(fake.sala);
 
   t.mock.timers.tick(30_000);
   assert.equal(fake.drenou(), 0);
@@ -46,7 +46,7 @@ test('reconectar durante a carência preserva o replay em andamento', (t) => {
 test('sala ao vivo vazia continua ligada ao canal em vez de encerrar o jogo', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake(false, true);
-  agendarEncerramentoSeVazia(fake.sala);
+  scheduleShutdownIfEmpty(fake.sala);
 
   t.mock.timers.tick(30_000);
   assert.equal(fake.drenou(), 0);
@@ -56,7 +56,7 @@ test('sala ao vivo vazia continua ligada ao canal em vez de encerrar o jogo', (t
 test('apito final não impede dreno quando ainda há odds na timeline', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake(true, false, true);
-  agendarEncerramentoSeVazia(fake.sala);
+  scheduleShutdownIfEmpty(fake.sala);
 
   t.mock.timers.tick(30_000);
   assert.equal(fake.drenou(), 1);
@@ -66,7 +66,7 @@ test('apito final não impede dreno quando ainda há odds na timeline', (t) => {
 test('resultado encerrado permanece disponível antes da limpeza', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake(true);
-  agendarEncerramentoSeVazia(fake.sala);
+  scheduleShutdownIfEmpty(fake.sala);
 
   t.mock.timers.tick(10 * 60_000 - 1);
   assert.equal(fake.encerrou(), 0);

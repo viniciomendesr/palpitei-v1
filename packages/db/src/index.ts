@@ -1,8 +1,5 @@
-// @palpitei/db — schema Postgres (Supabase) e camada de repositório.
-//
-// O Supabase é usado SÓ como Postgres: a identidade é o `privy_did` verificado,
-// não há Supabase Auth, não há RLS de auth.uid(), e não há client Supabase no
-// browser. Só o backend fala com o banco, por connection string.
+// Postgres (Supabase) schema and repository layer. Supabase is used only as
+// Postgres: verified privy_did is the identity and only the backend connects.
 
 export { createDb, assertDbReady } from './pool.js';
 export type { Db, Executor, CreateDbOptions, Row } from './pool.js';
@@ -11,34 +8,43 @@ export { uid } from './ids.js';
 export * from './types.js';
 export * from './errors.js';
 
-export { createUserRepo, validarHandle } from './repos/userRepo.js';
+export { createUserRepo, validateHandle } from './repos/userRepo.js';
 export type { UserRepo, FindOrCreateOpts } from './repos/userRepo.js';
 
 export {
   createLeagueRepo,
-  validarNomeDeLiga,
-  normalizarCodigo,
+  validateLeagueName,
+  normalizeLeagueCode,
   LIGAS_FREE,
 } from './repos/leagueRepo.js';
 export type { LeagueRepo } from './repos/leagueRepo.js';
 
-export { createLobbyRepo, normalizarCodigoLobby } from './repos/lobbyRepo.js';
+export { createLobbyRepo, normalizeLobbyCode } from './repos/lobbyRepo.js';
 export type { LobbyRepo } from './repos/lobbyRepo.js';
 
 export { createMatchRepo } from './repos/matchRepo.js';
 export type { MatchRepo } from './repos/matchRepo.js';
 
-export { createEventRepo, rawParaEvento } from './repos/eventRepo.js';
+export { createEventRepo, mapRawScoreEvent } from './repos/eventRepo.js';
 export type { EventRepo, UpsertStats } from './repos/eventRepo.js';
 
-export { createOddsRepo, eh1x2JogoInteiro, chaveDaCotacao, MERCADO_1X2 } from './repos/oddsRepo.js';
+export { createOddsRepo, isFullGame1x2, oddsMessageKey, MERCADO_1X2 } from './repos/oddsRepo.js';
 export type { OddsRepo, OddsUpsertStats } from './repos/oddsRepo.js';
 
 export { createQuestionRepo } from './repos/questionRepo.js';
 export type { QuestionRepo } from './repos/questionRepo.js';
 
+export { createQuestionTemplateRepo } from './repos/questionTemplateRepo.js';
+export type { QuestionTemplateRepo, QuestionTemplate } from './repos/questionTemplateRepo.js';
+
+export { createGameSessionRepo } from './repos/gameSessionRepo.js';
+export type { GameSessionRepo, GameSession } from './repos/gameSessionRepo.js';
+
+export { createLiveFixtureRepo } from './repos/liveFixtureRepo.js';
+export type { LiveFixtureRepo, LiveFixture } from './repos/liveFixtureRepo.js';
+
 export { createPredictionRepo } from './repos/predictionRepo.js';
-export type { PredictionRepo, SettleResult, ResultadoPalpite } from './repos/predictionRepo.js';
+export type { PredictionRepo, SettleResult, PredictionResult } from './repos/predictionRepo.js';
 
 export { createPregamePickRepo } from './repos/pregamePickRepo.js';
 export type {
@@ -74,6 +80,9 @@ import { createOddsRepo, type OddsRepo } from './repos/oddsRepo.js';
 import { createPredictionRepo, type PredictionRepo } from './repos/predictionRepo.js';
 import { createPregamePickRepo, type PregamePickRepo } from './repos/pregamePickRepo.js';
 import { createQuestionRepo, type QuestionRepo } from './repos/questionRepo.js';
+import { createQuestionTemplateRepo, type QuestionTemplateRepo } from './repos/questionTemplateRepo.js';
+import { createGameSessionRepo, type GameSessionRepo } from './repos/gameSessionRepo.js';
+import { createLiveFixtureRepo, type LiveFixtureRepo } from './repos/liveFixtureRepo.js';
 import { createUserRepo, type UserRepo } from './repos/userRepo.js';
 
 export type Palpitei = {
@@ -83,6 +92,9 @@ export type Palpitei = {
   events: EventRepo;
   odds: OddsRepo;
   questions: QuestionRepo;
+  questionTemplates: QuestionTemplateRepo;
+  sessions: GameSessionRepo;
+  liveFixtures: LiveFixtureRepo;
   predictions: PredictionRepo;
   pregame: PregamePickRepo;
   markets: MarketRepo;
@@ -95,12 +107,12 @@ export type Palpitei = {
 };
 
 /**
- * Monta a camada inteira sobre uma conexão.
+ * Builds the repository layer over one connection.
  *
  *   const palpitei = createPalpitei();          // usa DATABASE_URL
  *   const fa = await palpitei.users.findOrCreateByPrivyDid(did, { wallet, walletSource });
  *
- * Uma instância por processo: o Pool já cuida de concorrência.
+ * Use one instance per process; Pool handles concurrency.
  */
 export function createPalpitei(opts: CreateDbOptions = {}): Palpitei {
   const db = createDb(opts);
@@ -111,6 +123,9 @@ export function createPalpitei(opts: CreateDbOptions = {}): Palpitei {
     events: createEventRepo(db),
     odds: createOddsRepo(db),
     questions: createQuestionRepo(db),
+    questionTemplates: createQuestionTemplateRepo(db),
+    sessions: createGameSessionRepo(db),
+    liveFixtures: createLiveFixtureRepo(db),
     predictions: createPredictionRepo(db),
     pregame: createPregamePickRepo(db),
     markets: createMarketRepo(db),

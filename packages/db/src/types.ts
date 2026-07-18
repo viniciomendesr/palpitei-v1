@@ -1,32 +1,17 @@
-// Tipos do domínio que a camada de repositório grava e lê.
-//
-// POR QUE ESTES TIPOS VIVEM AQUI, E NÃO SÃO IMPORTADOS DE @palpitei/core:
-// eles espelham, campo a campo, o contrato provado do v0 (src/core/types.ts).
-// TypeScript é ESTRUTURAL: se o core declarar as mesmas formas, as funções
-// deste pacote satisfazem as interfaces dele sem nenhum import — e os dois
-// pacotes podem ser escritos em paralelo sem travar o build um do outro.
-// Se um dia as formas divergirem, o erro aparece no ponto de ligação
-// (apps/web), em vermelho, na compilação. É um erro barulhento — não silencioso.
-//
-// UMA DIFERENÇA DELIBERADA em relação ao v0: `messageId` aqui é STRING.
-// No v0 era `number`, e passar o MessageId ("1837922149:00003:000572-10021-stab")
-// por Number() devolvia -1 para todos, colapsando a série inteira num único
-// registro. O banco guarda TEXT justamente por isso.
+// Domain types persisted and read by the repository layer.
+// Structural compatibility with core avoids a circular dependency.
+// TxLINE messageId values are opaque strings because structured IDs are not numeric.
 
 export type WalletSource = 'privy_embedded' | 'external' | 'simulated';
 
 export type User = {
   id: string;
-  handle: string | null; // NULL até o onboarding pedir. Nunca derive do e-mail (E12).
+  handle: string | null; // Null until onboarding collects it; never derive it from email.
   wallet: string | null; // pubkey Solana (base58)
-  // NULL = o fã não tem carteira. NÃO é 'simulated'.
+  // Null means the fan has no wallet; it is not 'simulated'.
   //
-  // O `createOnLogin` da Privy defaulta a 'off' (E2): o login social entra e o fã
-  // fica SEM carteira Solana. O banco guarda NULL de propósito para essa
-  // regressão ficar VISÍVEL. Colapsar NULL para 'simulated' na leitura seria
-  // inventar a origem que o schema recusa a inventar — e ainda marcaria o fã
-  // real como modo demo (§5.1), que é justamente o que NÃO cumpre
-  // "sign up through Solana".
+  // Privy social login may have no Solana wallet. Preserve null rather than
+  // inventing a simulated wallet source.
   walletSource: WalletSource | null;
   privyId: string; // DID: 'did:privy:...' ou 'demo:...' no modo demo
   isPremium: boolean;
@@ -47,16 +32,12 @@ export type Fixture = {
   p2Id?: number;
   competition?: string;
   competitionId?: number;
-  startTime?: number; // epoch ms — âncora da janela do desafio final (G4)
+  startTime?: number; // Epoch ms; anchor for the final-question window.
   gameState?: number;
   state?: MatchState;
   /**
-   * De onde esta partida veio, quando veio do cache. O banco sempre soube
-   * (coluna `cache_source`, e o COLS do matchRepo já a lia) — mas o mapper
-   * descartava, e por isso a tela não TINHA como dizer a verdade sobre a
-   * origem. A §2 exige selo de fonte em cada sala e o G6 diz que rótulo de
-   * proveniência não pode mentir: sem este campo, só sobrava chutar.
-   * `undefined` = veio do feed ao vivo/snapshot, não do cache.
+   * Undefined means the match came from the live feed or snapshot rather than
+   * the local cache, allowing callers to show accurate provenance.
    */
   cacheSource?: CacheSource;
   raw?: unknown;
@@ -83,8 +64,7 @@ export type ScoreEvent = {
   gameStateRaw?: string | number;
   clockRunning?: boolean;
   clockSeconds?: number;
-  // false => o evento não trouxe o bloco Score. goals/corners são placeholder e
-  // NÃO valem como placar (A4: ausente ≠ zero).
+  // False means the event omitted Score. goals/corners are placeholders, not scores.
   hasScore: boolean;
   goals: { p1: number; p2: number };
   corners: { p1: number; p2: number };
@@ -97,7 +77,7 @@ export type OddsEvent = {
   kind: 'odds';
   fixtureId: number;
   ts: number;
-  messageId?: string; // STRING (ver cabeçalho)
+  messageId?: string; // Opaque string identifier.
   marketType: string;
   marketPeriod?: string | number;
   line?: number;
@@ -111,10 +91,14 @@ export type NormEvent = ScoreEvent | OddsEvent;
 
 export type QuestionType = 'final_result' | 'next_goal' | 'hilo_corners';
 export type QuestionOption = { id: string; label: string };
+export type QuestionTemplateRef = { id: string; version: number };
 
 export type Question = {
   id: string;
   fixtureId: number;
+  sessionId?: string;
+  template?: QuestionTemplateRef;
+  triggerKey?: string;
   type: QuestionType;
   prompt: string;
   options: QuestionOption[];
@@ -165,8 +149,7 @@ export type Bet = {
   payoutCents?: number;
 };
 
-// A timeline completa de uma partida — o que o v0 gravava em .cache/fixtures/.
-// Na v1 isso mora no Postgres (T&C §7: payload da TxLINE não vai para o repo).
+// Full match timeline. v1 stores it in Postgres rather than the public repository.
 export type MatchCache = {
   fixtureId: number;
   p1: string;
@@ -201,18 +184,17 @@ export type Mission = {
   completedAt?: number;
 };
 
-/** Papel na liga. O dono é quem criou — e é um só (índice parcial na 0002). */
+/** League role. The creator is the sole owner (enforced by a partial index). */
 export type LeagueRole = 'owner' | 'member';
 
 export type League = {
   id: string;
   name: string;
   ownerId: string;
-  /** O convite. É a credencial de entrada da liga: só sai para quem já é membro. */
+  /** Invitation credential, returned only to existing members. */
   inviteCode: string;
   /**
-   * Contado no banco, sempre. O "1 membro" da tela de hoje é uma string fixa do
-   * dicionário — este campo existe para que o número seja o que o banco tem.
+   * Counted in the database so the UI does not rely on a static label.
    */
   memberCount: number;
   createdAt: number;
@@ -221,9 +203,7 @@ export type League = {
 export type LeagueMember = {
   userId: string;
   /**
-   * NULL enquanto o fã não escolheu apelido — e a tela mostra "sem apelido", não
-   * um nome inventado e NUNCA o e-mail (E12): o apelido é público para a liga
-   * inteira, e derivá-lo do e-mail vaza o endereço da pessoa.
+   * Null until the fan chooses a handle. Never expose or derive an email address.
    */
   handle: string | null;
   role: LeagueRole;

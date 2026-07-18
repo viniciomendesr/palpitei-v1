@@ -1,4 +1,4 @@
-/** Snapshot TxLINE com TTL curto e single-flight por processo. */
+/** Process-local TxLINE snapshot cache with a short TTL and single-flight refreshes. */
 import { fetchFixtures } from '@palpitei/txline';
 import type { Fixture } from '@palpitei/core';
 
@@ -18,10 +18,7 @@ function cache(): Cache {
   return (g[CHAVE] ??= { valor: null, expiraEm: 0, emVoo: null });
 }
 
-/**
- * Evita uma chamada idêntica à devnet por fã. Se a atualização falhar e já
- * houver snapshot anterior, devolve o último valor conhecido (stale cache).
- */
+/** Returns the latest snapshot and reuses the previous value when a refresh fails. */
 export async function fixturesTxline(): Promise<Fixture[]> {
   const c = cache();
   if (c.valor && Date.now() < c.expiraEm) return c.valor;

@@ -1,16 +1,5 @@
 'use client';
 
-/**
- * PREMIUM · CHECKOUT — resumo do plano e forma de pagamento.
- *
- * MAQUETE. Nenhum gateway está plugado e NADA cobra ninguém: o botão só marca
- * `isPremium` na sessão local e segue pra tela de pronto. Quando um gateway de
- * verdade entrar, ele NÃO entra aqui no cliente — o cliente pede a intenção ao
- * servidor e o servidor fala com o gateway.
- *
- * A opção "Carteira Solana · USDC" mostra o caminho pra v2 (Presságio), onde o
- * valor é real. Na v1 ela é maquete como as outras — não misture dinheiro aqui.
- */
 
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ds';
@@ -32,7 +21,6 @@ export default function CheckoutPage() {
   const annual = session.selectedPlan === 'anual';
   const planName = annual ? t.plAnnual : t.plMonthly;
   const planPrice = annual ? t.plAnnualPrice : t.plMonthlyPrice;
-  // O anual começa com 7 dias grátis, então hoje não cobra nada.
   const todayCharge = annual ? t.todayFree : t.plMonthlyPrice;
 
   const methods: { id: PayMethodId; title: string; sub: string; icon: React.ReactNode }[] = [
@@ -42,7 +30,6 @@ export default function CheckoutPage() {
   ];
 
   const confirm = () => {
-    // TODO: pedir a intenção de cobrança ao servidor. Gateway NUNCA no cliente.
     update({ isPremium: true });
     router.push('/premium/pronto');
   };
@@ -73,7 +60,6 @@ export default function CheckoutPage() {
         </span>
       </div>
 
-      {/* resumo */}
       <div
         style={{
           background: 'var(--surface-1)',
@@ -117,7 +103,6 @@ export default function CheckoutPage() {
         )}
       </div>
 
-      {/* forma de pagamento */}
       <div style={{ fontSize: 10, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)', margin: '22px 0 10px' }}>
         {t.ckPayHdr}
       </div>

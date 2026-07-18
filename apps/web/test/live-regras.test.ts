@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { OddsEvent, ScoreEvent } from '@palpitei/core';
 import { MERCADO_1X2 } from '@palpitei/db';
-import { classificarParaSala, eventoEncerraPartida, fixtureAoVivo, fixturesAoVivo } from '../src/server/live-regras.ts';
+import {
+  classificarParaSala,
+  eventoEncerraPartida,
+  fixtureAoVivo,
+  fixturesAoVivo,
+  ingestAoVivoHabilitado,
+} from '../src/server/live-regras.ts';
 
 const score = (over: Partial<ScoreEvent> = {}): ScoreEvent => ({
   kind: 'score',
@@ -27,9 +33,8 @@ const odds = (over: Partial<OddsEvent> = {}): OddsEvent => ({
   ...over,
 });
 
-// ─── a 3ª trava: 'true' literal, com fixture explícita ───
-// O getter do pacote é `trim(...) !== "false"` — apagar a linha LIGA o ingest.
-// A trava da aplicação inverte o default: ausente = desligado.
+// ─── Third gate: a literal `true` value with an explicit fixture ───
+// The application gate is opt-in: a missing value leaves ingest disabled.
 
 test('fixtureAoVivo: só liga com TXLINE_LIVE_INGEST="true" literal E fixture numérica', () => {
   assert.equal(
@@ -41,6 +46,12 @@ test('fixtureAoVivo: só liga com TXLINE_LIVE_INGEST="true" literal E fixture nu
 test('fixtureAoVivo: env ausente é DESLIGADO (o oposto do getter do pacote)', () => {
   assert.equal(fixtureAoVivo({ LIVE_FIXTURE_ID: '18257865' }), null);
   assert.equal(fixtureAoVivo({}), null);
+});
+
+test('a trava permite seleção dinâmica pelo banco sem reabrir o default inseguro', () => {
+  assert.equal(ingestAoVivoHabilitado({ TXLINE_LIVE_INGEST: 'true' }), true);
+  assert.equal(fixturesAoVivo({ TXLINE_LIVE_INGEST: 'true' }).length, 0, 'env pode ficar sem IDs quando o banco é o registro');
+  assert.equal(ingestAoVivoHabilitado({}), false);
 });
 
 test('fixtureAoVivo: "false", "1" ou fixture não numérica não ligam nada', () => {
@@ -64,11 +75,8 @@ test('evento terminal é game_finalised ou o status final do feed', () => {
   assert.equal(eventoEncerraPartida(score({ action: 'goal', hasScore: true })), false);
 });
 
-// ─── o filtro de mercado do roteamento ───
-// No replay o filtro vive na SQL da projeção (listReplayByFixture: 1X2 de jogo
-// inteiro). O ramo live aplica o MESMO critério antes de rotear: sem ele, um
-// 1X2 de período corrompe o pct da final_result e o explicador recebe ~9× mais
-// eventos (a família das 115 explicações fantasma do v0).
+// ─── Market filter used by live routing ───
+// Live events use the same full-match 1X2 criterion as replay projections.
 
 test('score da fixture-alvo roteia; de outra fixture, não', () => {
   assert.equal(classificarParaSala(score(), 18257865), 'rotear');

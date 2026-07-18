@@ -1,14 +1,14 @@
-/** Configuração do Next para os pacotes ESM do monorepo. */
+/** Next configuration for the monorepo's ESM packages. */
 import { config } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import os from 'node:os';
 
-// O Next não carrega automaticamente o `.env` da raiz do monorepo.
+// Next does not load the monorepo root `.env` automatically.
 const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 config({ path: resolve(raiz, '.env') });
 
-// Variáveis NEXT_PUBLIC são injetadas no build; falhe de forma visível se faltar.
+// NEXT_PUBLIC variables are embedded at build time; make missing configuration visible.
 if (!process.env.NEXT_PUBLIC_PRIVY_APP_ID) {
   console.warn(
     '\n[palpitei] NEXT_PUBLIC_PRIVY_APP_ID ausente — a Privy fica DESLIGADA neste build.\n' +
@@ -36,10 +36,10 @@ function localDevHosts() {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Permite build paralelo ao dev quando `NEXT_DIST_DIR` é configurado.
+  // Allow parallel development and build output when `NEXT_DIST_DIR` is set.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   allowedDevOrigins: localDevHosts(),
-  // Core, DS e TxLINE são fontes TypeScript; DB é consumido a partir de `dist`.
+  // Core, DS, and TxLINE are TypeScript sources; DB is consumed from `dist`.
   transpilePackages: ['@palpitei/core', '@palpitei/ds', '@palpitei/txline'],
 };
 

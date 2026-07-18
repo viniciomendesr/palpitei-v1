@@ -1,23 +1,10 @@
 'use client';
 
-/**
- * Bandeiras — desenhadas em CSS, como o resto da iconografia (sem emoji, sem <img>).
- *
- * Sobre os hex literais aqui: a regra "nunca hardcode hex" vale pros tokens do
- * DESIGN (superfície, texto, acento) — trocar --lime tem que repintar o app.
- * A cor de uma bandeira nacional é CONTEÚDO, não tema: o azul da Argentina não é
- * um token e não muda se a paleta mudar. Tokenizar isso seria mentira.
- *
- * Só as duas da sala de demonstração existem por enquanto. Quando as fixtures
- * reais entrarem, isto vira um mapa por código de país.
- */
-
 interface FlagProps {
   width?: number;
   height?: number;
 }
 
-/** Argentina — três faixas horizontais. */
 export function FlagArgentina({ width = 38, height = 26 }: FlagProps) {
   return (
     <div
@@ -39,7 +26,6 @@ export function FlagArgentina({ width = 38, height = 26 }: FlagProps) {
   );
 }
 
-/** Cabo Verde — simplificada: três faixas verticais com a estrela ao centro. */
 export function FlagCaboVerde({ width = 38, height = 26 }: FlagProps) {
   return (
     <div

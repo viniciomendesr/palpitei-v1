@@ -24,8 +24,9 @@ await p.users.setHandle(fa.id, 'craque.10');      // 409 se já for de outra pes
 ```
 
 `p` traz: `users`, `matches`, `events`, `odds`, `questions`, `predictions`,
-`markets`, `gamification`, `cache` (timeline da partida), `ports` (EnginePorts)
-e `db` (query/withTx crus).
+`liveFixtures`, `questionTemplates`, `gameSessions`, `markets`, `gamification`,
+`cache` (timeline da partida), `ports` (EnginePorts) e `db`
+(`query`/`withTx` crus).
 
 ## Se você está ligando isto no core ou na web, leia estes 6 pontos
 
@@ -88,6 +89,19 @@ e `db` (query/withTx crus).
    mercado "resolvido" por fora e só depois chamar `resolve()`, sem essa trava
    ninguém receberia e nada estouraria.
 
+7. **Sessão e template não substituem a instância.** `question_templates` define
+   catálogo versionado; mudanças de conteúdo devem criar uma nova versão.
+   `questions` guarda o prompt, opções, janelas e
+   resultado efetivamente entregues ao fã. Ao abrir uma sessão, fixe as versões
+   no `template_set` e salve `session_id`, `template_id`, `template_version` e
+   `trigger_key` na instância. O índice único por sessão/template/gatilho torna
+   o reprocessamento idempotente.
+
+8. **Checkpoint não é linha do tempo.** `game_sessions.checkpoint()` guarda
+   snapshot e cursores para retomar uma sala após restart. Eventos e odds em
+   `match_events`/`match_odds` seguem como evidência auditável e fonte para
+   reconciliação. Não descarte a timeline depois do checkpoint.
+
 ## O que o schema garante sozinho
 
 Estas não dependem de ninguém lembrar de nada — o banco recusa:
@@ -104,6 +118,8 @@ Estas não dependem de ninguém lembrar de nada — o banco recusa:
 | Carteira sem origem (ou origem sem carteira) não entra | `users_wallet_par_ck` |
 | A anon key do Supabase não lê nada | RLS ligada **sem policy** em todas as tabelas |
 | A role errada não serve um banco vazio | `assertDbReady` checa `row_security_active('users')` |
+| Uma sessão ativa não é duplicada | índice parcial em `(fixture_id, party_id, treino)` |
+| Pergunta reentregue não duplica por gatilho | índice parcial em `(session_id, template_id, trigger_key)` |
 
 Buracos na sequência (evento perdido) são consulta, não descoberta:
 `events.findSeqGaps(fixtureId)`. Partidas sem `start_ts` (o G4, que faz o

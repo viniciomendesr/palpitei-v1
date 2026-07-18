@@ -14,8 +14,7 @@ function mapFixture(r: Row): Fixture {
   if (r.competition_id != null) out.competitionId = Number(r.competition_id);
   if (r.start_ts != null) out.startTime = Number(r.start_ts);
   if (r.game_state_raw != null) out.gameState = Number(r.game_state_raw);
-  // A proveniência sai do banco junto com a partida: quem renderiza o selo não
-  // pode precisar de uma segunda consulta para não mentir (G6).
+  // Return provenance with the match so consumers can render an accurate label.
   if (r.cache_source != null) out.cacheSource = r.cache_source as CacheSource;
   return out;
 }
@@ -31,23 +30,9 @@ export function createMatchRepo(db: Db) {
     },
 
     /**
-     * Upsert que NUNCA piora o que já se sabe.
-     *
-     * Todo campo opcional entra com `coalesce(excluded.x, matches.x)`: um
-     * segundo upsert vindo de uma fonte mais pobre (o /fixtures/snapshot não
-     * traz o mesmo que as linhas de score) não pode apagar dado bom. O caso que
-     * dói é o `start_ts`: perdê-lo faz a janela do desafio "como termina?"
-     * ancorar no 1º evento do feed — até 44 min antes do apito — e o desafio
-     * nasce fechado, sem erro nenhum (G4).
-     *
-     * O `state` é o campo onde essa proteção quase não existiu. Ele NÃO pode
-     * sair de `excluded`: o 'scheduled' do VALUES é um DEFAULT DE INSERT, e
-     * `coalesce(excluded.state, ...)` nunca via NULL — via 'scheduled'. Um
-     * upsert sem state (matchCacheStore.save, upsertMany do /fixtures) rebaixava
-     * uma partida 'live'/'finished' para 'scheduled', calado: a sala da demo
-     * sumia da aba "Ao Vivo". Por isso o ON CONFLICT olha o PARÂMETRO ($10), que
-     * é NULL quando o chamador não sabe o estado. Quem muda estado de propósito
-     * usa setState().
+     * Upsert never degrades known optional fields. State uses the explicit
+     * parameter rather than the insert default, so unknown-state upserts cannot
+     * regress live or finished matches to scheduled.
      */
     async upsert(fx: Fixture, opts: { source?: CacheSource; cachedAt?: number } = {}): Promise<Fixture> {
       const rows = await db.query(
@@ -65,8 +50,8 @@ export function createMatchRepo(db: Db) {
           p2_id          = coalesce(excluded.p2_id, matches.p2_id),
           start_ts       = coalesce(excluded.start_ts, matches.start_ts),
           game_state_raw = coalesce(excluded.game_state_raw, matches.game_state_raw),
-          -- $10, não excluded.state: ver o comentário acima. NULL = "não sei o
-          -- estado", e não saber nunca pode rebaixar para 'scheduled'.
+          -- Use $10 instead of excluded.state. Null means unknown and must not
+          -- downgrade a live or finished match to scheduled.
           state          = coalesce($10::text, matches.state),
           cache_source   = coalesce(excluded.cache_source, matches.cache_source),
           cached_at      = coalesce(excluded.cached_at, matches.cached_at),
@@ -111,7 +96,7 @@ export function createMatchRepo(db: Db) {
       return rows.map(mapFixture);
     },
 
-    /** Partidas que já têm timeline gravada — as que dão replay sem depender da devnet. */
+    /** Matches with persisted timelines that can replay without the devnet. */
     async listCached(): Promise<Fixture[]> {
       const rows = await db.query(
         `select ${COLS} from matches m
@@ -129,8 +114,7 @@ export function createMatchRepo(db: Db) {
     },
 
     /**
-     * Partidas sem `start_ts`. Não é relatório: é o detector do G4 — cada linha
-     * aqui é uma sala onde o desafio "como termina?" vai nascer fechado.
+     * Matches without start_ts; these cannot safely open final-result questions.
      */
     async semStartTs(): Promise<number[]> {
       const rows = await db.query(`select fixture_id from matches where start_ts is null`);

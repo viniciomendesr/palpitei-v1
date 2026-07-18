@@ -1,17 +1,11 @@
-// Sigla e cor de um time para a tela de palpite pré-jogo.
-//
-// O mockup mostra a sigla de três letras e uma cor por seleção. O design system
-// não guarda times, e a regra da casa é NUNCA cravar hex (CONVENTIONS §6): então
-// a cor de cada time é um TOKEN de acento do DS, escolhido para lembrar a camisa
-// sem fingir precisão de bandeira. Time desconhecido cai num fallback
-// determinístico (sigla das 3 primeiras letras, cor por hash) — nunca quebra.
+// Maps a team name to a display code and design-system accent token.
 
 interface TeamVisual {
   code: string;
   color: string;
 }
 
-/** Times conhecidos (pt e en), para a sigla e a cor baterem em qualquer idioma. */
+/** Known Portuguese and English names, so the display stays locale-independent. */
 const TIMES: Record<string, TeamVisual> = {
   Argentina: { code: 'ARG', color: 'var(--cyan)' },
   'Cabo Verde': { code: 'CAB', color: 'var(--blue)' },
@@ -41,7 +35,7 @@ const TIMES: Record<string, TeamVisual> = {
   Portugal: { code: 'POR', color: 'var(--red)' },
 };
 
-/** Paleta de fallback: os acentos do DS, para times fora do mapa acima. */
+/** Design-system accent tokens for teams not present in the map. */
 const FALLBACK = ['var(--blue)', 'var(--orange)', 'var(--mint)', 'var(--cyan)', 'var(--pink)', 'var(--lime-strong)'];
 
 function semAcento(s: string): string {

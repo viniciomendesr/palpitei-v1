@@ -1,16 +1,5 @@
 'use client';
 
-/**
- * Ícones — SVG inline, sempre.
- *
- * Regra do sistema: SEM EMOJI. A iconografia é desenhada (SVG inline ou forma em
- * CSS: um ponto é um <span> com border-radius:50%). Os traçados abaixo saíram do
- * docs/mockup.html verbatim.
- *
- * `currentColor` por padrão onde o mockup herdava a cor do pai (a bottom nav pinta
- * o ícone pelo estado da rota).
- */
-
 import { useId } from 'react';
 
 interface IconProps {
@@ -108,7 +97,6 @@ export function Close({ size = 20, color = 'var(--red)', width = 2.8 }: IconProp
   );
 }
 
-/** Estrela do XP — sempre em --gold. */
 export function Star({ size = 13, color = 'var(--gold)' }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">
@@ -117,7 +105,6 @@ export function Star({ size = 13, color = 'var(--gold)' }: IconProps) {
   );
 }
 
-/** Coroa das ligas / do Premium. */
 export function Crown({ size = 20, color = 'var(--on-lime)' }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">
@@ -126,7 +113,6 @@ export function Crown({ size = 20, color = 'var(--on-lime)' }: IconProps) {
   );
 }
 
-/** Bola do selo COPA DO MUNDO 2026. */
 export function Ball({ size = 15, color = 'var(--lime)' }: IconProps) {
   return (
     <svg
@@ -161,7 +147,6 @@ export function Triangle({ size = 17, color = 'var(--lime)' }: IconProps) {
   );
 }
 
-/** Pilha da Solana em versão monocromática — o selo de autenticação do perfil. */
 export function Layers({ size = 11, color = 'currentColor' }: IconProps) {
   return (
     <svg width={size} height={(size * 9) / 11} viewBox="0 0 24 20" aria-hidden="true">
@@ -202,7 +187,6 @@ export function PrivyMark({ size = 18 }: { size?: number }) {
   );
 }
 
-/** Logo da Solana com gradiente. useId evita colisão de id se render mais de uma vez. */
 export function SolanaMark({ size = 20 }: { size?: number }) {
   const id = useId();
   return (
@@ -221,7 +205,6 @@ export function SolanaMark({ size = 20 }: { size?: number }) {
   );
 }
 
-/** Play do botão DEMO. */
 export function PlayCircle({ size = 21, color = 'var(--lime)' }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -306,7 +289,6 @@ export function Pencil({ size = 14, color = 'var(--lime)' }: IconProps) {
   );
 }
 
-/** Dois quadrados sobrepostos — copiar um dado, como a chave pública da carteira. */
 export function Copy({ size = 18, color = 'var(--lime)' }: IconProps) {
   return (
     <svg

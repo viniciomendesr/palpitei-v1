@@ -6,8 +6,8 @@ import { didVerificado, erroParaResposta } from '@/server/http';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function roomIdOf(fixtureId: number, treino: boolean): string {
-  return treino ? `treino-${fixtureId}` : String(fixtureId);
+function roomIdOf(fixtureId: number, training: boolean): string {
+  return training ? `treino-${fixtureId}` : String(fixtureId);
 }
 
 export async function GET(
@@ -26,7 +26,7 @@ export async function GET(
       lobby: {
         inviteCode: lobby.inviteCode,
         roomId: roomIdOf(lobby.fixtureId, lobby.treino),
-        treino: lobby.treino,
+        training: lobby.treino,
         teamA: fixture.p1,
         teamB: fixture.p2,
         memberCount: lobby.memberCount,

@@ -1,13 +1,5 @@
 'use client';
 
-/**
- * FIM DE JOGO — o fecho da sala: placar final, o que você fez na rodada e o
- * quanto falta pro próximo nível.
- *
- * O confete é forma em CSS (retângulos girados), não emoji e não imagem.
- *
- * Na v1 esta tela é disparada pelo `game_end` do WS.
- */
 
 import { useI18n, fill } from '@/lib/i18n';
 import { fw } from '@/lib/tokens';
@@ -28,7 +20,6 @@ interface Props {
   onHome: () => void;
 }
 
-/** Confete: posição, cor, tamanho e giro fixos — aleatório aqui viraria hydration mismatch. */
 const CONFETTI = [
   { left: '22%', top: '20%', w: 9, h: 14, bg: 'var(--lime)', rot: 24, dur: '1.6s', delay: '.1s' },
   { left: '74%', top: '24%', w: 8, h: 13, bg: 'var(--gold)', rot: -18, dur: '1.9s', delay: '.3s' },
@@ -75,7 +66,6 @@ export function GameEnd({ scoreA, scoreB, salaXp, correctCount, total, level, xp
         </div>
       </div>
 
-      {/* placar final */}
       <div
         style={{
           position: 'relative',
@@ -115,14 +105,12 @@ export function GameEnd({ scoreA, scoreB, salaXp, correctCount, total, level, xp
         </div>
       </div>
 
-      {/* três números da rodada */}
       <div style={{ position: 'relative', display: 'flex', gap: 10, marginTop: 12 }}>
         <StatBox value={`+${fmt(salaXp)}`} label={t.fimXpLabel} accent="var(--lime)" highlight />
         <StatBox value={`${correctCount}/${total}`} label={t.fimPicksLabel} />
         <StatBox value={t.friendPos} label={t.fimFriendsLabel} />
       </div>
 
-      {/* progressão de nível */}
       <div style={{ position: 'relative', marginTop: 16 }}>
         <div
           style={{
@@ -192,7 +180,6 @@ function StatBox({
   );
 }
 
-/** As fitinhas ao lado do "FIM DE JOGO". */
 function Streamer({ a, b, rotA, rotB }: { a: string; b: string; rotA: number; rotB: number }) {
   return (
     <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3 }} aria-hidden="true">

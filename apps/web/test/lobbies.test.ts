@@ -17,7 +17,7 @@ const meta = (key: string) => ({
   roomId: 'treino-18241006',
   partyId: 'ABC123',
   fixtureId: 18241006,
-  treino: true,
+  training: true,
   teamA: 'England',
   teamB: 'Argentina',
 });

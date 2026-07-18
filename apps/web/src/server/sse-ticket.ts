@@ -1,9 +1,4 @@
-/**
- * Tickets efêmeros para o SSE. O EventSource não permite Authorization header;
- * por isso a URL carrega apenas este segredo descartável, nunca o Bearer da
- * Privy. A store é intencionalmente por processo: uma conexão SSE também fica
- * presa ao processo que a abriu.
- */
+/** Short-lived SSE tickets keep Privy Bearer tokens out of EventSource URLs. */
 
 import { randomBytes } from 'node:crypto';
 
@@ -29,10 +24,7 @@ type SseTicketStoreOptions = {
   createToken?: () => string;
 };
 
-/**
- * Uma pequena store em memória, com expiração preguiçosa e teto rígido. Não há
- * timer global: processos frios não ficam vivos só para limpar tickets.
- */
+/** Bounded in-memory ticket store with lazy expiry; no global cleanup timer. */
 export function createSseTicketStore(options: SseTicketStoreOptions = {}) {
   const ttlMs = options.ttlMs ?? SSE_TICKET_TTL_MS;
   const maxEntries = options.maxEntries ?? SSE_TICKET_MAX_ENTRIES;
@@ -48,8 +40,7 @@ export function createSseTicketStore(options: SseTicketStoreOptions = {}) {
     for (const [ticket, stored] of tickets) {
       if (stored.expiresAt <= now) tickets.delete(ticket);
     }
-    // Map preserva a ordem de inserção; remove os mais antigos quando houver
-    // pressão, em vez de deixar um cliente autenticado crescer a memória.
+    // Remove oldest entries under pressure to bound authenticated-client memory use.
     while (tickets.size >= maxEntries) {
       const oldest = tickets.keys().next().value;
       if (!oldest) break;
@@ -60,8 +51,7 @@ export function createSseTicketStore(options: SseTicketStoreOptions = {}) {
   const emitir = (scope: SseTicketScope, now = Date.now()): string => {
     limpar(now);
     let ticket = createToken();
-    // Em produção `randomBytes(32)` torna colisão impraticável; a proteção
-    // também mantém determinísticos os testes com uma fábrica controlada.
+    // Handle collisions even with a deterministic test token factory.
     while (tickets.has(ticket)) ticket = createToken();
     tickets.set(ticket, { ...scope, expiresAt: now + ttlMs });
     return ticket;
@@ -76,8 +66,7 @@ export function createSseTicketStore(options: SseTicketStoreOptions = {}) {
     if (!ticket) return null;
     const stored = tickets.get(ticket);
     if (!stored) return null;
-    // Escopo errado não revela o DID e não consome a conexão legítima. Só a
-    // rota exatamente correspondente recebe o ticket de uso único.
+    // A scope mismatch neither reveals the DID nor consumes the valid ticket.
     if (
       stored.purpose !== expected.purpose ||
       stored.roomId !== expected.roomId ||

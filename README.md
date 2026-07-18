@@ -80,9 +80,11 @@ score and odds series by TxLINE timestamp and runs the same question engine over
 that ordered timeline. Large inactive gaps, such as halftime, are compressed,
 while event order and match time remain authoritative.
 
-The live SSE adapter is implemented and observable, but the current production
-demo defaults to the persisted TxLINE timeline. This avoids presenting an idle
-stream as proof of live data when no covered match is being played.
+The live adapter accepts multiple active fixtures. It persists each normalized
+score/odds message before routing it to groups playing that fixture, while the
+demo can continue to use a persisted TxLINE timeline when no match is live.
+Active fixtures and the question catalog are persisted; they are not a list of
+hardcoded cards in the browser.
 
 ### From TxLINE to the fan
 
@@ -91,8 +93,8 @@ flowchart LR
     A["TxLINE fixtures, score updates, odds updates"] --> B["TxLINE client and authentication"]
     B --> C["Normalization and validation"]
     C --> D["Postgres event and odds timeline"]
-    D --> E["Authoritative replay runner"]
-    E --> F["Question and explanation engines"]
+    D --> E["Fixture channel and recoverable game session"]
+    E --> F["Versioned question templates and domain engines"]
     F --> G["SSE room state and POST commands"]
     G --> H["Next.js fan experience"]
 ```
@@ -152,19 +154,23 @@ Those decisions are made by the server-side domain engine using the match clock.
 
 ## Synchronized rooms
 
-Every invite receives a `partyId`. The key
-`fixture + mode + partyId` isolates groups playing the same fixture, so one
-friend group cannot start or advance another group's runner.
+Every invite receives a `partyId`. The key `fixture + mode + partyId` isolates
+groups playing the same fixture, so one friend group cannot start or advance
+another group's session. A session persists its cursor, engine version and
+question-template versions, which lets the server recover the same execution
+after a restart instead of creating a new set of questions.
 
 The lobby synchronizes presence, ready state, and host-controlled start through
 server-sent events. Match state continues over SSE, while authenticated commands
 such as ready, start, and predict use POST requests. This keeps the server as the
 single authority for time, questions, score, and XP.
 
-The production service currently runs as one persistent Railway replica. Lobby
-and active-room state are therefore process-local. Before scaling to multiple
-replicas, presence should move to a shared real-time layer and room ownership
-should be coordinated across instances. The trade-off and evaluated options are
+With `REDIS_URL` configured, a Redis lease elects one TxLINE SSE leader and
+Redis Pub/Sub distributes normalized, already-persisted events to room channels
+on other replicas. Postgres remains the durable source and reconnecting
+subscribers reconcile from it. Lobby presence is still process-local, so keep a
+single web replica until presence is moved to shared storage; persistence alone
+does not make that feature horizontally safe. The trade-off and rollout are
 documented in [`docs/realtime-stack.md`](docs/realtime-stack.md).
 
 ## Architecture
@@ -177,7 +183,7 @@ data, domain rules, persistence, and presentation.
 | `apps/web` | Next.js 15 PWA, Privy integration, API routes, SSE rooms, and fan UI |
 | `packages/core` | Pure clocks, normalization, questions, settlement, ranking, and explanations |
 | `packages/txline` | TxLINE authentication, API client, update sweeps, live SSE, cache adapter, and replay runner |
-| `packages/db` | PostgreSQL schema, migrations, repositories, idempotency, and persisted timelines |
+| `packages/db` | PostgreSQL schema, migrations, repositories, idempotency, persisted timelines, sessions, and templates |
 | `packages/ds` | Shared design tokens and UI components |
 | `supabase/migrations` | Versioned database migrations |
 

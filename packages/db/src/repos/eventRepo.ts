@@ -1,15 +1,11 @@
-// eventRepo — a linha do tempo da partida (/scores/updates).
-//
-// A idempotência sai de graça do UNIQUE (fixture_id, seq): o stream SSE
-// reconecta com Last-Event-ID e REENVIA eventos. Sem a chave, cada reconexão
-// duplicaria gols na timeline; com ela, reenviar é no-op.
+/** Match-event timeline persistence. `(fixture_id, seq)` makes SSE redelivery idempotent. */
 
 import type { Db, Row } from '../pool.js';
 import type { ScoreEvent } from '../types.js';
 
 export type UpsertStats = { gravados: number; repetidos: number };
 
-/** Só os campos numéricos do bloco (espelha normalize.ts do v0). */
+/** Extracts numeric fields from a score block. */
 function numericos(bloco: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries((bloco ?? {}) as Record<string, unknown>)) {
@@ -32,9 +28,7 @@ function mapEvent(r: Row): ScoreEvent {
     ts: Number(r.ts),
     action: String(r.action),
     hasScore,
-    // Sem bloco Score não há placar: 0 aqui é PLACEHOLDER e só pode ser lido
-    // junto com hasScore=false. Quem ignorar isso faz o placar regredir a 0–0 e
-    // inventa gol (A4).
+    // Without Score, zero is a placeholder and must be read with hasScore=false.
     goals: { p1: p1.Goals ?? 0, p2: p2.Goals ?? 0 },
     corners: { p1: p1.Corners ?? 0, p2: p2.Corners ?? 0 },
     raw: r.raw,
@@ -49,7 +43,7 @@ function mapEvent(r: Row): ScoreEvent {
 
 export function createEventRepo(db: Db) {
   const repo = {
-    /** true = gravou agora; false = já existia (reenvio do stream). */
+    /** True when inserted; false when an SSE redelivery already existed. */
     async upsert(ev: ScoreEvent): Promise<boolean> {
       const rows = await db.query(
         `
@@ -69,10 +63,7 @@ export function createEventRepo(db: Db) {
           ev.clockRunning ?? null,
           ev.clockSeconds ?? null,
           ev.hasScore,
-          // A4 no ponto exato onde ele nasce: o normalize devolve `totals` com
-          // zeros mesmo quando o evento não trouxe bloco Score. Gravar esses
-          // zeros seria gravar um placar que o feed nunca mandou. Sem Score,
-          // NULL — e o CHECK do banco recusa qualquer outra coisa.
+          // Store null when Score is absent; normalized zero values are placeholders.
           ev.hasScore && ev.totals ? JSON.stringify(ev.totals) : null,
           JSON.stringify(ev.raw ?? null),
         ]
@@ -122,11 +113,11 @@ export function createEventRepo(db: Db) {
       return { gravados, repetidos: events.length - gravados };
     },
 
-    /** Grava payloads CRUS da TxLINE (caminho do cache/ingestão). */
+    /** Persists raw TxLINE payloads for cache and ingest paths. */
     async upsertManyRaw(rows: unknown[]): Promise<UpsertStats> {
       const events: ScoreEvent[] = [];
       for (const raw of rows) {
-        const ev = rawParaEvento(raw);
+        const ev = mapRawScoreEvent(raw);
         if (ev) events.push(ev);
       }
       return repo.upsertMany(events);
@@ -145,14 +136,7 @@ export function createEventRepo(db: Db) {
       return rows.map(mapEvent);
     },
 
-    /**
-     * Projeção compacta para o caminho interativo da sala.
-     *
-     * O payload `raw` continua preservado no banco para auditoria e
-     * reprocessamento, mas o motor usa somente os campos normalizados. Na
-     * fixture medida, retirar `raw` reduziu a transferência de ~1,23 MB para
-     * ~182 kB sem mudar um único dado consumido pelo replay.
-     */
+    /** Compact normalized projection for the interactive room path. */
     async listReplayByFixture(
       fixtureId: number,
       opts: { limit?: number } = {}
@@ -169,7 +153,7 @@ export function createEventRepo(db: Db) {
       return rows.map(mapEvent);
     },
 
-    /** Payloads crus, na ordem de seq — é o que o replay/cache consome. */
+    /** Raw payloads in sequence order for replay and cache consumers. */
     async listRaw(fixtureId: number): Promise<unknown[]> {
       const rows = await db.query(`select raw from match_events where fixture_id = $1 order by seq`, [
         fixtureId,
@@ -187,7 +171,7 @@ export function createEventRepo(db: Db) {
       return rows[0] ? mapEvent(rows[0]) : null;
     },
 
-    /** Último placar CONHECIDO: ignora os eventos sem bloco Score (A4). */
+    /** Latest known score; events without Score are ignored. */
     async ultimoPlacar(fixtureId: number): Promise<{ p1: number; p2: number } | null> {
       const rows = await db.query(
         `select score_totals from match_events
@@ -201,17 +185,8 @@ export function createEventRepo(db: Db) {
     },
 
     /**
-     * Gols E escanteios FINAIS, para liquidar o palpite pré-jogo no apito.
-     *
-     * Não basta ler o último evento (§11): a chave `Goals`/`Corners` NASCE quando
-     * o lance acontece e pode faltar no evento final (um `game_finalised` costuma
-     * vir sem bloco Score). Então percorre os eventos COM Score em ordem e guarda,
-     * por chave, o último valor CONHECIDO — nunca o de um evento que não fala dela
-     * (isso regrediria o placar, A4), e nunca o máximo (um gol anulado por VAR
-     * DIMINUI o contador, e o final é o que vale).
-     *
-     * Chave que nunca apareceu conta 0 (partida sem escanteio nenhum, p.ex.) — é a
-     * leitura honesta para uma partida encerrada.
+     * Reads final goals and corners from the latest known value per key; terminal
+     * events can omit Score, and VAR can legitimately decrease a total.
      */
     async totaisFinais(
       fixtureId: number
@@ -250,14 +225,7 @@ export function createEventRepo(db: Db) {
       return Number(rows[0]?.n ?? 0);
     },
 
-    /**
-     * Buracos na sequência.
-     *
-     * O seq da TxLINE é CONTÍNUO (2→963 na partida provada). Então um buraco não
-     * é curiosidade: é evento perdido — e evento perdido pode ser o gol que
-     * resolvia o desafio. Isto existe para que "perdi um evento" seja uma
-     * consulta, e não uma descoberta na frente do jurado.
-     */
+    /** Returns missing sequence ranges so ingestion gaps remain observable. */
     async findSeqGaps(fixtureId: number): Promise<{ de: number; ate: number; faltam: number }[]> {
       const rows = await db.query(
         `
@@ -279,11 +247,10 @@ export function createEventRepo(db: Db) {
 }
 
 /**
- * Payload cru da TxLINE -> ScoreEvent, tolerante a caixa (o feed documenta
- * PascalCase, mas não há garantia formal). É o mesmo mapeamento do normalize.ts
- * do v0, restrito ao que o banco guarda.
+ * Maps raw TxLINE data to ScoreEvent while tolerating field casing. It is
+ * intentionally limited to fields persisted by the database.
  */
-export function rawParaEvento(raw: unknown): ScoreEvent | null {
+export function mapRawScoreEvent(raw: unknown): ScoreEvent | null {
   if (raw == null || typeof raw !== 'object') return null;
   const r = raw as Record<string, any>;
   const fixtureId = Number(r.FixtureId ?? r.fixtureId);

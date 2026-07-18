@@ -1,20 +1,5 @@
 'use client';
 
-/**
- * O ÚNICO <AppFrame> do app, na raiz.
- *
- * `scroll={false}` de propósito: quem rola é cada tela, exatamente como no
- * mockup (cada uma é `flex:1;min-height:0;overflow-y:auto`). A sala precisa disso
- * — ela não rola, ela ancora o bottom sheet do desafio em `position:absolute`
- * dentro de si e rola só o miolo. Com o scroll do frame ligado, o sheet subiria
- * junto com o conteúdo.
- *
- * Em troca, o safe-area vira responsabilidade nossa: o AppFrame só aplica os
- * insets no modo scroll. O topo sai aqui; o rodapé, na BottomNav.
- *
- * NUNCA use 100vh aqui dentro: 100vh é a janela inteira e estoura o frame no
- * desktop, onde o app é uma coluna de 420px centrada.
- */
 
 import type { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
@@ -42,11 +27,6 @@ export function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * A região rolável padrão de uma tela. Equivale ao `.pp-scroll` do mockup, sem
- * classe: `minHeight:0` é o que deixa o filho de um flex realmente encolher e
- * rolar em vez de empurrar o frame.
- */
 export function Screen({
   children,
   padding,

@@ -1,10 +1,10 @@
-/** Erros do domínio que a camada HTTP traduz em status. */
+/** Domain errors translated to HTTP statuses by the application layer. */
 
 export class HandleTakenError extends Error {
   readonly code = 'handle_taken';
   readonly status = 409;
   constructor(handle: string) {
-    // Mensagem de usuário, em pt-BR e sem culpar o fã.
+    // User-facing message in pt-BR.
     super(`o apelido "${handle}" já é de outra pessoa — escolhe outro`);
     this.name = 'HandleTakenError';
   }
@@ -38,11 +38,8 @@ export class LeagueNameInvalidError extends Error {
 }
 
 /**
- * O free inclui 1 liga (mockup: "O free inclui 1 liga · desbloqueie ilimitadas").
- *
- * 402 e não 403: não é falta de permissão, é o paywall. O status diz à tela para
- * mandar o fã ao /premium em vez de mostrar "acesso negado" a quem não fez nada
- * de errado.
+ * Free accounts may create one league. 402 identifies a paywall and lets the UI
+ * route the fan to /premium rather than showing an authorization error.
  */
 export class LeagueLimitError extends Error {
   readonly code = 'league_limit';
@@ -54,9 +51,8 @@ export class LeagueLimitError extends Error {
 }
 
 /**
- * Apagar a liga é do LÍDER. Este 403 só aparece para quem JÁ está dentro da
- * liga (membro sem liderança) — quem não é membro recebe o mesmo 404 de liga
- * inexistente, para a tentativa não confirmar que ela existe.
+ * Only a league owner can delete it. Non-members receive the same 404 as for a
+ * missing league to avoid revealing its existence.
  */
 export class LeagueNotOwnerError extends Error {
   readonly code = 'league_not_owner';
@@ -103,12 +99,12 @@ export class LobbyUnavailableError extends Error {
   }
 }
 
-/** Violação de unicidade do Postgres. */
+/** PostgreSQL unique-constraint violation. */
 export function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505';
 }
 
-/** Violação de chave estrangeira do Postgres. */
+/** PostgreSQL foreign-key violation. */
 export function isForeignKeyViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23503';
 }

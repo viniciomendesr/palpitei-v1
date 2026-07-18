@@ -1,31 +1,20 @@
-/**
- * Fila serial para o caminho TxLINE → Postgres → sala.
- *
- * Fica sem imports de framework/banco para que a garantia crítica de ordem seja
- * verificável pelo node:test: persistência concluída antes da publicação.
- */
+/** Framework-independent serial pipeline for TxLINE persistence and publication. */
 
-/** A menor interface da fila, suficiente para testes sem banco/SSE. */
+/** Minimal queue interface for database-free tests. */
 export type FilaDeEventos = { fila: Promise<void> };
 
-/**
- * Mantém a fila viva e só publica depois que a gravação do MESMO evento acabou.
- *
- * O callback do EventSource é síncrono; por isso ele enfileira e devolve. Erro de
- * escrita nunca pode escapar como rejection não tratada, nem deixar a fila morta
- * para os eventos seguintes. `aoFalhar` é responsável por observabilidade segura.
- */
+/** Persists each event before publishing it and keeps the queue available after failures. */
 export function enfileirarPersistenciaAntesDePublicar(
   fila: FilaDeEventos,
   persistir: () => Promise<void>,
-  publicar: () => void,
+  publicar: () => unknown,
   aoFalhar: (erro: unknown) => void,
 ): void {
   const registrarFalha = (erro: unknown): void => {
     try {
       aoFalhar(erro);
     } catch {
-      // A telemetria não pode quebrar o processador do stream.
+      // Observability failures must not interrupt stream processing.
     }
   };
 
@@ -39,10 +28,9 @@ export function enfileirarPersistenciaAntesDePublicar(
       }
 
       try {
-        publicar();
+        await publicar();
       } catch (erro) {
-        // O caminho normal de publicação já isola cada handler. Este cinto evita
-        // que qualquer regressão futura deixe a fila rejeitada.
+        // Preserve the queue even if a future publisher bypasses handler isolation.
         registrarFalha(erro);
       }
     })

@@ -1,40 +1,26 @@
-// oddsRepo — a série de cotações (/odds/updates).
-//
-// DOIS FATOS QUE CUSTARAM CARO NO v0, GRAVADOS AQUI:
-//
-// 1. `message_id` é STRING ("1837922149:00003:000572-10021-stab"). Um parser
-//    numérico devolve -1 para todas as linhas e o Map de dedupe COLAPSA a série
-//    inteira num único registro. Sem erro. A coluna é TEXT e a chave também.
-//
-// 2. Numa partida real vêm 34.971 eventos de odds (~12 MB); só 3.758 são 1X2 de
-//    jogo inteiro — o ÚNICO mercado que a v1 consome. O resto é over/under e
-//    handicap asiático. O filtro é aqui, na ingestão, e ele CONTA o que
-//    descartou: filtro que descarta em silêncio é como o bug fica escondido.
+// Odds-series persistence for /odds/updates. Message IDs remain opaque strings
+// for deduplication; ingest filters records to the supported full-game 1X2 market.
 
 import type { Db, Row } from '../pool.js';
 import type { OddsEvent } from '../types.js';
 
-/** O mercado que a v1 consome. */
+/** Market consumed by v1. */
 export const MERCADO_1X2 = '1X2_PARTICIPANT_RESULT';
 
 export type OddsUpsertStats = {
   gravados: number;
   repetidos: number;
-  /** Descartados pelo filtro de mercado (over/under, handicap, período). */
+  /** Discarded by market filtering (over/under, handicap, period). */
   foraDoMercado: number;
-  /** Descartados por não dar para identificar (sem FixtureId/PriceNames). */
+  /** Discarded because required identification fields are missing. */
   ilegiveis: number;
 };
 
 /**
- * É 1X2 de JOGO INTEIRO? Mesmo critério provado no v0:
- * SuperOddsType === '1X2_PARTICIPANT_RESULT' e MarketPeriod ausente.
- *
- * `== null` é deliberado (pega null e undefined, não pega 0): "período ausente"
- * significa jogo inteiro. Trocar por `=== null` ou por falsy muda o conjunto e
- * ninguém percebe até a série vir errada.
+ * Full-game 1X2 requires the expected SuperOddsType and an absent MarketPeriod.
+ * == null intentionally accepts null and undefined but not zero.
  */
-export function eh1x2JogoInteiro(raw: unknown): boolean {
+export function isFullGame1x2(raw: unknown): boolean {
   if (raw == null || typeof raw !== 'object') return false;
   const r = raw as Record<string, any>;
   const tipo = String(r.SuperOddsType ?? r.superOddsType ?? '');
@@ -43,10 +29,9 @@ export function eh1x2JogoInteiro(raw: unknown): boolean {
 }
 
 /**
- * A chave da linha. Usa o MessageId como STRING; quando o feed não manda,
- * cai no mesmo par (Ts + Prices) que o v0 usava para deduplicar.
+ * Row key based on string MessageId, with timestamp and prices fallback.
  */
-export function chaveDaCotacao(raw: Record<string, any>): string {
+export function oddsMessageKey(raw: Record<string, any>): string {
   const id = raw.MessageId ?? raw.messageId;
   if (id != null && String(id).length > 0) return String(id);
   const ts = raw.Ts ?? raw.ts;
@@ -60,9 +45,7 @@ function numero(v: unknown): number | undefined {
 }
 
 /**
- * Projeta as colunas normalizadas do cache diretamente no contrato do replay.
- * O payload `raw` continua no banco para auditoria, mas não cruza a rede no
- * caminho interativo de abertura da sala.
+ * Projects normalized cache columns into the replay contract without exposing raw payloads.
  */
 function mapReplayOdds(r: Row): OddsEvent | null {
   const names = r.price_names;
@@ -90,7 +73,7 @@ function mapReplayOdds(r: Row): OddsEvent | null {
     messageId: String(r.message_id),
     marketType: String(r.market_type),
     prices,
-    // A projeção compacta não transporta o payload de auditoria.
+    // Compact projections do not transport raw audit payloads.
     raw: null,
   };
   if (r.market_period != null) ev.marketPeriod = String(r.market_period);
@@ -103,9 +86,7 @@ function mapReplayOdds(r: Row): OddsEvent | null {
 export function createOddsRepo(db: Db) {
   const repo = {
     /**
-     * Grava payloads CRUS já filtrados ao mercado da v1.
-     * Devolve o que entrou E o que ficou de fora — o número descartado é o
-     * sinal de que o filtro está vivo (esperado: ~89% numa partida real).
+     * Persists raw payloads already filtered to v1's market and returns filter stats.
      */
     async upsertManyRaw(rows: unknown[]): Promise<OddsUpsertStats> {
       const stats: OddsUpsertStats = { gravados: 0, repetidos: 0, foraDoMercado: 0, ilegiveis: 0 };
@@ -116,7 +97,7 @@ export function createOddsRepo(db: Db) {
           stats.ilegiveis++;
           continue;
         }
-        if (!eh1x2JogoInteiro(raw)) {
+        if (!isFullGame1x2(raw)) {
           stats.foraDoMercado++;
           continue;
         }
@@ -137,7 +118,7 @@ export function createOddsRepo(db: Db) {
         const line = params?.line != null ? Number(params.line) : null;
         const periodo = r.MarketPeriod ?? r.marketPeriod;
         preparados.push({
-          message_id: chaveDaCotacao(r),
+          message_id: oddsMessageKey(r),
           fixture_id: fixtureId,
           ts: Number(r.Ts ?? r.ts) || 0,
           market_type: String(r.SuperOddsType ?? r.superOddsType ?? '?'),
@@ -146,7 +127,7 @@ export function createOddsRepo(db: Db) {
           in_running: r.InRunning ?? r.inRunning ?? null,
           bookmaker: r.Bookmaker ?? r.bookmaker ?? null,
           price_names: names,
-          // Prices vazio continua vazio; lote não muda a semântica G8.
+          // Empty prices remain empty; batching must not change that semantics.
           prices: Array.isArray(prices) ? prices : [],
           pct,
           raw: r,
@@ -191,8 +172,7 @@ export function createOddsRepo(db: Db) {
     },
 
     /**
-     * Projeção compacta para abrir a sala: usa somente os campos consumidos
-     * pelo OddsExplainer e pelos percentuais 1X2, sem carregar `raw`.
+     * Compact room projection containing only explainer and 1X2 fields.
      */
     async listReplayByFixture(fixtureId: number): Promise<OddsEvent[]> {
       const rows = await db.query(
@@ -221,9 +201,8 @@ export function createOddsRepo(db: Db) {
     },
 
     /**
-     * Linhas em que PriceNames e Prices têm tamanhos diferentes.
-     * Não é sujeira: é dado real (mercado sem cotação no momento). Serve para
-     * conferir que o consumidor está tratando o caso — e não inventando zeros.
+     * Rows with misaligned PriceNames and Prices, used to verify consumers do
+     * not interpret absent prices as zeros.
      */
     async listaDesalinhadas(fixtureId: number): Promise<{ messageId: string; nomes: number; precos: number }[]> {
       const rows = await db.query(

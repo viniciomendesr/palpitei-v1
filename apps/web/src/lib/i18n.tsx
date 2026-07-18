@@ -1,14 +1,8 @@
 'use client';
 
 /**
- * Dicionário pt/en — extraído do L do docs/mockup.html, verbatim.
- *
- * O pt é a fonte da verdade do tipo: `Dict = typeof pt`, e o en é obrigado a
- * satisfazer o mesmo formato. Chave nova sem tradução vira erro de tipo, não
- * string faltando na tela do jurado.
- *
- * Voz: pt-BR de torcida, segunda pessoa. Gíria de futebol, nunca jargão de
- * aposta — "Acima/Abaixo" e "atualizada ao vivo" são deliberados.
+ * Portuguese and English dictionary. Portuguese defines the `Dict` shape, so
+ * missing English keys fail type checking instead of reaching the UI.
  */
 
 import {
@@ -23,11 +17,10 @@ import {
 
 export type Lang = 'pt' | 'en';
 
-/** O que vai no atributo `lang` do documento. Não é enfeite: é o que o leitor de
- *  tela usa pra escolher a voz, e o que o browser usa pra hifenizar. */
+/** Value used by the document `lang` attribute for screen readers and hyphenation. */
 const HTML_LANG: Record<Lang, string> = { pt: 'pt-BR', en: 'en' };
 
-/** Um desafio do dicionário: enunciado, rótulos das opções e as narrativas do resultado. */
+/** Dictionary challenge: prompt, option labels, and result narratives. */
 export interface ChallengeText {
   type: string;
   prompt: string;
@@ -51,7 +44,7 @@ const pt = {
   loginFailed: 'Não deu para entrar agora. Tenta de novo em instantes.',
   rankingLoadFailed: 'Não deu para carregar o ranking agora. Tenta de novo.',
   rankingEmpty: 'Ninguém pontuou ainda. Entra numa sala e abre o placar.',
-  // Selo de origem do dado (§2 exige; G6: rótulo de proveniência não pode mentir).
+  // Source label shown with data that has a distinct provenance.
   srcSimulado: 'SIMULADO',
   srcDemoFifa: 'DEMO · FATOS FIFA',
   replayShort: 'REPLAY',
@@ -100,8 +93,7 @@ const pt = {
   qNextGoal: 'PRÓXIMO GOL',
   qHiloCorners: 'ESCANTEIOS',
   qFinalResult: 'RESULTADO FINAL',
-  // Perguntas e opções redigidas AQUI, por tipo/id: o motor manda pt fixo, e o
-  // fã de EN merece ler no idioma dele. Ids p1/p2 viram o NOME do time na tela.
+  // Question copy is localized here by type/id; p1/p2 become team names in the UI.
   qPromptFinal: 'Como termina {a} x {b}?',
   qPromptNextGoal: 'Quem marca o próximo gol?',
   qPromptHilo: 'Sai mais um escanteio em até 10 minutos de jogo?',
@@ -111,7 +103,7 @@ const pt = {
   optNo: 'Não',
   youPick: 'VOCÊ',
   rightPick: 'RESPOSTA CERTA',
-  // A explicação é FATO do feed no instante da liquidação — nunca opinião.
+  // Resolution explanations are feed facts, not inferred opinion.
   explFinal: 'Placar final: {a} × {b}.',
   explNextGoalTeam: 'Gol de {team} aos {m}’ — {a} × {b} no placar.',
   explNextGoalNone: 'Ninguém marcou dentro da janela do desafio.',
@@ -130,11 +122,9 @@ const pt = {
   salaVoid: 'Desafio anulado',
   salaVoidBody: 'O lance que resolvia chegou antes da janela fechar. Sem XP — e é justo: ninguém podia ter palpitado a tempo.',
   salaRankEmpty: 'Ninguém pontuou ainda. Assim que o primeiro desafio for resolvido, a lista aparece aqui.',
-  // O fã que ainda não passou pelo passo do apelido. Dizer isso é o certo: o
-  // apelido é público e nunca sai do e-mail (E12), então não há nome pra mostrar.
+  // Placeholder for an account that has not selected a public nickname yet.
   salaNoHandle: 'sem apelido',
-  // Sair da sala tem preço (sala vazia por 30s morre e o replay recomeça do
-  // zero) — o fã decide SABENDO, num painel da tela. Nunca window.confirm.
+  // The leave panel explains that an empty room is eventually disposed.
   sairSalaTitulo: 'Sair da sala?',
   sairSalaAviso:
     'Se todos saírem, o servidor conclui esta partida e guarda o resultado. Ela não recomeça do zero quando você voltar.',
@@ -196,11 +186,7 @@ const pt = {
   leaguesTitle: 'SUAS LIGAS PRIVADAS',
   leaguesFree: '1 de 1 free',
   ligaSub: '8 amigos · você lidera',
-  // Já disse "Você fez 4 de 6 palpites nas últimas partidas" — número hardcoded
-  // do protótipo, que aparecia igual para quem tinha 0 palpites. Essa contagem
-  // só existe de verdade no GET /api/state, que ainda não existe; até lá,
-  // afirmar o número é inventar. E não pode citar a TxLINE aqui: no modo demo os
-  // replays são simulados, e a origem quem diz é o selo de cada card.
+  // Do not claim unavailable aggregate prediction statistics in the demo.
   replaysNote: 'Partidas que já aconteceram. Palpite de novo e veja como você se sai.',
   statusLive64: 'AO VIVO · 64’',
   statusLive31: 'AO VIVO · 31’',
@@ -254,16 +240,10 @@ const pt = {
   statCorners: 'Escanteios',
   statFouls: 'Faltas',
   statCards: 'Cartões',
-  /** Da sala REAL, que também roda replay: "AO VIVO" ali seria selo mentiroso (G6). */
+  /** Real room source label; replay data must not be labeled live. */
   statsMatchHdr: 'ESTATÍSTICAS DA PARTIDA',
   salaStatsWaiting: 'A partida ainda não mandou número nenhum. Prefiro esperar a mostrar zero inventado.',
-  /**
-   * Rótulo por chave do bloco `Score.Total`. `Record<string, string>` de
-   * propósito, e não uma lista fechada: o conjunto de chaves varia por partida
-   * (England × Argentina traz só Goals/Corners/YellowCards). Chave que não
-   * estiver aqui aparece CRUA na tela — nunca escondida. Estatística que some
-   * sem ninguém ver é o G7; nome feio é só nome feio.
-   */
+  /** Labels for open-ended `Score.Total` keys; unknown keys remain visible. */
   statKeys: {
     Goals: 'Gols',
     Corners: 'Escanteios',
@@ -274,20 +254,14 @@ const pt = {
   resReadingHdr: 'LEITURA DO JOGO',
   resBefore: 'antes',
   resAfter: 'agora',
-  // A aba Chances: a linha do tempo das leituras do explicador ("chance",
-  // nunca "odds" — §6). A frase é redigida na tela (lib/chances.ts) pelos
-  // campos estruturados do odds_explain; o {causa} só entra quando o dado
-  // trouxe contextAction — sem lance na janela, sem causa (G6).
+  // Chance-timeline copy is rendered from structured `odds_explain` fields.
   salaTabChances: 'Chances',
   salaChancesEmpty:
     'As chances ainda não se mexeram. Quando o jogo mexer nelas, a leitura aparece aqui.',
   chanceUp: 'A chance de {nome} subiu de {de}% para {para}%{causa}.',
   chanceDown: 'A chance de {nome} caiu de {de}% para {para}%{causa}.',
   chanceDraw: 'empate',
-  /**
-   * Causa por contextAction do core. Record ABERTO como o statKeys: ação que
-   * não estiver aqui aparece SEM causa na frase — nunca uma causa inventada.
-   */
+  /** Core action context; unknown actions are rendered without a cause. */
   chanceCtx: {
     goal: 'depois do gol',
     corner: 'depois do escanteio',
@@ -318,7 +292,7 @@ const pt = {
   streakLower: 'sequência',
   xpTotalWord: 'XP total',
   levelWord: 'Nível',
-  // Palpite pré-jogo (aba Próximas → tela /palpite)
+  // Pre-match pick (Upcoming tab → /palpite screen)
   ctaPalpitar: 'Palpitar →',
   ctaEditar: 'Editar palpite →',
   pmTitle: 'Palpite pré-jogo',
@@ -394,9 +368,7 @@ const pt = {
   cancel: 'Cancelar',
   save: 'Salvar',
   nameHintShort: 'Mínimo de 3 caracteres',
-  // 'disponível' era promessa que esta tela não tem como cumprir: quem sabe se o
-  // apelido está livre é o UNIQUE do banco, e só quando o fã confirma. A dica é
-  // do que dá pra conferir aqui — o tamanho.
+  // Availability is confirmed only by the database constraint on submission.
   nameHintOk: 'Apelido válido',
   nameSaveFailed: 'Não deu para salvar o apelido agora. Tenta de novo.',
   meSubYou: 'Resenha FC · você',
@@ -412,16 +384,15 @@ const pt = {
   createAnother: 'Criar nova liga',
   myLeague: 'Minha Liga',
   myLeagueSub: '1 membro · você lidera',
-  // Ligas de verdade (vindas do banco). O `myLeagueSub` acima continua só para o
-  // modo demo, onde a liga é mock local de 1 membro — e lá a frase é VERDADE.
+  // Persistent league copy; `myLeagueSub` remains demo-only local copy.
   ligaMembroUm: '1 membro',
   ligaMembros: '{n} membros',
   ligaVoceLidera: 'você lidera',
-  /** Quem lidera, na lista de membros. NÃO é "você lidera": o dono pode ser outro. */
+  /** Current leader label in the member list. */
   ligaLidera: 'lidera',
   ligaVoce: 'você',
   ligaSemApelido: 'sem apelido',
-  // Apagar a liga (só o líder vê; confirmação em duas etapas na própria tela)
+  // League deletion (leaders only, with UI confirmation).
   ligaApagar: 'Apagar liga',
   ligaApagarAviso: 'A liga some pra todo mundo e não tem volta.',
   ligaApagarConfirma: 'Apagar de vez',
@@ -429,20 +400,20 @@ const pt = {
   ligaApagarErro: 'Não deu pra apagar a liga.',
   ligaCarregando: 'Carregando suas ligas…',
   ligaErro: 'Não deu pra carregar suas ligas.',
-  // Criar
+  // Create.
   novaLigaTitulo: 'CRIAR LIGA',
   novaLigaNome: 'Nome da liga',
   novaLigaPlaceholder: 'Resenha FC',
   novaLigaCta: 'Criar liga',
   novaLigaCriando: 'Criando…',
-  // Entrar por código
+  // Join by code.
   entrarLigaTitulo: 'ENTRAR NUMA LIGA',
   entrarLigaLead: 'Te chamaram pra uma liga?',
   entrarLigaSub: 'Cola o código que a galera te mandou',
   entrarLigaPlaceholder: 'CÓDIGO',
   entrarLigaCta: 'Entrar na liga',
   entrarLigaEntrando: 'Entrando…',
-  // A liga por dentro
+  // League detail.
   ligaConviteTitulo: 'CHAME A GALERA',
   ligaConviteSub: 'Manda esse código pra quem você quer na liga',
   ligaConviteCopiar: 'Copiar código',
@@ -511,9 +482,7 @@ const pt = {
   navPerfil: 'Perfil',
   you: 'Você',
 
-  // Strings que no protótipo estavam soltas no <script> (montadas com
-  // `lang==='en' ? ... : ...`). Aqui elas são chave como qualquer outra — texto
-  // de usuário fora do dicionário é texto que alguém esquece de traduzir.
+  // Former inline prototype strings are dictionary keys to preserve localization.
   leagueGateSub: 'O free inclui 1 liga · desbloqueie ilimitadas',
   premiumUpsellSub: 'Ligas ilimitadas, mata-mata e mais',
   premiumActiveSub: 'Ativo · ligas ilimitadas',
@@ -539,10 +508,10 @@ const pt = {
   yes: 'Sim',
   todayFree: 'R$ 0,00',
   friendPos: '1º',
-  /** {pos} = posição já ordinalizada (2º / 2nd). */
+  /** `{pos}` is already ordinalized (2º / 2nd). */
   rankNoteUp: 'Boa, você chegou ao {pos} no ranking do replay demo.',
   rankNoteSame: 'Você segue em {pos} no ranking do replay demo.',
-  /** {xp} = número já formatado no locale. */
+  /** `{xp}` is already formatted for the current locale. */
   toNextLevel: 'Faltam {xp} XP pro próximo nível',
 
   ch: [
@@ -589,7 +558,7 @@ const pt = {
   ] as ChallengeText[],
 };
 
-/** O contrato de tradução. O pt define; o en cumpre. */
+/** Translation contract: Portuguese defines it and English satisfies it. */
 export type Dict = typeof pt;
 
 const en: Dict = {
@@ -1099,14 +1068,14 @@ const en: Dict = {
 
 export const dicts: Record<Lang, Dict> = { pt, en };
 
-/** Ordinal da posição: 2º em pt, 2nd em en. */
+/** Position ordinal: 2º in Portuguese and 2nd in English. */
 export function ordinal(pos: number, lang: Lang): string {
   if (lang === 'pt') return `${pos}º`;
   const suffix = pos === 1 ? 'st' : pos === 2 ? 'nd' : pos === 3 ? 'rd' : 'th';
   return `${pos}${suffix}`;
 }
 
-/** Preenche {chaves} de um template do dicionário. */
+/** Replaces `{keys}` in a dictionary template. */
 export function fill(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (whole, key: string) =>
     key in vars ? String(vars[key]) : whole,
@@ -1117,7 +1086,7 @@ interface I18nValue {
   lang: Lang;
   setLang: (l: Lang) => void;
   t: Dict;
-  /** Formata número no locale do idioma corrente (1.240 em pt-BR, 1,240 em en-US). */
+  /** Formats a number for the current locale. */
   fmt: (n: number) => string;
 }
 
@@ -1126,9 +1095,7 @@ const I18nContext = createContext<I18nValue | null>(null);
 export function I18nProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [lang, setLang] = useState<Lang>('pt');
 
-  // O <html lang> é servido como pt-BR (o padrão) e não sabe do toggle sozinho:
-  // sem isto, a tela inteira vira inglês e o documento segue anunciando "pt-BR"
-  // pro leitor de tela, que lê o inglês com sotaque português.
+  // Keep the document language aligned with the selected locale for screen readers.
   useEffect(() => {
     document.documentElement.lang = HTML_LANG[lang];
   }, [lang]);

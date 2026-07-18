@@ -6,7 +6,7 @@ process.env.TXLINE_LOG_SILENT = "true";
 import type { Fixture, NormEvent } from "@palpitei/core";
 import { createInMemoryMatchCacheStore } from "../src/cache.ts";
 import { generateDemoEvents } from "../src/ingest/demo.ts";
-import { ReplayRunner, duracaoDoReplayMs, emJogo, gapTetoMs, hasRealMatchContent, loadReplayEvents } from "../src/ingest/replay.ts";
+import { ReplayRunner, isMatchInProgress, maxReplayGapMs, replayDurationMs, hasRealMatchContent, loadReplayEvents } from "../src/ingest/replay.ts";
 
 const FIXTURE: Fixture = {
   fixtureId: 18241006,
@@ -31,21 +31,21 @@ function score(ts: number, extra: Partial<NormEvent> = {}): any {
 }
 
 // ---------------------------------------------------------------------------
-// compressão de gaps
+// gap compression
 // ---------------------------------------------------------------------------
 
-test("gapTetoMs: 2s acelerado; no 1x, 60s só depois que a bola rola (G3)", () => {
-  assert.equal(gapTetoMs(60, false), 2_000);
-  assert.equal(gapTetoMs(60, true), 2_000);
-  assert.equal(gapTetoMs(1, false), 2_000, "pré-jogo no 1x continua comprimido");
-  assert.equal(gapTetoMs(1, true), 60_000);
+test("maxReplayGapMs caps accelerated and real-time replay gaps (G3)", () => {
+  assert.equal(maxReplayGapMs(60, false), 2_000);
+  assert.equal(maxReplayGapMs(60, true), 2_000);
+  assert.equal(maxReplayGapMs(1, false), 2_000, "pré-jogo no 1x continua comprimido");
+  assert.equal(maxReplayGapMs(1, true), 60_000);
 });
 
-test("emJogo só é verdade com o relógio da partida correndo", () => {
-  assert.equal(emJogo(score(1, { clockRunning: true })), true);
-  assert.equal(emJogo(score(1, { clockRunning: false })), false);
-  assert.equal(emJogo(score(1)), false, "metadado de pré-jogo não tem clock");
-  assert.equal(emJogo({ kind: "odds", fixtureId: 1, ts: 1, marketType: "x", prices: [], raw: {} }), false);
+test("isMatchInProgress is true only while the match clock runs", () => {
+  assert.equal(isMatchInProgress(score(1, { clockRunning: true })), true);
+  assert.equal(isMatchInProgress(score(1, { clockRunning: false })), false);
+  assert.equal(isMatchInProgress(score(1)), false, "metadado de pré-jogo não tem clock");
+  assert.equal(isMatchInProgress({ kind: "odds", fixtureId: 1, ts: 1, marketType: "x", prices: [], raw: {} }), false);
 });
 
 test("ReplayRunner emite tudo, em ordem, e ancora o ts da partida", async () => {
@@ -60,8 +60,8 @@ test("ReplayRunner emite tudo, em ordem, e ancora o ts da partida", async () => 
 });
 
 test("ReplayRunner comprime o buraco gigante do feed", (t) => {
-  // 3,6 DIAS entre os metadados de pré-jogo e o jogo. Sem teto, o replay
-  // esperaria 5.184.000ms (1h26 de parede) MESMO a 60x, e a sala travava.
+  // There are 3.6 days between pre-match metadata and kickoff. Without a cap,
+  // replay would wait 5,184,000 ms (86 minutes wall-clock) even at 60x.
   t.mock.timers.enable({ apis: ["setTimeout"] });
 
   const events = [score(0, { clockRunning: true }), score(311_040_000, { clockRunning: true })];
@@ -84,7 +84,7 @@ test("ReplayRunner comprime o buraco gigante do feed", (t) => {
 });
 
 test("ReplayRunner: ts fora de ordem não vira delay negativo (A3)", async () => {
-  // O snapshot é amostrador e traz `goal` com ts ANTERIOR ao `kickoff`.
+  // The snapshot is sampled and can include a `goal` timestamped before kickoff.
   const events = [score(5000), score(1000)];
   const vistos: number[] = [];
   const runner = new ReplayRunner(events, 1, (e) => vistos.push(e.ts), () => {});
@@ -130,7 +130,7 @@ test("finishNow drena eventos reais restantes e conclui uma única vez", (t) => 
 
   assert.deepEqual(vistos, [0, 60_000, 120_000]);
   assert.equal(finais, 1);
-  assert.equal(runner.emAndamento, false);
+  assert.equal(runner.isRunning, false);
 });
 
 test("estimativa usa exatamente os mesmos tetos do runner", () => {
@@ -139,11 +139,11 @@ test("estimativa usa exatamente os mesmos tetos do runner", () => {
     score(6_000, { clockRunning: true }),
     score(606_000, { clockRunning: true }),
   ];
-  assert.equal(duracaoDoReplayMs(events, 60), 2_010);
+  assert.equal(replayDurationMs(events, 60), 2_010);
 });
 
 // ---------------------------------------------------------------------------
-// conteúdo real
+// real match content
 // ---------------------------------------------------------------------------
 
 test("hasRealMatchContent exige apito, finalização e volume", () => {
@@ -169,7 +169,7 @@ test("hasRealMatchContent exige apito, finalização e volume", () => {
 });
 
 // ---------------------------------------------------------------------------
-// cadeia de fontes
+// source chain
 // ---------------------------------------------------------------------------
 
 test("cache primeiro: nem toca na API, e o badge diz txline-cache", async () => {
@@ -192,17 +192,17 @@ test("cache primeiro: nem toca na API, e o badge diz txline-cache", async () => 
     },
   ]);
 
-  // Sem TXLINE_API_BASE_URL apontando para lugar nenhum: se tentasse a rede, quebrava.
+  // An unreachable TXLINE_API_BASE_URL makes an accidental network request fail.
   const load = await loadReplayEvents(FIXTURE, { cache: store });
   assert.equal(load.source, "txline-cache");
-  assert.equal(load.daTxline, true, "cache é dado real da TxLINE, só gravado");
+  assert.equal(load.fromTxline, true, "cache é dado real da TxLINE, só gravado");
   assert.equal(load.events.length, 5);
   assert.equal(load.events[0]!.ts, 1000);
 });
 
 test("o sintético é opt-in: sem allowSynthetic, erra em vez de inventar partida", async () => {
-  const store = createInMemoryMatchCacheStore(); // vazio
-  process.env.TXLINE_API_BASE_URL = "http://127.0.0.1:1/api"; // porta morta
+  const store = createInMemoryMatchCacheStore(); // empty
+  process.env.TXLINE_API_BASE_URL = "http://127.0.0.1:1/api"; // unreachable port
   process.env.TXLINE_JWT = "x";
 
   await assert.rejects(
@@ -212,7 +212,7 @@ test("o sintético é opt-in: sem allowSynthetic, erra em vez de inventar partid
 });
 
 // ---------------------------------------------------------------------------
-// sintético (DEV-ONLY)
+// synthetic (development only)
 // ---------------------------------------------------------------------------
 
 test("gerador sintético é determinístico por fixtureId", () => {

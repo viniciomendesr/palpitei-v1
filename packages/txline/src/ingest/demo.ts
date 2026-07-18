@@ -1,30 +1,13 @@
-// Replay SINTÉTICO — DEV-ONLY, OPT-IN, NUNCA EM DEMO/SUBMISSÃO.
-//
-// ┌──────────────────────────────────────────────────────────────────────────┐
-// │ REGRA DO HACKATHON (brief oficial das trilhas): a TxLINE tem que ser a   │
-// │ fonte primária / entrada ao vivo. O "simulado" que o critério aceita é o │
-// │ feed simulado DA TxLINE (os replays da devnet) — não um gerador nosso.   │
-// │ Este arquivo existe para desenvolvimento offline: quando a devnet não    │
-// │ serve a fixture e você só quer ver a UI mexer. Ligar isto na demo é      │
-// │ apresentar dado inventado como se fosse da TxLINE: quebra a regra e, se  │
-// │ o badge de fonte não acompanhar, MENTE para o jurado (G6).               │
-// │                                                                          │
-// │ Portanto: só roda com allowSynthetic explícito (TXLINE_ALLOW_SYNTHETIC=  │
-// │ true, padrão false), e a fonte devolvida é "synthetic" — o badge da sala │
-// │ TEM de mostrar isso.                                                     │
-// └──────────────────────────────────────────────────────────────────────────┘
-//
-// Gera uma partida verossímil e DETERMINÍSTICA por fixtureId: o mesmo id
-// reproduz exatamente os mesmos eventos, para que bug achado num replay
-// sintético seja reproduzível.
+// Deterministic synthetic replay for development only. It requires explicit
+// allowSynthetic=true and is never a demo or submission data source.
 
 import type { Fixture, NormEvent, OddsEvent, ScoreEvent } from "@palpitei/core";
 import { config } from "../config.ts";
 
 const HALF_MS = 45 * 60_000;
-const ODDS_INTERVAL_MS = 180_000; // updates de rotina a cada ~3 min (jitter < limiar de explicação)
+const ODDS_INTERVAL_MS = 180_000; // routine updates every ~3 minutes
 
-/** PRNG determinístico (mulberry32), semeado no fixtureId. */
+/** Deterministic fixtureId-seeded mulberry32 PRNG. */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return function () {
@@ -49,26 +32,21 @@ const WALK_ACTIONS: Weighted[] = [
 ];
 const SHOT_OUTCOMES = ["OnTarget", "OffTarget", "Blocked", "Woodwork"];
 
-/** O sintético está liberado? Só true explícito libera. */
-export function sinteticoPermitido(opts?: { allowSynthetic?: boolean }): boolean {
+/** Synthetic data is enabled only by an explicit true value. */
+export function isSyntheticAllowed(opts?: { allowSynthetic?: boolean }): boolean {
   return opts?.allowSynthetic === true || config.allowSynthetic;
 }
 
 /**
- * Eventos sintéticos de uma partida inteira.
- *
- * `agora` é injetável de propósito: o gerador é uma FONTE de dados (o lugar onde
- * a linha do tempo nasce), não um motor — motor nenhum lê relógio de parede. Nos
- * testes, fixar `agora` deixa a saída 100% determinística.
+ * Synthetic events for one complete match. Injecting now keeps tests deterministic.
  */
-export function generateDemoEvents(fixture: Fixture, agora: number = Date.now()): NormEvent[] {
+export function generateDemoEvents(fixture: Fixture, now: number = Date.now()): NormEvent[] {
   const rng = mulberry32(fixture.fixtureId || 1);
-  // t0 ancorado em hora cheia: chamadas na mesma hora reproduzem os MESMOS ts
-  // (a estrutura da partida já é determinística pelo rng semeado no fixtureId).
+  // Anchoring to the hour makes calls within an hour reproduce identical timestamps.
   const t0 =
-    fixture.startTime && fixture.startTime < agora
+    fixture.startTime && fixture.startTime < now
       ? fixture.startTime
-      : Math.floor((agora - 3 * 3600_000) / 3600_000) * 3600_000;
+      : Math.floor((now - 3 * 3600_000) / 3600_000) * 3600_000;
 
   const events: NormEvent[] = [];
   let seq = 0;
@@ -94,7 +72,7 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
     });
   };
 
-  // Estado das odds sintéticas (probabilidades implícitas, somam ~100 no 1X2)
+  // Synthetic implied probabilities sum to approximately 100 for 1X2.
   let p1Pct = 30 + rng() * 25;
   let p2Pct = 30 + rng() * 25;
   let drawPct = 100 - p1Pct - p2Pct;
@@ -147,7 +125,7 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
     );
   };
 
-  // Jitter de rotina: sempre abaixo do limiar de explicação (3 p.p.)
+  // Routine jitter remains below the 3 percentage-point explanation threshold.
   const jitterOdds = (): void => {
     p1Pct += (rng() - 0.5) * 2.4;
     p2Pct += (rng() - 0.5) * 2.4;
@@ -156,7 +134,7 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
     overPct = clamp(overPct + (rng() - 0.5) * 2.4, 5, 95);
   };
 
-  // Reação a gol: deslocamento >= 5 p.p. a favor de quem marcou (exercita o explicador)
+  // A goal shifts probability by at least 5 percentage points for the scorer.
   const goalShift = (team: "p1" | "p2"): void => {
     const shift = 8 + rng() * 6;
     if (team === "p1") {
@@ -180,7 +158,7 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
     return "possession";
   };
 
-  // Gols pré-sorteados: 1 a 4 no total, minuto aleatório em cada tempo
+  // Preselected goals: one to four total, at a random minute in each half.
   const totalGoals = 1 + Math.floor(rng() * 4);
   const goalPlan: { half: 1 | 2; offsetMs: number; team: "p1" | "p2" }[] = [];
   for (let i = 0; i < totalGoals; i++) {
@@ -192,7 +170,6 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
   }
   goalPlan.sort((a, b) => a.half - b.half || a.offsetMs - b.offsetMs);
 
-  // ---- pré-jogo -------------------------------------------------------------
   pushScore("comment", t0, {
     data: { note: "REPLAY SINTÉTICO — devnet sem dados de partida para esta fixture" },
   });
@@ -204,7 +181,6 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
     pushOdds(t0 + 120_000);
   }
 
-  // ---- um tempo de jogo -----------------------------------------------------
   const playHalf = (halfStartTs: number, half: 1 | 2): number => {
     pushScore("kickoff", halfStartTs, { period: half });
     const stoppageMs = Math.floor((1 + rng() * 3) * 60_000);
@@ -216,7 +192,7 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
     let t = halfStartTs;
     let nextOddsTs = halfStartTs + ODDS_INTERVAL_MS;
     while (true) {
-      t += (25 + rng() * 50) * 1000; // um lance a cada 25–75s
+      t += (25 + rng() * 50) * 1000; // one action every 25–75 seconds
       if (t >= halfEndTs) break;
 
       while (pendingGoals.length && pendingGoals[0]!.ts <= t) {
@@ -244,7 +220,7 @@ export function generateDemoEvents(fixture: Fixture, agora: number = Date.now())
       }
     }
 
-    // gols sorteados para depois do último lance ainda entram antes do apito
+    // Goals selected after the final action still occur before the whistle.
     while (pendingGoals.length) {
       const g = pendingGoals.shift()!;
       const ts = Math.min(g.ts, halfEndTs - 1_000);

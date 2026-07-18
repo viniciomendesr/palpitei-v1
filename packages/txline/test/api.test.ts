@@ -3,17 +3,17 @@ import http from "node:http";
 import test, { after, before, beforeEach } from "node:test";
 
 process.env.TXLINE_LOG_SILENT = "true";
-// Janela mínima: 1 hora => 12 baldes por feed. Mantém o teste rápido sem mudar
-// a lógica sob teste.
+// Minimum window: one hour means 12 buckets per feed. Keep the test fast without
+// changing the behavior under test.
 process.env.TXLINE_SWEEP_HOURS_BEFORE = "0";
 process.env.TXLINE_SWEEP_HOURS_AFTER = "0";
 
-import { baldes, buracosDeSeq, fetchOddsUpdates, fetchScoresUpdates } from "../src/api.ts";
+import { createTimeBuckets, findSequenceGaps, fetchOddsUpdates, fetchScoresUpdates } from "../src/api.ts";
 import { resetCredentials } from "../src/auth.ts";
 import { TxlineSweepError } from "../src/errors.ts";
 
 const FIXTURE = 18241006;
-// 2026-07-18T21:00:00Z — a janela da demo ao vivo.
+// 2026-07-18T21:00:00Z — the live-demo window.
 const KICKOFF = Date.UTC(2026, 6, 18, 21, 0, 0);
 
 let server: http.Server;
@@ -53,21 +53,21 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// baldes
+// buckets
 // ---------------------------------------------------------------------------
 
-test("baldes cobre a janela inteira em horas UTC", () => {
-  const bs = baldes(KICKOFF, 1, 4);
+test("createTimeBuckets covers the full UTC-hour window", () => {
+  const bs = createTimeBuckets(KICKOFF, 1, 4);
   assert.equal(bs.length, 6, "1h antes + kickoff + 4h depois = 6 horas");
   assert.deepEqual(
-    bs.map((b) => b.hora),
+    bs.map((b) => b.hour),
     [20, 21, 22, 23, 0, 1],
     "vira o dia em UTC"
   );
-  assert.equal(bs[0]!.dia, Math.floor((KICKOFF - 3600_000) / 86400_000));
-  // A virada de meia-noite tem de avançar o epochDay, senão a última hora do
-  // jogo é buscada no dia errado e volta vazia — em silêncio.
-  assert.equal(bs[5]!.dia, bs[0]!.dia + 1);
+  assert.equal(bs[0]!.day, Math.floor((KICKOFF - 3600_000) / 86400_000));
+  // Crossing midnight must advance epochDay or the final match hour is fetched
+  // from the wrong day and silently returns no data.
+  assert.equal(bs[5]!.day, bs[0]!.day + 1);
 });
 
 test("a varredura pede os 12 intervalos de 5 min de cada hora (G1)", async () => {
@@ -77,13 +77,13 @@ test("a varredura pede os 12 intervalos de 5 min de cada hora (G1)", async () =>
   const dia = Math.floor(KICKOFF / 86400_000);
   const esperadas = Array.from({ length: 12 }, (_, iv) => `/api/scores/updates/${dia}/21/${iv}`);
   assert.deepEqual(rotasPedidas.sort(), esperadas.sort());
-  // Varrer só 0..9 perderia 10 min por hora sem erro nenhum.
+  // Sweeping only 0..9 would silently omit 10 minutes from every hour.
   assert.ok(rotasPedidas.includes(`/api/scores/updates/${dia}/21/10`));
   assert.ok(rotasPedidas.includes(`/api/scores/updates/${dia}/21/11`));
 });
 
 // ---------------------------------------------------------------------------
-// scores/updates
+// score updates
 // ---------------------------------------------------------------------------
 
 test("fetchScoresUpdates dedupa por Seq, ordena e filtra outras fixtures", async () => {
@@ -94,12 +94,12 @@ test("fetchScoresUpdates dedupa por Seq, ordena e filtra outras fixtures", async
         body: [
           { FixtureId: FIXTURE, Seq: 3, Action: "goal" },
           { FixtureId: FIXTURE, Seq: 2, Action: "kickoff" },
-          { FixtureId: 999, Seq: 7, Action: "goal" }, // outra partida
+          { FixtureId: 999, Seq: 7, Action: "goal" }, // another fixture
         ],
       };
     }
     if (url.endsWith("/1")) {
-      // balde repetido: o mesmo Seq 3 aparece de novo
+      // Duplicate bucket: the same Seq 3 appears again.
       return { status: 200, body: [{ FixtureId: FIXTURE, Seq: 3, Action: "goal" }] };
     }
     return { status: 200, body: [] };
@@ -133,8 +133,8 @@ test("404 de balde é normal e não derruba a varredura", async () => {
 });
 
 test("varredura 100% com erro real FALHA ALTO — não devolve [] silencioso", async () => {
-  // Este é o buraco do v0: `catch {}` em todo balde. Token morto => 144×401 =>
-  // "0 eventos", indistinguível de "a devnet não tem essa partida".
+  // A blanket `catch {}` would turn an expired token into an indistinguishable
+  // empty event list.
   responder = () => ({ status: 401, body: { erro: "token morto" } });
 
   await assert.rejects(
@@ -147,17 +147,17 @@ test("varredura 100% com erro real FALHA ALTO — não devolve [] silencioso", a
 });
 
 // ---------------------------------------------------------------------------
-// seq
+// sequences
 // ---------------------------------------------------------------------------
 
-test("buracosDeSeq encontra o evento que existiu e não chegou", () => {
-  assert.deepEqual(buracosDeSeq([{ Seq: 2 }, { Seq: 3 }, { Seq: 4 }]), []);
-  assert.deepEqual(buracosDeSeq([{ Seq: 2 }, { Seq: 5 }, { Seq: 6 }]), [{ de: 2, ate: 5 }]);
-  assert.deepEqual(buracosDeSeq([]), []);
+test("findSequenceGaps finds events that did not arrive", () => {
+  assert.deepEqual(findSequenceGaps([{ Seq: 2 }, { Seq: 3 }, { Seq: 4 }]), []);
+  assert.deepEqual(findSequenceGaps([{ Seq: 2 }, { Seq: 5 }, { Seq: 6 }]), [{ from: 2, to: 5 }]);
+  assert.deepEqual(findSequenceGaps([]), []);
 });
 
 // ---------------------------------------------------------------------------
-// odds/updates
+// odds updates
 // ---------------------------------------------------------------------------
 
 test("fetchOddsUpdates filtra ao mercado 1X2 de jogo inteiro (G2)", async () => {
@@ -167,10 +167,10 @@ test("fetchOddsUpdates filtra ao mercado 1X2 de jogo inteiro (G2)", async () => 
           status: 200,
           body: [
             { FixtureId: FIXTURE, MessageId: "a", SuperOddsType: "1X2_PARTICIPANT_RESULT", Ts: 1 },
-            // ruído: 35 mil eventos / 12 MB que o produto não usa
+            // Noise: 35k events / 12 MB that the product does not use.
             { FixtureId: FIXTURE, MessageId: "b", SuperOddsType: "OVERUNDER_PARTICIPANT_GOALS", Ts: 2 },
             { FixtureId: FIXTURE, MessageId: "c", SuperOddsType: "ASIAN_HANDICAP", Ts: 3 },
-            // 1X2 de um PERÍODO (1º tempo) não é o mercado de jogo inteiro
+            // A period 1X2 market (first half) is not the full-match market.
             {
               FixtureId: FIXTURE,
               MessageId: "d",
@@ -187,8 +187,8 @@ test("fetchOddsUpdates filtra ao mercado 1X2 de jogo inteiro (G2)", async () => 
 });
 
 test("MessageId é STRING: a série não pode colapsar num registro só", async () => {
-  // O bug real: `num("1837922149:00003:000572-10021-stab")` => NaN => -1 para
-  // TODAS as linhas => o Map guardava uma só. A série inteira sumia sem erro.
+  // Parsing this string as a number produces NaN, which previously collapsed
+  // every row to one Map entry and silently discarded the full series.
   const ids = [
     "1837922149:00003:000572-10021-stab",
     "1837922149:00004:000573-10021-stab",
@@ -202,7 +202,7 @@ test("MessageId é STRING: a série não pode colapsar num registro só", async 
             FixtureId: FIXTURE,
             MessageId,
             SuperOddsType: "1X2_PARTICIPANT_RESULT",
-            Ts: 100 - i * 10, // fora de ordem de propósito
+            Ts: 100 - i * 10, // intentionally out of order
           })),
         }
       : { status: 200, body: [] };

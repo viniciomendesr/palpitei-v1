@@ -1,5 +1,4 @@
-// Replay: reconstrói a linha do tempo de uma partida e reemite os eventos em
-// velocidade acelerada. É o caminho da demo quando não há jogo ao vivo.
+// Replay reconstructs a match timeline and emits it at accelerated speed.
 
 import type { Fixture, NormEvent } from "@palpitei/core";
 import { normalizeOdds, normalizeScore } from "@palpitei/core";
@@ -11,44 +10,42 @@ import {
   fetchScoresSnapshot,
   fetchScoresUpdates,
 } from "../api.ts";
-import { cacheUtil, type MatchCacheStore } from "../cache.ts";
-import { motivo } from "../errors.ts";
-import { generateDemoEvents, sinteticoPermitido } from "./demo.ts";
+import { hasUsableMatchCache, type MatchCacheStore } from "../cache.ts";
+import { errorMessage } from "../errors.ts";
+import { generateDemoEvents, isSyntheticAllowed } from "./demo.ts";
 import { info, warn } from "../log.ts";
 
 /**
- * De onde veio a linha do tempo. O badge da sala mostra ISTO, e ele não pode
- * mentir (G6): rótulo com fallback plausível é pior que rótulo nenhum, porque o
- * jurado confia nele.
+ * Timeline origin. Consumers display this value, so it must remain accurate.
  */
 export type ReplaySource =
-  | "txline-cache" // Postgres: /updates gravado antes (dado real da TxLINE)
-  | "txline-updates" // varredura de /updates agora
+  | "txline-cache" // Persisted real TxLINE /updates data.
+  | "txline-updates" // Current /updates scan.
   | "txline-historical" // /scores/historical
-  | "txline-snapshot" // amostrador — timeline pobre, último recurso da TxLINE
-  | "synthetic"; // gerador local — DEV-ONLY, nunca em demo
+  | "txline-snapshot" // Sparse snapshot fallback.
+  | "synthetic"; // Local development-only generator.
 
 export type ReplayLoad = {
   events: NormEvent[];
   source: ReplaySource;
-  /** true quando os eventos vieram de payload REAL da TxLINE. */
-  daTxline: boolean;
+  /** True when events originated in real TxLINE payloads. */
+  fromTxline: boolean;
 };
 
 export type LoadReplayOpts = {
-  /** DEV-ONLY. Ver ingest/demo.ts. */
+  /** Development-only. See ingest/demo.ts. */
   allowSynthetic?: boolean;
-  /** Cache de partida (Postgres, via @palpitei/db). Sem store, a cadeia começa na API. */
+  /** Match cache from @palpitei/db. Without it, the chain starts at the API. */
   cache?: MatchCacheStore;
-  /** Grava no cache o que a varredura de /updates trouxer. Padrão: true. */
-  persistir?: boolean;
-  /** Injeta o relógio do gerador sintético (testes). */
-  agora?: number;
+  /** Persists /updates scan results in cache. Defaults to true. */
+  persist?: boolean;
+  /** Injects synthetic-generator time for tests. */
+  now?: number;
 };
 
 /**
- * Normaliza e mescla scores + odds numa linha do tempo só.
- * Ordena por ts; empate entre kinds: score antes de odds; scores por seq.
+ * Normalizes and merges scores and odds into one timeline. Ties sort scores
+ * before odds and scores by sequence.
  */
 function mesclar(scoreRaw: unknown[], oddsRaw: unknown[]): NormEvent[] {
   const events: NormEvent[] = [];
@@ -69,7 +66,7 @@ function mesclar(scoreRaw: unknown[], oddsRaw: unknown[]): NormEvent[] {
   return events;
 }
 
-/** A lista tem partida de verdade? (kickoff + finalização + volume mínimo) */
+/** Whether the list represents a real match (kickoff, finalization, minimum volume). */
 export function hasRealMatchContent(events: NormEvent[]): boolean {
   const scores = events.filter((e) => e.kind === "score");
   if (scores.length < 5) return false;
@@ -80,65 +77,53 @@ export function hasRealMatchContent(events: NormEvent[]): boolean {
   return hasKickoff && hasFinaliser;
 }
 
-/** startTime da fixture, ou dos próprios dados (a fixture pode ter sumido — A1). */
+/** Fixture start time, falling back to the data when the fixture is unavailable. */
 async function descobreStartTime(fixture: Fixture): Promise<number | undefined> {
   if (fixture.startTime) return fixture.startTime;
   try {
     const nomes = await fetchFixtureNames(fixture.fixtureId);
     if (nomes?.startTime) return nomes.startTime;
   } catch {
-    /* segue sem */
+    /* continue without the fixture */
   }
   return undefined;
 }
 
 /**
- * Carrega a linha do tempo. Cadeia de fontes, da melhor para a pior:
- *
- *   1. cache (Postgres)   — /updates gravado: 962 eventos, seq contínuo, offline,
- *                           imune à rotação do dataset (A1). É o caminho da demo.
- *   2. /updates           — a linha do tempo REAL. Custa ~144 requisições e
- *                           precisa de startTime; o resultado vai para o cache.
- *   3. /historical        — sequência completa da partida encerrada. Na devnet
- *                           voltou VAZIO para tudo (A2).
- *   4. /snapshot          — AMOSTRADOR (37 linhas, 1 por tipo de ação). Serve de
- *                           último recurso; a timeline sai pobre e fora de ordem.
- *   5. sintético          — DEV-ONLY e opt-in. Nunca em demo/submissão.
+ * Loads a timeline through this fallback order: cache, /updates, /historical,
+ * /snapshot, then opt-in development-only synthetic data.
  */
 export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = {}): Promise<ReplayLoad> {
   const fixtureId = fixture.fixtureId;
-  const persistir = opts.persistir !== false;
+  const persist = opts.persist !== false;
 
-  // 1. cache -----------------------------------------------------------------
   if (opts.cache) {
     try {
       const c = await opts.cache.get(fixtureId);
-      if (cacheUtil(c)) {
+      if (hasUsableMatchCache(c)) {
         const events = mesclar(c.scores, c.odds);
         if (events.length) {
           info(
             `[replay] fixture ${fixtureId}: ${events.length} eventos do cache ` +
               `(${c.scores.length} scores, ${c.odds.length} odds)`
           );
-          return { events, source: "txline-cache", daTxline: true };
+          return { events, source: "txline-cache", fromTxline: true };
         }
         warn(`[replay] cache de ${fixtureId} não normalizou nenhum evento — seguindo para a API`);
       }
     } catch (e) {
-      warn(`[replay] cache de ${fixtureId} indisponível (${motivo(e)}) — seguindo para a API`);
+      warn(`[replay] cache de ${fixtureId} indisponível (${errorMessage(e)}) — seguindo para a API`);
     }
   }
 
-  // 2. /updates --------------------------------------------------------------
   const startTime = await descobreStartTime(fixture);
   if (startTime) {
     try {
-      // São feeds independentes e caros (~72 baldes cada). Começam juntos;
-      // odds continua opcional, scores continua obrigatório para o replay.
+      // Scores are required for replay; odds remain optional.
       const [scores, odds] = await Promise.all([
         fetchScoresUpdates(fixtureId, startTime),
         fetchOddsUpdates(fixtureId, startTime).catch((e) => {
-          warn(`[replay] odds/updates de ${fixtureId} falhou (${motivo(e)}) — replay só com scores`);
+          warn(`[replay] odds/updates de ${fixtureId} falhou (${errorMessage(e)}) — replay só com scores`);
           return [];
         }),
       ]);
@@ -146,9 +131,8 @@ export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = 
         const events = mesclar(scores, odds);
         if (hasRealMatchContent(events)) {
           info(`[replay] fixture ${fixtureId}: ${events.length} eventos de /updates`);
-          if (persistir && opts.cache) {
-            // "Persista na primeira vez que vir": o dataset rotaciona (A1) e a
-            // varredura custa ~144 requisições. Falha ao gravar não derruba o replay.
+          if (persist && opts.cache) {
+            // Cache persistence failure must not prevent a valid replay.
             try {
               const nomes = await fetchFixtureNames(fixtureId);
               await opts.cache.put({
@@ -163,23 +147,22 @@ export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = 
               });
               info(`[replay] fixture ${fixtureId} gravada no cache — o próximo replay é instantâneo`);
             } catch (e) {
-              warn(`[replay] não consegui gravar o cache de ${fixtureId} (${motivo(e)})`);
+              warn(`[replay] não consegui gravar o cache de ${fixtureId} (${errorMessage(e)})`);
             }
           }
-          return { events, source: "txline-updates", daTxline: true };
+          return { events, source: "txline-updates", fromTxline: true };
         }
         warn(`[replay] /updates de ${fixtureId} sem partida completa — tentando historical`);
       } else {
         warn(`[replay] /updates de ${fixtureId} veio vazio — tentando historical`);
       }
     } catch (e) {
-      warn(`[replay] /updates de ${fixtureId} falhou (${motivo(e)}) — tentando historical`);
+      warn(`[replay] /updates de ${fixtureId} falhou (${errorMessage(e)}) — tentando historical`);
     }
   } else {
     warn(`[replay] fixture ${fixtureId} sem startTime — pulando /updates (a varredura precisa da janela)`);
   }
 
-  // 3. /historical  →  4. /snapshot -------------------------------------------
   let source: ReplaySource = "txline-historical";
   let scoreRaw: any[] = [];
   try {
@@ -190,7 +173,7 @@ export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = 
       source = "txline-snapshot";
     }
   } catch (e) {
-    warn(`[replay] historical de ${fixtureId} falhou (${motivo(e)}) — caindo para o snapshot de scores`);
+    warn(`[replay] historical de ${fixtureId} falhou (${errorMessage(e)}) — caindo para o snapshot de scores`);
     scoreRaw = await fetchScoresSnapshot(fixtureId);
     source = "txline-snapshot";
   }
@@ -199,22 +182,20 @@ export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = 
   try {
     oddsRaw = await fetchOddsSnapshot(fixtureId);
     if (oddsRaw.length <= 1) {
-      // G2: o snapshot devolve UMA linha. Não é série — o explicador não tem o
-      // que explicar. Dizer isto alto evita a "feature sem dados e sem erro".
+      // Snapshots are not odds series, so they cannot power explanations.
       warn(
         `[replay] odds de ${fixtureId}: ${oddsRaw.length} linha(s) do snapshot — ` +
           `é foto, não série (G2). O explicador vai ficar mudo neste replay.`
       );
     }
   } catch (e) {
-    warn(`[replay] odds de ${fixtureId} indisponíveis (${motivo(e)}) — replay só com scores`);
+    warn(`[replay] odds de ${fixtureId} indisponíveis (${errorMessage(e)}) — replay só com scores`);
   }
 
   const events = mesclar(scoreRaw, oddsRaw);
 
-  // 5. sintético --------------------------------------------------------------
   if (!hasRealMatchContent(events)) {
-    if (!sinteticoPermitido(opts)) {
+    if (!isSyntheticAllowed(opts)) {
       throw new Error(
         `a devnet não tem dados de partida da TxLINE para a fixture ${fixtureId} — ` +
           `escolha outra (ex.: um replay recente via "Replay por ID") ou ative o modo ` +
@@ -225,79 +206,59 @@ export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = 
       `[replay] fixture ${fixtureId} sem dados de partida na devnet — usando REPLAY SINTÉTICO ` +
         `determinístico (DEV; NÃO usar em demo/submissão — o badge da sala tem de dizer "synthetic")`
     );
-    return { events: generateDemoEvents(fixture, opts.agora), source: "synthetic", daTxline: false };
+    return { events: generateDemoEvents(fixture, opts.now), source: "synthetic", fromTxline: false };
   }
 
   info(
     `[replay] fixture ${fixtureId}: ${events.length} eventos carregados ` +
       `(${scoreRaw.length} scores, ${oddsRaw.length} odds; fonte: ${source})`
   );
-  return { events, source, daTxline: true };
+  return { events, source, fromTxline: true };
 }
 
-// ---------------------------------------------------------------------------
-// Runner
-// ---------------------------------------------------------------------------
-
-// Teto do buraco entre dois eventos, em ms de PAREDE. Existe porque o feed tem
-// vazios enormes (numa fixture real, 3,6 DIAS entre os metadados de pré-jogo e o
-// jogo) que travariam o replay.
-//
-// Acelerado (30x+): 2s — o objetivo é ver a partida inteira em ~40s, e o teto só
-// pula o tempo morto.
-// Tempo real (1x): 60s DEPOIS que o relógio da partida começa a correr; até lá,
-// 2s. Sem essa distinção o 1x fica injogável: dos 38 eventos de uma fixture, os
-// 10 primeiros são metadados de pré-jogo (venue, weather, jersey, lineups,
-// aquecimento) e o usuário esperaria ~10 min de boletim do tempo antes do jogo.
+// Wall-clock cap for gaps between events. Pre-game gaps are capped more tightly
+// so replay does not spend minutes on metadata.
 const GAP_TETO_ACELERADO_MS = 2_000;
 const GAP_TETO_TEMPO_REAL_MS = 60_000;
 
-// Antes de o relógio da partida correr, o replay avança em VELOCIDADE ALTA
-// independente da escolhida. Só o teto de 2s não basta: ele limita gaps GRANDES,
-// e o pré-jogo tem 245 eventos densos (13 scores + 232 odds) cobrindo ~60 min —
-// os gaps são de <2s, então nada era comprimido e o 1x levava 5,8 min de parede
-// só de aquecimento e cotação (G3).
+// Before the match clock runs, replay advances at high speed regardless of the
+// requested speed to compress dense pre-game updates.
 const VELOCIDADE_PRE_JOGO = 600;
 
-/** O evento indica partida em andamento? `clockRunning` é o marcador limpo: os
- *  metadados de pré-jogo vêm com false/undefined e clockSeconds 0. */
-export function emJogo(ev: NormEvent): boolean {
+/** Whether an event indicates match play; clockRunning avoids pre-game metadata. */
+export function isMatchInProgress(ev: NormEvent): boolean {
   return ev.kind === "score" && ev.clockRunning === true;
 }
 
-export function gapTetoMs(speed: number, jogoComecou: boolean): number {
+export function maxReplayGapMs(speed: number, matchStarted: boolean): number {
   if (speed > 1) return GAP_TETO_ACELERADO_MS;
-  return jogoComecou ? GAP_TETO_TEMPO_REAL_MS : GAP_TETO_ACELERADO_MS;
+  return matchStarted ? GAP_TETO_TEMPO_REAL_MS : GAP_TETO_ACELERADO_MS;
 }
 
 /**
- * Duração de parede que o mesmo agendador abaixo usará. É uma estimativa
- * determinística para o watchdog da sala: se um timer do runtime dormir além
- * disso, o servidor pode drenar os eventos reais restantes em vez de manter um
- * replay zumbi.
+ * Deterministic wall-clock duration used by the room watchdog.
  */
-export function duracaoDoReplayMs(events: NormEvent[], requestedSpeed: number): number {
+export function replayDurationMs(events: NormEvent[], requestedSpeed: number): number {
   let total = 0;
   let jogoComecou = false;
   for (let i = 0; i < events.length - 1; i++) {
     const current = events[i]!;
-    if (emJogo(current)) jogoComecou = true;
+    if (isMatchInProgress(current)) jogoComecou = true;
     const escolhida = Math.max(requestedSpeed, 0.001);
     const speed = jogoComecou ? escolhida : Math.max(escolhida, VELOCIDADE_PRE_JOGO);
     const gapMs = (events[i + 1]!.ts - current.ts) / speed;
-    total += Math.min(Math.max(gapMs, 0), gapTetoMs(requestedSpeed, jogoComecou));
+    total += Math.min(Math.max(gapMs, 0), maxReplayGapMs(requestedSpeed, jogoComecou));
   }
   return total;
 }
 
 /**
  * Reagenda os eventos comprimindo a linha do tempo: delay real entre eventos =
- * (Δts do jogo) / speed, com teto (ver gapTetoMs) para os buracos de pré-jogo e
- * intervalo não travarem o replay. Um único setTimeout ativo por vez.
+ * (Δts do jogo) / speed, with a cap (see maxReplayGapMs) for pre-game gaps and
+ * intervals do not stall replay. Only one setTimeout remains active at a time.
  *
- * Nota de porte: o v0 declarava os campos como parameter properties no
- * construtor. Aqui não dá — `erasableSyntaxOnly` (o type stripping do Node não
- * sabe apagar isso), então os campos são declarados na mão.
+ * Fields are declared explicitly because Node's erasableSyntaxOnly cannot strip
+ * parameter properties.
  */
 export class ReplayRunner {
   private events: NormEvent[];
@@ -311,9 +272,7 @@ export class ReplayRunner {
   private started = false;
   private done = false;
   private _startedAtMatchTs: number | null = null;
-  // Trava: uma vez que o relógio da partida correu, não volta atrás (o feed tem
-  // eventos sem clock no meio do jogo — suspend, comment — e eles não podem
-  // fazer o replay "voltar" a comprimir).
+  // Once match time advances, clockless feed events cannot move it backwards.
   private jogoComecou = false;
 
   constructor(
@@ -328,17 +287,17 @@ export class ReplayRunner {
     this.onDone = onDone;
   }
 
-  /** ts do primeiro evento — a âncora do cursorClock do core. */
+  /** First-event timestamp, used as the core cursorClock anchor. */
   get startedAtMatchTs(): number | null {
     return this._startedAtMatchTs;
   }
 
-  get emAndamento(): boolean {
+  get isRunning(): boolean {
     return this.started && !this.stopped && !this.done && this.idx < this.events.length;
   }
 
   get estimatedDurationMs(): number {
-    return duracaoDoReplayMs(this.events, this.speed);
+    return replayDurationMs(this.events, this.speed);
   }
 
   start(): void {
@@ -369,7 +328,7 @@ export class ReplayRunner {
     this.timer = null;
     while (this.idx < this.events.length && !this.stopped) {
       const ev = this.events[this.idx++]!;
-      if (emJogo(ev)) this.jogoComecou = true;
+      if (isMatchInProgress(ev)) this.jogoComecou = true;
       this.onEvent(ev);
     }
     if (!this.stopped) this.complete();
@@ -385,7 +344,7 @@ export class ReplayRunner {
   private fire(): void {
     if (this.stopped) return;
     const ev = this.events[this.idx++]!;
-    if (emJogo(ev)) this.jogoComecou = true;
+    if (isMatchInProgress(ev)) this.jogoComecou = true;
     this.onEvent(ev);
 
     if (this.idx >= this.events.length) {
@@ -393,14 +352,12 @@ export class ReplayRunner {
       return;
     }
 
-    // Enquanto a partida não começou, adianta: ninguém quer ver 60 min de
-    // cotação pré-jogo em tempo real. Depois do apito, vale a velocidade pedida.
+    // Skip pre-game time; after kickoff, use the requested playback speed.
     const escolhida = Math.max(this.speed, 0.001);
     const speed = this.jogoComecou ? escolhida : Math.max(escolhida, VELOCIDADE_PRE_JOGO);
     const gapMs = (this.events[this.idx]!.ts - ev.ts) / speed;
-    // ts fora de ordem => 0. Acontece de verdade: o snapshot é amostrador e traz
-    // `goal` com ts ANTERIOR ao `kickoff` (A3).
-    const delay = Math.min(Math.max(gapMs, 0), gapTetoMs(this.speed, this.jogoComecou));
+    // Out-of-order timestamps yield zero delay; snapshots can contain older events.
+    const delay = Math.min(Math.max(gapMs, 0), maxReplayGapMs(this.speed, this.jogoComecou));
     this.timer = setTimeout(() => this.fire(), delay);
   }
 }

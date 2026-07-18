@@ -1,66 +1,46 @@
-/**
- * A leitura de chance da sala — os pedaços PUROS do fio odds → tela.
- *
- * Vive fora de rooms.ts pelo mesmo motivo que lances.ts: é a lógica testável
- * (mescla da linha do tempo, tradução de nome do feed, cap do histórico) sem o
- * processo da sala em volta. rooms.ts só liga os fios.
- */
+/** Pure room chance-reading helpers, kept separate from room orchestration. */
 
 import type { NormEvent, OddsEvent, ScoreEvent } from '@palpitei/core';
 
-/**
- * Uma explicação de cotação como a SALA a guarda e o §8 a transmite. `text` é a
- * frase pt que o core já emite — fallback/log; a tela redige a própria frase
- * bilíngue pelos campos estruturados.
- */
-export type LeituraDeChance = {
-  /** Identidade estável do evento+opção; evita colisão em reconexões SSE. */
+/** Structured chance explanation sent in room state. */
+export type ChanceReading = {
+  /** Stable event-and-option identity for SSE reconnects. */
   id: string;
   ts: number;
   minute: number | null;
   priceName: string;
   fromPct: number;
   toPct: number;
-  /** A causa em forma ('goal', 'corner', …) — ausente sem lance na janela. */
+  /** Context action such as `goal`, when available. */
   contextAction?: string;
   text: string;
 };
 
-/** O teto do histórico que viaja no room_state. */
-export const MAX_LEITURAS = 60;
+/** Maximum number of readings included in room state. */
+export const MAX_CHANCE_READINGS = 60;
 
 /**
- * Mescla placar e cotações numa linha do tempo só, por ts. NO EMPATE, o placar
- * vem ANTES: o explicador precisa do lance como contexto ANTES da cotação que
- * ele move ("subiu depois do gol" só sai se o gol já passou por ele).
- *
- * É uma mescla de dois cursores, não um sort: a série de placar segue a ordem
- * de seq — que é a verdade dela — mesmo quando o ts vem fora de ordem (A3).
- * Um sort por ts reordenaria lances entre si.
+ * Merges score and odds timelines by timestamp, keeping score first on ties.
+ * Score events retain feed order instead of being independently sorted.
  */
-export function mesclarLinhaDoTempo(placar: ScoreEvent[], odds: OddsEvent[]): NormEvent[] {
+export function mergeTimeline(scoreEvents: ScoreEvent[], oddsEvents: OddsEvent[]): NormEvent[] {
   const linha: NormEvent[] = [];
   let i = 0;
   let j = 0;
-  while (i < placar.length && j < odds.length) {
-    if (placar[i]!.ts <= odds[j]!.ts) linha.push(placar[i++]!);
-    else linha.push(odds[j++]!);
+  while (i < scoreEvents.length && j < oddsEvents.length) {
+    if (scoreEvents[i]!.ts <= oddsEvents[j]!.ts) linha.push(scoreEvents[i++]!);
+    else linha.push(oddsEvents[j++]!);
   }
-  while (i < placar.length) linha.push(placar[i++]!);
-  while (j < odds.length) linha.push(odds[j++]!);
+  while (i < scoreEvents.length) linha.push(scoreEvents[i++]!);
+  while (j < oddsEvents.length) linha.push(oddsEvents[j++]!);
   return linha;
 }
 
-/** O pct atual de cada opção do 1X2. Chave ausente = o feed ainda não disse. */
+/** Latest 1X2 percentage per option; absent keys have not been supplied by the feed. */
 export type Pct1x2 = { p1?: number; draw?: number; p2?: number };
 
-/**
- * Nome do preço no feed → id da opção da pergunta final_result.
- * O 1X2 real manda "part1"/"draw"/"part2"; os aliases ficam por segurança
- * (mesma lista do describe() do explicador). Desconhecido é null — nunca um
- * chute: pct inventado com cara de real é o G6.
- */
-export function idDaOpcao1x2(priceName: string): keyof Pct1x2 | null {
+/** Maps a feed price name to the `final_result` option identifier. */
+export function optionIdFor1x2(priceName: string): keyof Pct1x2 | null {
   const n = priceName.toLowerCase();
   if (n === 'part1' || n === '1' || n === 'home') return 'p1';
   if (n === 'draw' || n === 'x') return 'draw';
@@ -68,20 +48,16 @@ export function idDaOpcao1x2(priceName: string): keyof Pct1x2 | null {
   return null;
 }
 
-/**
- * Registra no mapa o último 1X2 conhecido. Só mexe nas opções que ESTE evento
- * cita: as outras seguem valendo (a última leitura de cada uma é a verdade
- * dela, como nos totais). Nome que não é opção do 1X2 não entra.
- */
-export function atualizarPct1x2(mapa: Pct1x2, ev: OddsEvent): void {
-  for (const price of ev.prices) {
-    const opcao = idDaOpcao1x2(price.name);
-    if (opcao) mapa[opcao] = price.pct;
+/** Updates only 1X2 options included in the event. */
+export function update1x2Percentages(percentages: Pct1x2, event: OddsEvent): void {
+  for (const price of event.prices) {
+    const optionId = optionIdFor1x2(price.name);
+    if (optionId) percentages[optionId] = price.pct;
   }
 }
 
-/** Mais recente PRIMEIRO, com teto: a sala não é um log infinito. */
-export function registrarLeitura(chances: LeituraDeChance[], leitura: LeituraDeChance): void {
-  chances.unshift(leitura);
-  if (chances.length > MAX_LEITURAS) chances.length = MAX_LEITURAS;
+/** Stores newest readings first and bounds room-state payload size. */
+export function recordChanceReading(readings: ChanceReading[], reading: ChanceReading): void {
+  readings.unshift(reading);
+  if (readings.length > MAX_CHANCE_READINGS) readings.length = MAX_CHANCE_READINGS;
 }

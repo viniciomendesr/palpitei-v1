@@ -53,7 +53,7 @@ test("a mensagem carrega o CONTEXTO estruturado (contextAction) para a tela redi
   assert.equal(emitted.length, 1);
   assert.equal(emitted[0].contextAction, "goal");
 
-  // Sem lance na janela: contextAction ausente — a tela não inventa causa.
+  // Without a play in the window, contextAction stays absent and the UI invents no cause.
   const { ex: ex2, emitted: em2 } = makeExplainer();
   ex2.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
   ex2.onOddsEvent(odds(T0 + 1000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
@@ -68,9 +68,8 @@ test("pequenas variações acumulam desde a última leitura publicada", () => {
   ex.onOddsEvent(odds(T0 + 1000, [{ name: "over", odds: 2.0, pct: 50.0 }])); // +2.0
   assert.equal(emitted.length, 0);
 
-  // +3.2 em relação ao último tick não bastaria no bug do replay: ele
-  // atualizava a referência a cada tick. A referência fica em 48.0 até a
-  // mudança publicada, então os +5.2 acumulados viram uma leitura real.
+  // The reference remains at 48.0 until a published change, so cumulative
+  // movement is measured instead of resetting on every replay tick.
   ex.onOddsEvent(odds(T0 + 2000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
   assert.equal(emitted.length, 1);
   assert.equal(emitted[0].fromPct, 48.0);
@@ -80,8 +79,8 @@ test("pequenas variações acumulam desde a última leitura publicada", () => {
 test("replay não precisa de uma oscilação isolada de 3 p.p. para mostrar o primeiro tempo", () => {
   const { ex, emitted } = makeExplainer();
 
-  // Reprodução reduzida da série real: cada tick do primeiro tempo é menor
-  // que 3 p.p., mas a mudança total é material. Antes, a aba Chances só
+  // Reduced reproduction of the production series: each first-half tick is
+  // below 3 p.p., while the total movement is material. Previously, Chances only
   // acordava no primeiro gol do segundo tempo, quando veio um salto enorme.
   ex.onOddsEvent(odds(T0, [{ name: "1", odds: 2.78, pct: 35.945 }]));
   ex.onOddsEvent(odds(T0 + 1_000, [{ name: "1", odds: 2.88, pct: 34.722 }]));
@@ -128,8 +127,8 @@ test("sem lance recente (>180s) não anexa contexto; queda usa 'caiu'", () => {
 
   assert.equal(emitted.length, 1);
   assert.ok(emitted[0].text.includes("caiu de 52.0% para 47.5%"));
-  // "depois" solto: o contexto agora sai contraído ("depois do gol"), então
-  // procurar "depois de" deixaria de pegar a regressão.
+  // Context is now contracted ("after the goal"), so the assertion must not
+  // rely on the longer phrase that preceded the regression.
   assert.ok(!emitted[0].text.includes("depois"), `texto: ${emitted[0].text}`);
   assert.ok(emitted[0].text.includes("menos de 1.5 gols"));
 });

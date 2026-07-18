@@ -1,17 +1,3 @@
-/**
- * GET/POST /api/pregame/:fixtureId — o palpite pré-jogo. Exige login.
- *
- * A identidade é o DID verificado do Bearer (CONTEXT §4) — nunca body.userId. O
- * modo demo NÃO usa esta rota: ele é 100% local (§5.1).
- *
- * GET devolve a partida, o palpite do fã (ou null), se travou (apito passou) e,
- * quando a partida encerra, LIQUIDA de forma preguiçosa: lê placar e escanteios
- * finais de match_events e credita o XP dos acertos. É idempotente (CAS em
- * settled_at), então liquidar a cada leitura não paga duas vezes.
- *
- * POST grava o palpite — recusado (409) depois do apito, porque a partir daí o
- * placar já influencia quem palpita: "justo pra todo mundo".
- */
 
 import { NextResponse } from 'next/server';
 import { gradePregame } from '@palpitei/core';
@@ -19,8 +5,8 @@ import { createEventRepo, createMatchRepo, createPregamePickRepo, createUserRepo
 import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 import { fixturesTxline } from '@/server/fixtures';
-import { parsePregameBody, travadoNoApito, xpEmJogo } from '@/server/pregame';
-import { mercadoPorId, mesmaLinha, oddsPregameTxline, SEM_MERCADOS } from '@/server/pregameOdds';
+import { parsePregameBody, isLockedAtKickoff, xpAtStake } from '@/server/pregame';
+import { marketById, matchesMarketLine, fetchPregameOdds, NO_PREGAME_MARKETS } from '@/server/pregameOdds';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,9 +32,6 @@ export async function GET(
   try {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
     const matches = createMatchRepo(db);
-    // O caminho normal semeia a fixture ao carregar a Home. Este fallback cobre
-    // link direto/F5 em um processo novo sem inventar dado: consulta a mesma
-    // fonte TxLINE e só persiste se a fixture realmente estiver no snapshot.
     let match = await matches.findById(fixtureId);
     if (!match) {
       const fixture = (await fixturesTxline()).find((f) => f.fixtureId === fixtureId);
@@ -60,7 +43,6 @@ export async function GET(
     const finished = estado === 'finished';
     const pregame = createPregamePickRepo(db);
 
-    // Liquidação lazy: no apito final, o placar e os escanteios já estão no banco.
     let final: { goalsA: number; goalsB: number; cornersTotal: number } | null = null;
     if (finished) {
       const totais = await createEventRepo(db).totaisFinais(fixtureId);
@@ -79,12 +61,9 @@ export async function GET(
     }
 
     const pick = await pregame.getByUserFixture(user.id, fixtureId);
-    // Snapshot é a fonte correta para a tela pré-jogo (a série /updates é para
-    // replay). Falha ou ausência chega como lista vazia explícita — não travamos
-    // a leitura do placar exato, mas nunca devolvemos uma linha fixa em seu lugar.
     const cotacoes = finished
-      ? { markets: SEM_MERCADOS, txlineAvailable: false }
-      : await oddsPregameTxline(fixtureId);
+      ? { markets: NO_PREGAME_MARKETS, txlineAvailable: false }
+      : await fetchPregameOdds(fixtureId);
     return NextResponse.json({
       match: {
         fixtureId,
@@ -97,7 +76,7 @@ export async function GET(
       pick,
       markets: cotacoes.markets,
       txlineOddsAvailable: cotacoes.txlineAvailable,
-      locked: travadoNoApito({ state: estado, startTs: match.startTime ?? null }, Date.now()),
+      locked: isLockedAtKickoff({ state: estado, startTs: match.startTime ?? null }, Date.now()),
       finished,
       final,
     });
@@ -132,33 +111,29 @@ export async function POST(
     }
     if (!match) return NextResponse.json({ error: 'partida não encontrada' }, { status: 404 });
 
-    // A trava no apito é servidor: o cliente pode mentir o horário, o banco não.
-    if (travadoNoApito({ state: match.state ?? 'scheduled', startTs: match.startTime ?? null }, Date.now())) {
+    if (isLockedAtKickoff({ state: match.state ?? 'scheduled', startTs: match.startTime ?? null }, Date.now())) {
       return NextResponse.json({ error: 'os palpites travam no apito inicial' }, { status: 409 });
     }
 
-    // Resultado e totais só podem ser salvos se a cotação atual da TxLINE ainda
-    // existe. A linha vem do cliente apenas para ser conferida contra a fonte;
-    // é essa linha verificada que fica gravada e que a liquidação usará.
     const dependeDeCotacao = parsed.fields.result !== null || parsed.fields.goals !== null || parsed.fields.corners !== null;
     if (dependeDeCotacao) {
-      const cotacoes = await oddsPregameTxline(fixtureId);
+      const cotacoes = await fetchPregameOdds(fixtureId);
       if (!cotacoes.txlineAvailable) {
         return NextResponse.json({ error: 'as cotações da TxLINE não estão disponíveis agora; tente de novo' }, { status: 503 });
       }
-      if (parsed.fields.result !== null && !mercadoPorId(cotacoes.markets, 'result')) {
+      if (parsed.fields.result !== null && !marketById(cotacoes.markets, 'result')) {
         return NextResponse.json({ error: 'a TxLINE não trouxe cotação de resultado para esta partida' }, { status: 409 });
       }
-      if (parsed.fields.goals !== null && !mesmaLinha(parsed.fields.goalsLine, mercadoPorId(cotacoes.markets, 'goals'))) {
+      if (parsed.fields.goals !== null && !matchesMarketLine(parsed.fields.goalsLine, marketById(cotacoes.markets, 'goals'))) {
         return NextResponse.json({ error: 'a cotação de gols mudou; atualize a tela antes de confirmar' }, { status: 409 });
       }
-      if (parsed.fields.corners !== null && !mesmaLinha(parsed.fields.cornersLine, mercadoPorId(cotacoes.markets, 'corners'))) {
+      if (parsed.fields.corners !== null && !matchesMarketLine(parsed.fields.cornersLine, marketById(cotacoes.markets, 'corners'))) {
         return NextResponse.json({ error: 'a cotação de escanteios mudou; atualize a tela antes de confirmar' }, { status: 409 });
       }
     }
 
     const pick = await createPregamePickRepo(db).upsert(user.id, fixtureId, parsed.fields);
-    return NextResponse.json({ ok: true, pick, xpEmJogo: xpEmJogo(parsed.fields) });
+    return NextResponse.json({ ok: true, pick, xpAtStake: xpAtStake(parsed.fields) });
   } catch (e) {
     return erroParaResposta(e, 'salvar o palpite pré-jogo');
   } finally {

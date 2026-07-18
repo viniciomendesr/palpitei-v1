@@ -1,36 +1,31 @@
 /**
- * O canal ao vivo — o chamador que o `startLiveIngest` nunca teve (CONTEXT §10).
- *
- * Vive no processo (globalThis, como db.ts/lobbies.ts, para sobreviver ao HMR):
- * uma réplica Railway, um ingest, um barramento. Responsabilidades por evento,
- * NESTA ordem:
- *
- *   1. filtrar por fixture (o stream entrega a devnet inteira) — descarte CONTADO;
- *   2. PERSISTIR (A1: o dataset rotaciona; gravar só no fim é apostar tudo num
- *      processo que não pode reiniciar) — assíncrono, falha contada e logada alto;
- *   3. rotear para a sala live via barramento — só o que passa no filtro de
- *      mercado (live-regras.ts); `foraDoMercado` sobe em vez de sumir.
- *
- * "open / 0 eventos" NÃO é sucesso (A7): só `normalizados > 0` prova que o
- * caminho vive. O status daqui + /api/live/status são os olhos do runbook —
- * no dia do jogo ninguém anexa debugger.
+ * Process-local live channel registry. Events are filtered, persisted, then
+ * routed only after the durable write succeeds.
  */
 
 import { gradePregame, type NormEvent } from '@palpitei/core';
 import {
   fetchFixtures,
   info,
-  liveResumo,
+  liveSummary,
   liveStatus,
-  segundosEmSilencio,
+  secondsSinceLastEvent,
   startLiveIngest,
+  stopLiveIngest,
   warn,
   type LiveStatus,
 } from '@palpitei/txline';
-import { createEventRepo, createMatchRepo, createOddsRepo, createPregamePickRepo } from '@palpitei/db';
+import {
+  createEventRepo,
+  createLiveFixtureRepo,
+  createMatchRepo,
+  createOddsRepo,
+  createPregamePickRepo,
+} from '@palpitei/db';
 import { createDb } from './db';
 import { enfileirarPersistenciaAntesDePublicar } from './eventPipeline';
-import { classificarParaSala, eventoEncerraPartida, fixturesAoVivo } from './live-regras';
+import { brokerRedisAoVivo } from './live-broker';
+import { classificarParaSala, eventoEncerraPartida, fixturesAoVivo, ingestAoVivoHabilitado } from './live-regras';
 
 type Contadores = {
   ignoradosDeOutrasFixtures: number;
@@ -39,7 +34,7 @@ type Contadores = {
   persistidosScores: number;
   persistidosOdds: number;
   falhasDePersistencia: number;
-  /** Eventos que não chegaram à sala porque sua gravação falhou. */
+  /** Events withheld from rooms because persistence failed. */
   publicacoesSuprimidasPorPersistencia: number;
   errosDeHandler: number;
 };
@@ -51,47 +46,41 @@ type Canal = {
   marcadaAoVivo: boolean;
   contadores: Contadores;
   handlers: Set<(ev: NormEvent) => void>;
-  /** Fila serializada de escrita: ordena os upserts e limita a concorrência a 1. */
+  /** Serial write queue preserves upsert order and limits concurrency to one. */
   fila: Promise<void>;
-  /**
-   * As funções de status DO BUNDLE que ligou o ingest. O Next empacota
-   * instrumentation.ts e as rotas separadamente, e o txline (transpilado como
-   * fonte) vira DUAS instâncias de módulo — o `liveStatus` importado pela rota
-   * não é o do bundle onde os streams vivem (medido no dry-run de 17/07: log
-   * dizia "ABERTO", a rota dizia "off"). O canal mora em globalThis, então
-   * capturar as funções aqui aponta sempre para a instância certa.
-   */
+  /** Status functions from the bundle that started the ingest. */
   txline: {
-    resumo: typeof liveResumo;
+    resumo: typeof liveSummary;
     status: () => { scores: LiveStatus; odds: LiveStatus };
-    silencio: typeof segundosEmSilencio;
+    silencio: typeof secondsSinceLastEvent;
   };
 };
 
 const CHAVE = '__palpitei_canais_ao_vivo__' as const;
-type GlobalComCanais = typeof globalThis & { [CHAVE]?: Map<number, Canal> };
+const CHAVE_REFRESH = '__palpitei_canais_ao_vivo_refresh__' as const;
+type GlobalComCanais = typeof globalThis & {
+  [CHAVE]?: Map<number, Canal>;
+  [CHAVE_REFRESH]?: ReturnType<typeof setInterval>;
+};
 
 const canaisAtivos = (): Map<number, Canal> | null => (globalThis as GlobalComCanais)[CHAVE] ?? null;
 
-/** A primeira fixture ativa, preservada para consumidores legados do status. */
+/** First active fixture, kept for legacy status consumers. */
 export function fixtureDoCanal(): number | null {
   return canaisAtivos()?.keys().next().value ?? null;
 }
 
-/** Todas as fixtures ativas: uma conexão SSE pode servir mais de uma partida. */
+/** All active fixtures; one SSE connection can serve multiple matches. */
 export function fixturesDosCanais(): number[] {
   return [...(canaisAtivos()?.keys() ?? [])];
 }
 
-/** Decide se uma sala deve usar o alimentador ao vivo. */
+/** Returns whether a room should use the local live feed. */
 export function fixtureTemCanalAoVivo(fixtureId: number): boolean {
   return canaisAtivos()?.has(fixtureId) ?? false;
 }
 
-/**
- * A sala live registra aqui o MESMO `processarEvento` que o ReplayRunner usa.
- * Devolve o unsubscribe; null quando o canal não está ligado (flags fechadas).
- */
+/** Registers a room handler and returns an unsubscribe function when live is enabled. */
 export function assinarCanalAoVivo(
   fixtureId: number,
   handler: (ev: NormEvent) => void,
@@ -102,11 +91,7 @@ export function assinarCanalAoVivo(
   return () => canal.handlers.delete(handler);
 }
 
-/**
- * Semeia a linha da fixture no `matches` — sem ela a sala dá 404 e, sem
- * `start_ts`, a âncora do relógio do ramo live não existe. Insiste com backoff:
- * sem a linha não há sala live, então falhar de vez não é opção silenciosa.
- */
+/** Seeds the match record with exponential retry so live rooms have a clock anchor. */
 async function semear(canal: Canal, tentativa = 0): Promise<void> {
   try {
     const fixtures = await fetchFixtures();
@@ -158,26 +143,22 @@ function publicarParaSala(canal: Canal, ev: NormEvent): void {
   }
 }
 
-function aoReceber(canal: Canal, ev: NormEvent): void {
+/** The leader persists before publishing; followers only route Redis events. */
+function aoReceber(canal: Canal, ev: NormEvent, publicarDistribuido?: (event: NormEvent) => Promise<void>): void {
   if (ev.fixtureId !== canal.fixtureId) {
     canal.contadores.ignoradosDeOutrasFixtures += 1;
     return;
   }
 
-  // Persistência ANTES do roteamento: a sala pode nem existir ainda, e o dado
-  // gravado é o que sobrevive a restart (A1). O callback SSE só ENFILEIRA: a
-  // publicação ocorre na mesma fila, após a escrita (e o settlement terminal)
-  // terminar. Odds grava TODO mercado da fixture — o upsertManyRaw filtra com
-  // eh1x2JogoInteiro, o mesmo critério da projeção que o replay lê.
+  // Persistence precedes routing so restarts and room creation can catch up.
+  let devePublicar = true;
   if (ev.kind === 'score') {
     enfileirarPersistenciaAntesDePublicar(
       canal,
       async () => {
         const db = createDb();
 
-        // Só score marca a partida como ao vivo. Esta decisão acontece DENTRO
-        // da fila: se o banco falhar, o próximo score tenta de novo em vez de o
-        // flag local afirmar uma transição que não foi gravada.
+        // Set live state only in the durable write queue.
         if (!canal.marcadaAoVivo) {
           info(`[canal-ao-vivo] PRIMEIRO score da fixture ${canal.fixtureId} — marcando 'live' no banco`);
           await createMatchRepo(db).setState(canal.fixtureId, 'live');
@@ -185,12 +166,11 @@ function aoReceber(canal: Canal, ev: NormEvent): void {
         }
 
         const events = createEventRepo(db);
-        await events.upsert(ev);
+        // Leader failover redelivery must not produce a second emission.
+        devePublicar = await events.upsert(ev);
         canal.contadores.persistidosScores += 1;
 
-        // A liquidação pré-jogo não depende de uma sala aberta. Como esta
-        // operação é aguardada, `game_finalised` só chega ao fã depois que o
-        // placar final e o XP idempotente foram processados.
+        // Settle pre-game picks before delivering the terminal score event.
         if (eventoEncerraPartida(ev)) {
           await createMatchRepo(db).setState(canal.fixtureId, 'finished');
           const totais = await events.totaisFinais(canal.fixtureId);
@@ -209,34 +189,34 @@ function aoReceber(canal: Canal, ev: NormEvent): void {
           }
         }
       },
-      () => publicarParaSala(canal, ev),
+      async () => {
+        if (!devePublicar) return;
+        // The leader routes locally and ignores its own Redis publication.
+        publicarParaSala(canal, ev);
+        if (publicarDistribuido) await publicarDistribuido(ev);
+      },
       (erro) => registrarFalhaDePersistencia(canal, `score seq ${ev.seq}`, erro),
     );
   } else {
     enfileirarPersistenciaAntesDePublicar(
       canal,
       async () => {
-        await createOddsRepo(createDb()).upsertManyRaw([ev.raw]);
+        const stats = await createOddsRepo(createDb()).upsertManyRaw([ev.raw]);
+        devePublicar = stats.gravados > 0;
         canal.contadores.persistidosOdds += 1;
       },
-      () => publicarParaSala(canal, ev),
+      async () => {
+        if (!devePublicar) return;
+        publicarParaSala(canal, ev);
+        if (publicarDistribuido) await publicarDistribuido(ev);
+      },
       (erro) => registrarFalhaDePersistencia(canal, `odds ${ev.messageId ?? ev.ts}`, erro),
     );
   }
 }
 
-/**
- * Liga o canal. Idempotente; um no-op silencioso quando as travas estão
- * fechadas (env ausente = DESLIGADO — a 3ª trava, live-regras.ts). É chamada
- * pelo `instrumentation.ts` no boot e, como plano B, na primeira linha do
- * GET /api/live/status.
- */
-export function iniciarCanalAoVivo(): void {
-  if (canaisAtivos()) return;
-  const fixtureIds = fixturesAoVivo(process.env);
-  if (!fixtureIds.length) return;
-
-  const canais = new Map<number, Canal>(fixtureIds.map((fixtureId) => [fixtureId, {
+function novoCanal(fixtureId: number): Canal {
+  return {
     fixtureId,
     iniciadoEm: Date.now(),
     semeada: false,
@@ -254,36 +234,143 @@ export function iniciarCanalAoVivo(): void {
     handlers: new Set(),
     fila: Promise.resolve(),
     txline: {
-      resumo: liveResumo,
+      resumo: liveSummary,
       status: () => ({ scores: liveStatus.scores, odds: liveStatus.odds }),
-      silencio: segundosEmSilencio,
+      silencio: secondsSinceLastEvent,
     },
-  }]));
+  };
+}
+
+function adicionarCanal(canais: Map<number, Canal>, fixtureId: number): void {
+  if (canais.has(fixtureId)) return;
+  const canal = novoCanal(fixtureId);
+  canais.set(fixtureId, canal);
+  info(`[canal-ao-vivo] fixture ${fixtureId} ativada`);
+  void semear(canal);
+}
+
+/** Synchronizes dynamic fixture selection without opening another TxLINE SSE pair. */
+async function sincronizarFixturesDoBanco(canais: Map<number, Canal>): Promise<void> {
+  try {
+    const fixtures = await createLiveFixtureRepo(createDb()).listActive();
+    for (const fixture of fixtures) adicionarCanal(canais, fixture.fixtureId);
+  } catch (e) {
+    warn(`[canal-ao-vivo] não consegui sincronizar live_fixtures: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** Replays durable events after Pub/Sub reconnect because Redis Pub/Sub is ephemeral. */
+async function reconciliarCanaisPeloBanco(canais: Map<number, Canal>): Promise<void> {
+  try {
+    const db = createDb();
+    for (const canal of canais.values()) {
+      const [scores, odds] = await Promise.all([
+        createEventRepo(db).listReplayByFixture(canal.fixtureId),
+        createOddsRepo(db).listReplayByFixture(canal.fixtureId),
+      ]);
+      const linha = [...scores, ...odds].sort((a, b) => {
+        if (a.ts !== b.ts) return a.ts - b.ts;
+        if (a.kind === 'score' && b.kind !== 'score') return -1;
+        if (a.kind !== 'score' && b.kind === 'score') return 1;
+        if (a.kind === 'score' && b.kind === 'score') return a.seq - b.seq;
+        return String((a as { messageId?: string }).messageId ?? '').localeCompare(String((b as { messageId?: string }).messageId ?? ''));
+      });
+      for (const event of linha) publicarParaSala(canal, event);
+    }
+  } catch (e) {
+    warn(`[canal-ao-vivo] reconciliação Redis→Postgres falhou: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** Activates a fixture in durable storage and makes it immediately local. */
+export async function ativarFixtureAoVivo(fixtureId: number): Promise<boolean> {
+  if (!ingestAoVivoHabilitado(process.env)) return false;
+  iniciarCanalAoVivo();
+  await createLiveFixtureRepo(createDb()).activate(fixtureId);
+  return garantirCanalAoVivo(fixtureId);
+}
+
+/** Ensures a local channel only for a fixture already activated in the database. */
+export async function garantirCanalAoVivo(fixtureId: number): Promise<boolean> {
+  if (!ingestAoVivoHabilitado(process.env)) return false;
+  iniciarCanalAoVivo();
+  const canais = canaisAtivos();
+  if (!canais) return false;
+  if (canais.has(fixtureId)) return true;
+  const ativa = (await createLiveFixtureRepo(createDb()).listActive()).some((fixture) => fixture.fixtureId === fixtureId);
+  if (!ativa) return false;
+  adicionarCanal(canais, fixtureId);
+  return true;
+}
+
+/** Starts the live channel once when live ingest is explicitly enabled. */
+export function iniciarCanalAoVivo(): void {
+  if (canaisAtivos()) return;
+  if (!ingestAoVivoHabilitado(process.env)) return;
+
+  const fixtureIds = fixturesAoVivo(process.env);
+  const canais = new Map<number, Canal>();
+  for (const fixtureId of fixtureIds) adicionarCanal(canais, fixtureId);
   (globalThis as GlobalComCanais)[CHAVE] = canais;
 
-  info(`[canal-ao-vivo] ligando fixtures ${fixtureIds.join(', ')} (TXLINE_LIVE_INGEST=true)`);
-  for (const canal of canais.values()) void semear(canal);
-  startLiveIngest((ev) => {
-    const canal = canais.get(ev.fixtureId);
-    if (canal) aoReceber(canal, ev);
+  info(`[canal-ao-vivo] ligando ingest (fixtures iniciais: ${fixtureIds.join(', ') || 'nenhuma'})`);
+  void sincronizarFixturesDoBanco(canais);
+  const globalComCanais = globalThis as GlobalComCanais;
+  const refresh = (globalComCanais[CHAVE_REFRESH] ??= setInterval(
+    () => void sincronizarFixturesDoBanco(canais),
+    15_000,
+  ));
+  refresh.unref?.();
+
+  const broker = brokerRedisAoVivo();
+  if (!broker) {
+    // Compatibility mode for a single replica without Redis.
+    startLiveIngest((ev) => {
+      const canal = canais.get(ev.fixtureId);
+      if (canal) aoReceber(canal, ev);
+    });
+    return;
+  }
+
+  void broker.iniciar({
+    onEvent: (ev) => {
+      const canal = canais.get(ev.fixtureId);
+      if (canal) publicarParaSala(canal, ev);
+    },
+    onLeadershipChange: (lider) => {
+      if (!lider) {
+        // Stop immediately on lease loss to prevent concurrent TxLINE streams.
+        stopLiveIngest();
+        return;
+      }
+      info('[canal-ao-vivo] lease Redis adquirida; esta réplica iniciou o SSE TxLINE');
+      startLiveIngest((ev) => {
+        if (!broker.ehLider()) return;
+        const canal = canais.get(ev.fixtureId);
+        if (canal) aoReceber(canal, ev, (event) => broker.publicar(event));
+      });
+    },
+    onSubscriberReady: () => void reconciliarCanaisPeloBanco(canais),
+  }).catch((e: unknown) => {
+    // Fail closed: without Redis, multiple replicas must not open duplicate SSE streams.
+    warn(`[canal-ao-vivo] Redis indisponível; ingest distribuído não iniciado: ${e instanceof Error ? e.message : String(e)}`);
   });
 }
 
-/** O LiveStatus SEM a amostra crua: payload da TxLINE não sai por rota pública (§7). */
+/** Removes raw TxLINE samples before exposing live status publicly. */
 function semAmostra(s: LiveStatus): Omit<LiveStatus, 'ultimaAmostra'> {
   const { ultimaAmostra: _descartada, ...resto } = s;
   return resto;
 }
 
-/** O painel do runbook — tudo que os olhos precisam, nada que o §7 proíbe. */
+/** Returns operational status without licensed raw payloads. */
 export function statusDoCanal(): Record<string, unknown> {
   const canais = canaisAtivos();
   const canal = canais?.values().next().value as Canal | undefined;
-  // Canal ligado: ler pelo bundle que LIGOU (canal.txline) — o import local
-  // deste arquivo pode ser a outra instância do módulo, com contadores zerados.
-  const resumo = canal ? canal.txline.resumo() : liveResumo();
+  // Read from the bundle that started the channel to avoid split module state.
+  const resumo = canal ? canal.txline.resumo() : liveSummary();
   const streams = canal ? canal.txline.status() : { scores: liveStatus.scores, odds: liveStatus.odds };
-  const silencio = canal ? canal.txline.silencio : segundosEmSilencio;
+  const silencio = canal ? canal.txline.silencio : secondsSinceLastEvent;
   return {
     ativo: canais !== null,
     fixtureId: canal?.fixtureId ?? null,
@@ -294,6 +381,7 @@ export function statusDoCanal(): Record<string, unknown> {
     streams: { scores: semAmostra(streams.scores), odds: semAmostra(streams.odds) },
     silencioSegundos: { scores: silencio('scores'), odds: silencio('odds') },
     contadores: canal?.contadores ?? null,
+    distribuicao: brokerRedisAoVivo()?.estado() ?? { enabled: false, state: 'disabled', leader: true, lastError: null },
     fixtures: [...(canais?.values() ?? [])].map((c) => ({
       fixtureId: c.fixtureId,
       iniciadoEm: c.iniciadoEm,

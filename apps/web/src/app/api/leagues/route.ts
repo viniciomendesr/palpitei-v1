@@ -1,14 +1,3 @@
-/**
- * GET  /api/leagues — as ligas do fã (as que ele criou e as que entrou).
- * POST /api/leagues — cria uma liga. Corpo: `{ name }`.
- *
- * NÃO existe `userId` em lugar nenhum daqui, e não é esquecimento: a identidade
- * é o DID verificado do Bearer (CONTEXT §4). Quem manda o nome da liga é o fã;
- * quem diz quem ele é é a Privy.
- *
- * O modo demo (§5.1) não passa por aqui: a liga do jurado é mock local, sem
- * rede. É o caminho ensaiado e ele não pode depender de nada.
- */
 
 import { NextResponse } from 'next/server';
 import { createLeagueRepo, createUserRepo, LIGAS_FREE } from '@palpitei/db';
@@ -32,23 +21,16 @@ export async function GET(req: Request): Promise<NextResponse> {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
     const ligas = createLeagueRepo(db);
     const minhas = await ligas.listForUser(user.id);
-    // Toda liga criada põe o dono em league_members na mesma transação. Logo as
-    // linhas `iLead` desta lista são exatamente as ligas criadas, sem uma
-    // segunda consulta de count.
     const criadas = minhas.reduce((n, liga) => n + (liga.iLead ? 1 : 0), 0);
 
     return NextResponse.json({
       leagues: minhas.map((l) => ({
         id: l.id,
         name: l.name,
-        // O número vem do banco. O "1 membro" da tela era string fixa do
-        // dicionário — é justamente o que este campo aposenta.
         memberCount: l.memberCount,
         iLead: l.iLead,
         inviteCode: l.inviteCode,
       })),
-      // Só as ligas CRIADAS contam para a cota. Entrar na liga de um amigo não
-      // gasta o free — senão o primeiro convidado não conseguiria aceitar.
       ownedCount: criadas,
       freeLimit: LIGAS_FREE,
       isPremium: user.isPremium,
@@ -61,8 +43,6 @@ export async function GET(req: Request): Promise<NextResponse> {
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
-  // Autentica ANTES de ler o corpo: quem não tem sessão não descobre nem que
-  // este endpoint valida nome.
   const did = await didVerificado(req);
   if (!did) {
     return NextResponse.json(
@@ -80,13 +60,9 @@ export async function POST(req: Request): Promise<NextResponse> {
   const db = createDb();
   try {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
-    // O gate do free vive DENTRO do repo, sob trava da linha do fã — não num
-    // `if` aqui. A tela também checa, mas só para não levar o fã a um erro
-    // evitável; a regra é do banco.
     const liga = await createLeagueRepo(db).create(user.id, name);
     return NextResponse.json({ ok: true, league: { ...liga, iLead: true } }, { status: 201 });
   } catch (e) {
-    // LeagueLimitError vira 402 aqui — o paywall, não um silêncio.
     return erroParaResposta(e, 'POST /api/leagues');
   } finally {
     await db.close?.();

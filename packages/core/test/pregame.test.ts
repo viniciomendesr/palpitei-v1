@@ -8,7 +8,7 @@ import {
   type PregameFinal,
 } from "../src/pregame.ts";
 
-/** Um palpite "vazio" — nada preenchido. Cada teste liga só o que mede. */
+/** Empty pick; each test enables only the market it exercises. */
 const EMPTY: PregamePickInput = {
   result: null,
   scoreA: 0,
@@ -32,9 +32,9 @@ test("tudo certo credita os 140 XP e marca cada mercado", () => {
     scoreA: 2,
     scoreB: 1,
     scoreSet: true,
-    goals: "over", // 3 gols > 2,5
+    goals: "over", // 3 goals > 2.5
     goalsLine: 2.5,
-    corners: "over", // 12 > 9,5
+    corners: "over", // 12 > 9.5
     cornersLine: 9.5,
   };
   const g = gradePregame(pick, final);
@@ -92,17 +92,17 @@ test("linha ausente, inteira ou asiática não liquida como se fosse uma cotaç�
 test("placar exato: só pontua com scoreSet, e exige os dois lados", () => {
   const final: PregameFinal = { goalsP1: 2, goalsP2: 1, cornersTotal: 0 };
 
-  // placar certo mas o fã não mexeu no stepper → não conta
+  // A correct score does not count unless the fan set it explicitly.
   const naoTocou = gradePregame({ ...EMPTY, scoreA: 2, scoreB: 1, scoreSet: false }, final);
   assert.equal(naoTocou.scoreCorrect, null);
   assert.equal(naoTocou.awardedXp, 0);
 
-  // placar exato certo
+  // Correct exact score.
   const cravou = gradePregame({ ...EMPTY, scoreA: 2, scoreB: 1, scoreSet: true }, final);
   assert.equal(cravou.scoreCorrect, true);
   assert.equal(cravou.awardedXp, PREGAME_XP.score);
 
-  // um lado errado → placar errado
+  // One incorrect side makes the exact score incorrect.
   const meio = gradePregame({ ...EMPTY, scoreA: 2, scoreB: 0, scoreSet: true }, final);
   assert.equal(meio.scoreCorrect, false);
   assert.equal(meio.awardedXp, 0);

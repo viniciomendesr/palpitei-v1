@@ -34,3 +34,15 @@ coverage/
 
 # Worktrees de agentes: são cópias de trabalho, não fazem parte do projeto.
 .claude/worktrees/
+
+# Instruções e registros internos de agentes: ficam locais e não fazem parte da
+# entrega que avaliadores precisam clonar ou executar.
+AGENTS.md
+CLAUDE.md
+docs/CONTEXT.md
+docs/handoff-v0-para-v1.md
+docs/code-commentary.md
+
+# Materiais auxiliares de produção de vídeo/apresentação, não usados pelo webapp.
+apps/web/public/media/
+docs/img/palpitei-backend-16x9*.png

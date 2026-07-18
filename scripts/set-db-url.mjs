@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Cola a connection string do Supabase no .env, com validação.
+// Stores a validated Supabase connection string in .env.
 //
-//   node scripts/set-db-url.mjs 'postgresql://postgres.xxx:SENHA@aws-0-sa-east-1.pooler.supabase.com:6543/postgres'
+//   node scripts/set-db-url.mjs 'postgresql://postgres.xxx:PASSWORD@aws-0-sa-east-1.pooler.supabase.com:6543/postgres'
 //
-// Aceita a URI entre aspas simples (importante: senha com # ou ! confunde o shell sem elas).
-// Faz o percent-encoding da senha sozinho, testa a conexão de verdade e só então grava.
+// Quote the URI when the password includes shell-sensitive characters such as # or !.
+// Percent-encode the password, verify the connection, then write the file.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -36,7 +36,7 @@ if (bruta.startsWith('https://')) {
   process.exit(1);
 }
 
-// Separa a senha na mão: uma senha com "@" quebraria o parser de URL.
+// Split the password manually because an @ inside it would break URL parsing.
 const m = bruta.match(/^(postgres(?:ql)?):\/\/([^:]+):(.*)@([^@]+)$/);
 if (!m) {
   console.error(`✗ Não reconheci o formato. Esperado:

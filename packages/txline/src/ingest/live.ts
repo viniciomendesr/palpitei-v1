@@ -1,21 +1,5 @@
-// Ingestor ao vivo: mantém as conexões SSE de scores e odds abertas, normaliza
-// cada evento e entrega ao handler injetado. Renovação de JWT em 401/403,
-// backoff exponencial teto 15s e retomada via Last-Event-ID.
-//
-// ⚠️ ESTE CAMINHO NUNCA PROCESSOU UM EVENTO REAL (A7).
-//
-// Tudo que o v0 validou foi replay. Os streams só foram vistos "abertos e
-// saudáveis com 0 eventos" — sem partida coberta ao vivo, eles conectam e
-// silenciam. A trilha exige "a live product that works during a match", e a
-// janela é France × England 18/07 21:00 UTC.
-//
-// Por isso aqui tem log generoso e status observável ALÉM do normal: quando o
-// jogo começar, ninguém vai poder anexar um debugger. As perguntas que só esse
-// jogo responde: chega evento? em que volume? o payload normaliza? o
-// Last-Event-ID retoma de onde parou?
-//
-// Cuidado de leitura: "open / 0 eventos" NÃO é sucesso — é o estado A7. Só
-// `eventos > 0` prova que o caminho vive. Contador que não sobe é sintoma.
+// Live SSE ingestion for scores and odds. It normalizes events, renews JWTs on
+// 401/403, reconnects with bounded backoff, and resumes through Last-Event-ID.
 
 import { EventSource } from "eventsource";
 import type { NormEvent } from "@palpitei/core";
@@ -28,18 +12,18 @@ export type LiveState = "off" | "connecting" | "open" | "reconnecting";
 
 export type LiveStatus = {
   state: LiveState;
-  /** Eventos SSE recebidos (inclui os que não normalizaram). */
+  /** Received SSE events, including payloads that could not be normalized. */
   recebidos: number;
-  /** Eventos que viraram NormEvent — o número que PROVA que o caminho vive. */
+  /** Events successfully normalized to NormEvent. */
   normalizados: number;
-  /** Recebidos e descartados (payload não normalizável). */
+  /** Received but discarded because the payload could not be normalized. */
   descartados: number;
   conectadoEm: number | null;
   primeiroEventoEm: number | null;
   ultimoEventoEm: number | null;
   reconexoes: number;
   ultimoErro?: string;
-  /** Amostra do último payload cru (truncada) — o A7 é diagnóstico às cegas. */
+  /** Truncated sample of the latest raw payload for diagnostics. */
   ultimaAmostra?: string;
   lastEventId?: string;
 };
@@ -62,18 +46,18 @@ export const liveStatus: { scores: LiveStatus; odds: LiveStatus } = {
   odds: statusNovo(),
 };
 
-/** Segundos desde o último evento. null = nunca chegou nenhum (o estado A7). */
-export function segundosEmSilencio(label: "scores" | "odds"): number | null {
+/** Seconds since the latest event; null means none has arrived. */
+export function secondsSinceLastEvent(label: "scores" | "odds"): number | null {
   const t = liveStatus[label].ultimoEventoEm;
   return t === null ? null : Math.round((Date.now() - t) / 1000);
 }
 
-/** Resumo de uma linha para a rota de diagnóstico / chip da UI. */
-export function liveResumo(): string {
+/** One-line summary for diagnostics and UI status. */
+export function liveSummary(): string {
   return (["scores", "odds"] as const)
     .map((l) => {
       const s = liveStatus[l];
-      const sil = segundosEmSilencio(l);
+      const sil = secondsSinceLastEvent(l);
       return `${l}=${s.state}/${s.normalizados}ev${sil === null ? " (NUNCA recebeu)" : ` (há ${sil}s)`}`;
     })
     .join(" ");
@@ -119,7 +103,7 @@ function abreStream(
             Authorization: `Bearer ${token}`,
             "X-Api-Token": getCredentials().apiToken,
           };
-          // A lib pode já ter posto o header de retomada; não duplicar.
+          // The library may already have set the resume header.
           const temId = Object.keys(headers).some((k) => k.toLowerCase() === "last-event-id");
           if (lastEventId && !temId) headers["Last-Event-ID"] = lastEventId;
           return fetch(input, { ...init, headers });
@@ -153,7 +137,6 @@ function abreStream(
       status.ultimoEventoEm = agora;
       if (status.primeiroEventoEm === null) {
         status.primeiroEventoEm = agora;
-        // Marco: é literalmente a primeira vez que este código vê um evento real.
         info(`[${label}] 🎉 PRIMEIRO evento ao vivo recebido — o caminho A7 está VIVO.`);
       }
       if (ev.lastEventId) {
@@ -165,8 +148,7 @@ function abreStream(
       status.ultimaAmostra = cru.slice(0, 300);
       if (amostrasLogadas < AMOSTRAS_LOGADAS) {
         amostrasLogadas += 1;
-        // As primeiras amostras cruas: no dia do jogo é o que diz se o payload
-        // ao vivo tem o mesmo formato do replay.
+        // Capture initial raw samples to compare live and replay payload shapes.
         info(`[${label}] amostra crua #${amostrasLogadas}: ${cru.slice(0, 300)}`);
       }
 
@@ -174,13 +156,12 @@ function abreStream(
       try {
         parsed = JSON.parse(cru);
       } catch {
-        /* cai no contador de descartes abaixo */
+        /* handled by the discard counter below */
       }
       const norm = parsed ? normalize(parsed) : null;
       if (!norm) {
         status.descartados += 1;
-        // 1º, 2º… e depois 1 a cada 50: descarte em massa não pode inundar o log
-        // nem sumir dele.
+        // Log the first two drops and then every 50th to preserve signal.
         if (status.descartados <= 2 || status.descartados % 50 === 1) {
           warn(`[${label}] payload não normalizável (#${status.descartados}): ${cru.slice(0, 200)}`);
         }
@@ -194,7 +175,7 @@ function abreStream(
       try {
         onEvent(norm);
       } catch (e: any) {
-        // Handler que explode não pode derrubar o stream no meio do jogo.
+        // A failing handler must not terminate the stream.
         warn(`[${label}] handler falhou no evento da fixture ${norm.fixtureId}: ${e?.message}`);
       }
     };
@@ -240,9 +221,8 @@ function abreStream(
 }
 
 /**
- * Abre os streams de scores e odds. Idempotente: não duplica conexões abertas.
- * `onEvent` recebe todo evento normalizado — o roteamento por fixture é de quem
- * chama (o pacote não conhece salas nem bus).
+ * Opens score and odds streams idempotently. Callers receive normalized events
+ * and own fixture routing; this package does not know rooms or the message bus.
  */
 export function startLiveIngest(onEvent: (ev: NormEvent) => void): void {
   if (scoresHandle || oddsHandle) return;
@@ -262,6 +242,6 @@ export function stopLiveIngest(): void {
   oddsHandle = null;
 }
 
-export function liveAtivo(): boolean {
+export function isLiveIngestActive(): boolean {
   return scoresHandle !== null || oddsHandle !== null;
 }

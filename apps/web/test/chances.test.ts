@@ -2,10 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { idDaOpcaoChance, redigeChance } from '../src/lib/chances.ts';
 
-// O redator é PURO e recebe o dicionário: aqui entram os MESMOS templates dos
-// dois dicionários de i18n.tsx (que este teste não pode importar — o arquivo
-// tem JSX e o node:test roda só com strip-types). Se o template mudar lá,
-// mude aqui junto: o que se testa é a redação, não o arquivo.
+// The renderer is pure and receives its dictionary. These templates mirror the
+// i18n dictionaries, which this Node test cannot import because they contain JSX.
 
 const ptDic = {
   chanceUp: 'A chance de {nome} subiu de {de}% para {para}%{causa}.',
@@ -80,7 +78,7 @@ test('mapa de nomes do feed: part2|2|away → teamB, 1|home → teamA, x → emp
   assert.match(frase('1'), /^A chance de França subiu/);
   assert.match(frase('home'), /^A chance de França subiu/);
   assert.match(frase('x'), /^A chance de empate subiu/);
-  // Case do feed não importa: o mapa compara em minúsculas.
+  // Feed casing does not matter because the map compares lowercase names.
   assert.match(frase('Part1'), /^A chance de França subiu/);
 });
 

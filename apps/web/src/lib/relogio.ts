@@ -1,4 +1,4 @@
-/** Interpola relógio de jogo entre eventos sem deixar a parede regredir a âncora. */
+/** Interpolates the match clock between events without moving behind its anchor. */
 export function minutoDoReplay(
   ancoraGameSeconds: number,
   ancoraRealAtMs: number,
@@ -8,7 +8,7 @@ export function minutoDoReplay(
   return Math.floor(segundoDoReplay(ancoraGameSeconds, ancoraRealAtMs, speed, agoraMs) / 60);
 }
 
-/** Segundos de jogo desde a âncora, sem arredondamento a minuto. */
+/** Match seconds since the anchor, without minute rounding. */
 export function segundoDoReplay(
   ancoraGameSeconds: number,
   ancoraRealAtMs: number,
@@ -19,12 +19,12 @@ export function segundoDoReplay(
   return Math.floor(ancoraGameSeconds + decorridoRealS * speed);
 }
 
-/** Nunca extrapola além do último relógio que realmente existe na timeline. */
+/** Never extrapolates beyond the latest clock present in the timeline. */
 export function limitarSegundoDoReplay(interpolado: number, maximoReal: number | null): number {
   return maximoReal === null ? interpolado : Math.min(interpolado, maximoReal);
 }
 
-/** Formata segundos de jogo em `MM:SS`. */
+/** Formats match seconds as `MM:SS`. */
 export function formataRelogio(totalGameSeconds: number): string {
   const s = Math.max(0, totalGameSeconds);
   const mm = String(Math.floor(s / 60)).padStart(2, '0');

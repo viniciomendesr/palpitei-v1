@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TxlineHttpError } from '@palpitei/txline';
 import {
-  extrairMercadosPregame,
-  linhaDoMercado,
-  mercadoPorId,
-  mesmaLinha,
-  oddsPregameTxline,
-  resetOddsPregameTxlineParaTeste,
-  statusOddsPregameTxline,
+  extractPregameMarkets,
+  extractMarketLine,
+  marketById,
+  matchesMarketLine,
+  fetchPregameOdds,
+  resetPregameOddsForTest,
+  getPregameOddsStatus,
 } from '../src/server/pregameOdds.ts';
 
 const base = {
@@ -18,16 +18,16 @@ const base = {
 };
 
 test('linhaDoMercado lê a string da TxLINE e rejeita linhas com push/meio ganho', () => {
-  assert.equal(linhaDoMercado('line=2.5'), 2.5);
-  assert.equal(linhaDoMercado('sport=football; line = 9.5'), 9.5);
-  assert.equal(linhaDoMercado({ line: 3.5 }), 3.5);
-  assert.equal(linhaDoMercado('line=3'), null, 'linha inteira pode empatar');
-  assert.equal(linhaDoMercado('line=2.25'), null, 'linha asiática não é binária');
-  assert.equal(linhaDoMercado('wrong=2.5'), null);
+  assert.equal(extractMarketLine('line=2.5'), 2.5);
+  assert.equal(extractMarketLine('sport=football; line = 9.5'), 9.5);
+  assert.equal(extractMarketLine({ line: 3.5 }), 3.5);
+  assert.equal(extractMarketLine('line=3'), null, 'linha inteira pode empatar');
+  assert.equal(extractMarketLine('line=2.25'), null, 'linha asiática não é binária');
+  assert.equal(extractMarketLine('wrong=2.5'), null);
 });
 
 test('extrai uma lista de mercados TxLINE e escolhe a linha de gols mais equilibrada', () => {
-  const markets = extrairMercadosPregame([
+  const markets = extractPregameMarkets([
     {
       ...base,
       SuperOddsType: '1X2_PARTICIPANT_RESULT',
@@ -72,12 +72,12 @@ test('extrai uma lista de mercados TxLINE e escolhe a linha de gols mais equilib
       options: [{ id: 'over', pct: 51.2 }, { id: 'under', pct: 48.8 }],
     },
   ]);
-  assert.equal(mesmaLinha(3.5, mercadoPorId(markets, 'goals')), true);
-  assert.equal(mesmaLinha(2.5, mercadoPorId(markets, 'goals')), false);
+  assert.equal(matchesMarketLine(3.5, marketById(markets, 'goals')), true);
+  assert.equal(matchesMarketLine(2.5, marketById(markets, 'goals')), false);
 });
 
 test('arrays desalinhados, Pct NA, período e linha inválida não viram uma chance inventada', () => {
-  const markets = extrairMercadosPregame([
+  const markets = extractPregameMarkets([
     {
       ...base,
       SuperOddsType: '1X2_PARTICIPANT_RESULT',
@@ -106,8 +106,8 @@ test('arrays desalinhados, Pct NA, período e linha inválida não viram uma cha
 });
 
 test('falha da TxLINE fica observável sem registrar corpo ou segredo', async () => {
-  resetOddsPregameTxlineParaTeste();
-  const indisponivel = await oddsPregameTxline(
+  resetPregameOddsForTest();
+  const indisponivel = await fetchPregameOdds(
     700003,
     async () => {
       throw new TxlineHttpError(503, '/odds/snapshot/700003', 'Bearer segredo-que-nao-pode-vazar');
@@ -115,10 +115,10 @@ test('falha da TxLINE fica observável sem registrar corpo ou segredo', async ()
   );
 
   assert.deepEqual(indisponivel, { markets: [], txlineAvailable: false });
-  const status = statusOddsPregameTxline();
-  assert.equal(status.consultasTxline, 1);
+  const status = getPregameOddsStatus();
+  assert.equal(status.txlineQueries, 1);
   assert.equal(status.cacheHits, 0);
-  assert.equal(status.indisponibilidades, 1);
-  assert.equal(status.ultimoMotivo, 'HTTP 503');
-  assert.equal(typeof status.ultimaIndisponibilidadeEm, 'number');
+  assert.equal(status.unavailableResponses, 1);
+  assert.equal(status.lastUnavailableReason, 'HTTP 503');
+  assert.equal(typeof status.lastUnavailableAt, 'number');
 });

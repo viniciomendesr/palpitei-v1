@@ -53,3 +53,36 @@ test('falha de persistência suprime a publicação e não mata a fila do stream
   assert.deepEqual(publicados, ['evento-seguinte']);
   assert.deepEqual(falhas, ['Postgres indisponível']);
 });
+
+test('a fila aguarda o fan-out assíncrono antes do próximo evento', async () => {
+  const fila: FilaDeEventos = { fila: Promise.resolve() };
+  const ordem: string[] = [];
+  let liberarBroker!: () => void;
+  const brokerLento = new Promise<void>((resolve) => {
+    liberarBroker = resolve;
+  });
+
+  enfileirarPersistenciaAntesDePublicar(
+    fila,
+    async () => { ordem.push('persistir-1'); },
+    async () => {
+      ordem.push('publicar-1');
+      await brokerLento;
+      ordem.push('broker-1');
+    },
+    () => { ordem.push('falha'); },
+  );
+  enfileirarPersistenciaAntesDePublicar(
+    fila,
+    async () => { ordem.push('persistir-2'); },
+    () => { ordem.push('publicar-2'); },
+    () => { ordem.push('falha'); },
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(ordem, ['persistir-1', 'publicar-1']);
+  liberarBroker();
+  await fila.fila;
+  assert.deepEqual(ordem, ['persistir-1', 'publicar-1', 'broker-1', 'persistir-2', 'publicar-2']);
+});

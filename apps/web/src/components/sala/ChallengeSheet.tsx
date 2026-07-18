@@ -1,20 +1,5 @@
 'use client';
 
-/**
- * BOTTOM SHEET DO DESAFIO — a tela onde o jogo acontece.
- *
- * Ancorado em `position:absolute` no rodapé da sala (por isso a sala não rola:
- * ela clipa, e quem rola é o miolo dela). Sobe com o keyframe `sheetUp` do ds.
- *
- * O rodapé diz "a janela fecha antes do lance que resolve o desafio, justo pra
- * todo mundo" — e isso é regra de motor, não texto bonito: se o evento resolvedor
- * chega com a janela ainda aberta, a pergunta é ANULADA (sem XP), nunca resolvida.
- *
- * SOBRE O CONTADOR: `secs` aqui é PRESENTAÇÃO. O prazo real vem do
- * `question_open.closesAt`, que é ts do evento da TxLINE (via Clock), nunca o
- * relógio do browser. Um contador derivado do relógio de parede diverge do
- * agendador do servidor e fecha a janela sozinho — foi bug real no v0 (B2).
- */
 
 import type { ChallengeText } from '@/lib/i18n';
 import type { ChallengeSpec } from '@/lib/mock';
@@ -30,23 +15,15 @@ interface Props {
   onAnswer: (optId: string) => void;
 }
 
-/**
- * O sheet só existe na fase `question`: no instante em que você responde (ou o
- * tempo fecha), a sala troca pra tela de resultado e ele sai. Por isso aqui NÃO
- * existe estado "respondido" — a revelação da resposta certa é lá, em tela cheia.
- * (O protótipo carregava um ramo de estilo pro estado respondido dentro do sheet
- * que nunca chegava a rodar. Não foi portado.)
- */
 export function ChallengeSheet({ spec, text, secs, duration, onAnswer }: Props) {
   const { t } = useI18n();
 
   const timerPct = Math.max(0, Math.round((secs / duration) * 100));
-  // Os últimos 4 segundos ficam vermelhos — é o único uso de --red aqui.
+  // This is presentational only; the server enforces the actual deadline.
   const timerColor = secs <= 4 ? 'var(--red)' : 'var(--lime)';
 
   return (
     <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20 }}>
-      {/* véu: o conteúdo da sala some por baixo do sheet em vez de cortar seco */}
       <div
         style={{
           height: 72,
@@ -63,14 +40,10 @@ export function ChallengeSheet({ spec, text, secs, duration, onAnswer }: Props) 
           borderTop: '1.5px solid var(--lime-line)',
           borderRadius: 'var(--r-4xl) var(--r-4xl) 0 0',
           padding: '12px 20px 24px',
-          // --shadow-toast é o token de sombra neutra do sistema. O protótipo
-          // escrevia um rgba(0,0,0,.75) próprio; um preto hardcoded a mais é um
-          // preto que não acompanha o sistema.
           boxShadow: 'var(--shadow-toast)',
           animation: 'sheetUp .38s cubic-bezier(.2,.85,.25,1) both',
         }}
       >
-        {/* alça */}
         <div
           style={{
             width: 40,
@@ -100,7 +73,6 @@ export function ChallengeSheet({ spec, text, secs, duration, onAnswer }: Props) 
           </span>
         </div>
 
-        {/* timer */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12 }}>
           <div
             style={{
@@ -150,12 +122,6 @@ export function ChallengeSheet({ spec, text, secs, duration, onAnswer }: Props) 
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
           {spec.optIds.map((id) => {
-            // AUSENTE ≠ ZERO (G8). `pct` do contrato é `number | null`: quando a
-            // TxLINE manda `Prices: []` com `PriceNames` cheio, NÃO existe chance
-            // pra essa opção — não é uma chance de 0%. Escrever `?? 0` aqui
-            // imprime "0%" na cara do fã e mente ("a chance caiu pra zero"): foi
-            // esse exato engano que gerou as 115 explicações fantasma do v0.
-            // Sem número, a opção aparece sem número. É a leitura honesta.
             const pct = spec.pct[id];
             const label = text.opts[id];
             return (
@@ -182,7 +148,7 @@ export function ChallengeSheet({ spec, text, secs, duration, onAnswer }: Props) 
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{label ?? id}</span>
-                {/* A chance da opção — "atualizada ao vivo", nunca "odds". */}
+                {/* A missing probability is not 0%; omit it rather than fabricating a value. */}
                 {pct !== undefined && pct !== null && (
                   <span style={{ fontSize: 12.5, fontWeight: fw.heavy, color: 'var(--text-muted)' }}>
                     {pct}%

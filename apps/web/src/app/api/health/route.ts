@@ -5,7 +5,6 @@ import { createDb } from '@/server/db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Health check de deploy: não declara a aplicação saudável sem banco e schema. */
 export async function GET(): Promise<NextResponse> {
   try {
     const readiness = await assertDbReady(createDb());

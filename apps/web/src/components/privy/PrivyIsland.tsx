@@ -1,6 +1,5 @@
 'use client';
 
-/** Ponte cliente da Privy: DID é a identidade; o watchdog torna falhas de boot visíveis. */
 
 import {
   createContext,
@@ -20,50 +19,38 @@ import {
 } from '@privy-io/react-auth/solana';
 import { setAuthTokenProvider } from '@/lib/api';
 
-/** O que uma carteira Solana do fã expõe pro app. */
 export interface PrivyWallet {
   address: string;
-  /** 'privy_embedded' = criada pela Privy; 'external' = Phantom & cia. */
   source: 'privy_embedded' | 'external';
 }
 
-/** Dados privados de exibição fornecidos pela conta Privy no cliente. */
 export interface PrivyProfile {
   name: string | null;
   email: string | null;
 }
 
 export interface PrivyAuth {
-  /** false enquanto o SDK não inicializa. Use pra segurar a tela — e o watchdog. */
   ready: boolean;
   authenticated: boolean;
-  /** O DID verificado. É ESTA a identidade do fã — nunca a carteira, nunca o e-mail. */
   did: string | null;
-  /** Metadados para a tela de perfil; não são identidade nem vão para o banco. */
   profile: PrivyProfile;
   wallets: PrivyWallet[];
-  /** true quando o SDK não subiu em 8s: origem não liberada, appId errado, rede fora. */
   stuck: boolean;
-  /** false quando não há NEXT_PUBLIC_PRIVY_APP_ID — o modo demo segue funcionando. */
   enabled: boolean;
-  /** O Bearer que o cliente REST anexa. null quando não há sessão. */
   getAccessToken: () => Promise<string | null>;
   loginWithGoogle: () => Promise<void>;
   loginWithWallet: () => Promise<void>;
   logout: () => Promise<void>;
   exportWallet: () => Promise<void>;
-  /** Mesmo endereço registrado como embutida E como Phantom: a portabilidade funcionou. */
   tambemNoPhantom: boolean;
 }
 
 const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? '';
 
-/** Expõe falha de inicialização da Privy em vez de degradar silenciosamente. */
 const READY_TIMEOUT_MS = 8_000;
-/** Impede que uma exportação cujo modal não abriu bloqueie a UI indefinidamente. */
+// Do not leave the app silently unavailable when Privy never becomes ready.
 const EXPORT_TIMEOUT_MS = 20_000;
 
-/** Sem appId, preserva o modo demo sem autenticação Privy. */
 const desligada: PrivyAuth = {
   ready: true,
   authenticated: false,
@@ -88,7 +75,6 @@ const desligada: PrivyAuth = {
 
 const PrivyContext = createContext<PrivyAuth>(desligada);
 
-/** Lê carteiras Solana vinculadas, distinguindo a embutida da externa. */
 function carteirasSolana(user: ReturnType<typeof usePrivy>['user']): {
   embedded: WalletWithMetadata | null;
   externas: WalletWithMetadata[];
@@ -99,7 +85,6 @@ function carteirasSolana(user: ReturnType<typeof usePrivy>['user']): {
   );
   const embedded = solanas.find((w) => w.walletClientType === 'privy') ?? null;
 
-  // O mesmo endereço pode ser embutido e externo; compare endereço para não duplicá-lo.
   const externas = solanas.filter(
     (w) => w.walletClientType !== 'privy' && w.address !== embedded?.address,
   );
@@ -110,7 +95,6 @@ function carteirasSolana(user: ReturnType<typeof usePrivy>['user']): {
   return { embedded, externas, tambemNoPhantom };
 }
 
-/** Nome e e-mail são privados no perfil; DID é a identidade e apelido é público. */
 function perfilDaConta(user: ReturnType<typeof usePrivy>['user']): PrivyProfile {
   const contas = user?.linkedAccounts ?? [];
   const google = contas.find((account) => account.type === 'google_oauth');
@@ -131,7 +115,6 @@ function Ponte({ children }: { children: ReactNode }) {
   const { embedded, externas, tambemNoPhantom } = carteirasSolana(user);
   const profile = perfilDaConta(user);
 
-  // Watchdog para origem inválida, appId incorreto ou indisponibilidade de rede.
   const readyRef = useRef(false);
   useEffect(() => {
     if (ready) readyRef.current = true;
@@ -140,7 +123,6 @@ function Ponte({ children }: { children: ReactNode }) {
     const t = window.setTimeout(() => {
       if (!readyRef.current) {
         setStuck(true);
-        // eslint-disable-next-line no-console
         console.error(
           '[palpitei] A Privy não inicializou em 8s e não emitiu erro. ' +
             'Quase sempre é a origem não liberada em Allowed origins. Confira a config REAL:\n' +
@@ -151,25 +133,24 @@ function Ponte({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(t);
   }, []);
 
-  /** Provider estável lê refs atuais para evitar uma janela de Bearer obsoleto. */
   const authRef = useRef(authenticated);
   authRef.current = authenticated;
   const getTokenRef = useRef(getAccessToken);
   getTokenRef.current = getAccessToken;
 
   const tokenProvider = useCallback(async () => {
+    // Refs prevent a stale Bearer token during provider mount and session changes.
     if (!authRef.current) return null;
     return getTokenRef.current();
   }, []);
 
-  // O cliente envia Bearer; o servidor deriva identidade apenas do DID verificado.
   useEffect(() => {
     setAuthTokenProvider(tokenProvider);
   }, [tokenProvider]);
 
   const doExport = useCallback(async () => {
     if (!embedded) return;
-    // O timeout libera a UI se o modal de exportação não abrir.
+    // Privy's export modal can fail to open without settling the promise.
     await Promise.race([
       exportSolana({ address: embedded.address }),
       new Promise((_, rej) =>
@@ -184,7 +165,6 @@ function Ponte({ children }: { children: ReactNode }) {
       authenticated,
       did: user?.id ?? null,
       profile,
-      // Um watchdog anterior não permanece ativo após a SDK ficar pronta.
       stuck: stuck && !ready,
       enabled: true,
       tambemNoPhantom,
@@ -193,11 +173,9 @@ function Ponte({ children }: { children: ReactNode }) {
         ...externas.map((w) => ({ address: w.address, source: 'external' as const })),
       ],
       getAccessToken: tokenProvider,
-      // Login social pode provisionar a carteira Solana embutida.
       loginWithGoogle: async () => {
         login({ loginMethods: ['google', 'email'] });
       },
-      // Login por carteira usa conectores Solana no desktop e mobile.
       loginWithWallet: async () => {
         login({ loginMethods: ['wallet'], walletChainType: 'solana-only' });
       },
@@ -225,29 +203,25 @@ function Ponte({ children }: { children: ReactNode }) {
 }
 
 export function PrivyIsland({ children }: { children: ReactNode }) {
-  // Sem appId, o modo demo continua disponível.
   if (!APP_ID) {
     return <PrivyContext.Provider value={desligada}>{children}</PrivyContext.Provider>;
   }
 
-  // Carteira embutida exige contexto seguro fora de localhost.
   const canUseEmbeddedWallet = typeof window === 'undefined' || window.isSecureContext;
 
   return (
     <PrivyProvider
       appId={APP_ID}
       config={{
-        // Apple não está configurado para esta integração.
         loginMethods: ['google', 'email', 'wallet'],
         appearance: {
           theme: 'dark',
           accentColor: '#C8F13F', // --lime
           walletChainType: 'solana-only',
-          // Phantom é priorizada; extensões Solana detectadas continuam disponíveis.
           walletList: ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'],
         },
-        // Não use `all-users`: só usuários sem carteira recebem uma embutida.
         ...(canUseEmbeddedWallet
+          // Do not create an embedded wallet for users who already have one.
           ? { embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' as const } } }
           : {}),
         externalWallets: { solana: { connectors: toSolanaWalletConnectors() } },

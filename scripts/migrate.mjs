@@ -1,22 +1,6 @@
 #!/usr/bin/env node
-// Aplica as migrations de supabase/migrations em ordem. Idempotente.
-//
-// Uso:
-//   node scripts/migrate.mjs           aplica o que falta
-//   node scripts/migrate.mjs --status  só mostra o que está aplicado
-//   node scripts/migrate.mjs --dry-run mostra o que aplicaria, sem aplicar
-//
-// Decisões que este script encarna:
-//
-// · CADA MIGRATION RODA NUMA TRANSAÇÃO. Se o arquivo falhar no meio, o banco
-//   volta ao que era. Meio-schema aplicado é pior que schema nenhum: o próximo
-//   `create table if not exists` passa por cima e o erro vira silêncio.
-//
-// · O CHECKSUM É CONFERIDO. Migration já aplicada que MUDOU no disco é erro, não
-//   aviso: significa que o seu banco e o seu repositório discordam sobre o que
-//   está no banco — e ninguém descobre isso até algo quebrar em produção.
-//
-// · SEM DEPENDÊNCIA NOVA: usa o `pg` que o @palpitei/db já traz.
+// Applies supabase/migrations in order and idempotently. Each migration runs in
+// one transaction and applied-file checksums prevent schema drift.
 
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -32,7 +16,7 @@ const soStatus = args.includes('--status');
 const dryRun = args.includes('--dry-run');
 
 function carregarEnv() {
-  // .env simples, sem dependência: só o suficiente para achar a DATABASE_URL.
+  // Minimal dependency-free .env parsing for DATABASE_URL.
   try {
     const texto = readFileSync(join(RAIZ, '.env'), 'utf8');
     for (const linha of texto.split('\n')) {
@@ -49,7 +33,7 @@ function carregarEnv() {
       if (!(chave in process.env)) process.env[chave] = valor;
     }
   } catch {
-    // sem .env: seguimos com o ambiente do processo
+    // No .env: use the process environment.
   }
 }
 
@@ -63,7 +47,7 @@ function listarMigrations() {
   }
   return arquivos
     .filter((f) => f.endsWith('.sql'))
-    .sort() // 0001_, 0002_… ordem lexicográfica = ordem cronológica
+    .sort() // 0001_, 0002_: lexicographic order is chronological order
     .map((nome) => {
       const sql = readFileSync(join(DIR, nome), 'utf8');
       return {
@@ -123,10 +107,7 @@ async function main() {
       )
     `);
 
-    // RLS ligada sem policy é o que fecha o PostgREST que o Supabase publica sozinho
-    // sobre o schema public. As tabelas de dados já nascem assim pela migration; esta
-    // aqui é criada em código, então precisa do mesmo tratamento — senão fica a única
-    // fresta aberta, e a role dona (postgres) segue ignorando RLS normalmente.
+    // This table also needs RLS because it is created outside SQL migrations.
     await client.query('alter table schema_migrations enable row level security');
 
     const aplicadas = new Map(
@@ -152,8 +133,7 @@ async function main() {
 
       if (anterior) {
         if (anterior.checksum !== m.checksum) {
-          // Editar migration já aplicada é a forma clássica de o schema do
-          // banco divergir do repositório sem ninguém perceber. Crie 0002_.
+          // Never edit an applied migration; add a new migration instead.
           console.error(
             `\nERRO: ${m.nome} já foi aplicada em ${new Date(anterior.applied_at).toISOString()} ` +
               `mas o arquivo MUDOU (${anterior.checksum} -> ${m.checksum}).\n` +

@@ -53,7 +53,7 @@ export default function ConvitePage({ params }: { params: Promise<{ code: string
     <Screen padding="24px 22px" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <Logo size={58} />
-        <div style={{ marginTop: 22 }}><Badge tone="neutral">{lobby?.treino ? t.treinoTag : t.replayShort}</Badge></div>
+        <div style={{ marginTop: 22 }}><Badge tone="neutral">{lobby?.training ? t.treinoTag : t.replayShort}</Badge></div>
         <h1 style={{ margin: '16px 0 0', fontSize: 26, fontWeight: fw.black }}>{t.lobbyInviteTitle}</h1>
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>{t.lobbyInviteBody}</p>
       </div>

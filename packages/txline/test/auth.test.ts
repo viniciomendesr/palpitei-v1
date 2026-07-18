@@ -14,8 +14,7 @@ import {
 } from "../src/auth.ts";
 import { TxlineHttpError } from "../src/errors.ts";
 
-// Servidor local que imita o contrato da TxLINE: sessão guest + rota protegida
-// que só aceita o JWT mais recente.
+// Local server that emulates guest sessions and the protected TxLINE route.
 
 let server: http.Server;
 let base: string;
@@ -23,8 +22,7 @@ let sessoesGuest = 0;
 let tokenValido = "";
 let recebidos: { auth?: string; apiToken?: string; url: string }[] = [];
 let atrasoGuestMs = 0;
-// Recusa mesmo o JWT recém-renovado — imita credencial que a renovação não
-// conserta (assinatura vencida, apiToken revogado).
+// Rejects even a refreshed JWT to emulate an unrecoverable credential failure.
 let recusaTudo = false;
 
 before(async () => {
@@ -115,7 +113,7 @@ test("as credenciais vêm do ambiente e podem ser injetadas em memória", async 
   assert.equal(getCredentials().jwt, "do-ambiente");
   assert.equal(getCredentials().apiToken, "token-do-ambiente");
 
-  // Injeção em runtime (rotação de token sem restart).
+  // Runtime injection supports token rotation without a restart.
   setCredentials({ apiToken: "token-novo" });
   assert.equal(getCredentials().apiToken, "token-novo");
   assert.equal(getCredentials().jwt, "do-ambiente");
@@ -134,7 +132,7 @@ test("txlineGet manda Authorization e X-Api-Token, e resolve o path contra o bas
 
 test("401 renova o JWT e repete a requisição", async () => {
   await startGuestSession(); // tokenValido = jwt-1
-  setCredentials({ jwt: "expirado" }); // o servidor vai recusar
+  setCredentials({ jwt: "expirado" }); // the server rejects it
 
   const r = await txlineGet<{ ok: boolean }>("/dados");
   assert.equal(r.ok, true);
@@ -145,9 +143,7 @@ test("401 renova o JWT e repete a requisição", async () => {
 test("N requisições que tomam 401 juntas renovam o JWT UMA vez (single-flight)", async () => {
   await startGuestSession();
   setCredentials({ jwt: "expirado" });
-  // Atraso na sessão guest: garante que as 8 requisições se sobreponham na
-  // janela de renovação. Sem single-flight, cada uma abriria a sua — e as
-  // sessões se invalidariam entre si.
+  // Delay guest-session creation so requests overlap in the refresh window.
   atrasoGuestMs = 50;
 
   const rs = await Promise.all(
@@ -167,8 +163,8 @@ test("erro que não é 401 vira TxlineHttpError com o status", async () => {
 });
 
 test("401 que persiste depois da renovação não vira loop", async () => {
-  await ensureJwt(); // 1 sessão
-  recusaTudo = true; // nem o JWT novo passa
+  await ensureJwt(); // one session
+  recusaTudo = true; // even a fresh JWT is rejected
 
   await assert.rejects(
     () => txlineGet("/dados"),

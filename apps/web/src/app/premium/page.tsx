@@ -1,15 +1,5 @@
 'use client';
 
-/**
- * PREMIUM — o paywall (comparativo Free × Premium).
- *
- * IMPORTANTE, e vale repetir: o Premium é sobre LIGAS e conveniência, nunca
- * sobre vantagem no palpite. Não existe "palpite pago" nem dinheiro real na v1 —
- * XP é pontuação, não valor. Dinheiro de verdade é a v2 (Presságio), outro app.
- *
- * O checkout deste fluxo é uma MAQUETE (nenhum gateway plugado): serve pra
- * mostrar o modelo de negócio ao jurado. Nada aqui cobra ninguém.
- */
 
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ds';
@@ -39,11 +29,6 @@ export default function PremiumPage() {
 
   return (
     <Screen style={{ display: 'flex', flexDirection: 'column', overflowY: 'hidden', padding: 0 }}>
-      {/*
-        A comparação passa da altura de iPhones menores. Deixá-la na mesma área
-        do CTA sticky fazia o conteúdo final ficar inacessível em alguns browsers
-        móveis. O miolo rola de forma independente; o CTA não encobre nenhuma linha.
-      */}
       <div
         role="region"
         aria-label={t.pxComparisonLabel}
@@ -121,7 +106,6 @@ export default function PremiumPage() {
 
         <div style={{ marginTop: 22, fontSize: 11.5, fontWeight: fw.bold, color: 'var(--text-muted)' }}>{t.pxScrollHint}</div>
 
-        {/* comparativo */}
         <div style={{ marginTop: 8, border: '1px solid var(--border-2)', borderRadius: 'var(--r-3xl)', overflow: 'hidden' }}>
           <div
             style={{

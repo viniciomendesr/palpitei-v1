@@ -1,15 +1,5 @@
 'use client';
 
-/**
- * ONBOARDING — 0 boas-vindas · 1 apelido · 2 pronto.
- *
- * O passo do APELIDO é requisito, não enfeite: o apelido é público (aparece no
- * ranking e nas ligas) e derivá-lo do e-mail vaza o endereço da pessoa (E12 do
- * v0). Por isso a gente pergunta, e por isso o campo começa vazio.
- *
- * Só quem chega pelo Google/carteira passa por aqui. O modo demo entra direto —
- * a conta de teste já vem pronta (§5.1).
- */
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -43,15 +33,6 @@ export default function OnboardingPage() {
   const nameInvalid = !isNicknameValid(nameDraft);
 
   const next = async () => {
-    // O apelido só é gravado ao SAIR do passo 1, e só se for válido.
-    //
-    // Grava no SERVIDOR primeiro, e só avança se ele aceitar. O `update` local
-    // sozinho pintava o apelido na tela e deixava `users.handle` NULL: o fã via
-    // o próprio nome no perfil e aparecia no ranking da sala como "sem apelido"
-    // — a tela mentindo sobre o que o servidor sabe.
-    //
-    // A ORDEM importa: local antes do POST deixaria o apelido na tela mesmo
-    // quando o 409 recusasse, que é o mesmo bug com passo extra.
     if (step === 1) {
       if (nameInvalid || salvando) return;
       setSalvando(true);
@@ -60,14 +41,6 @@ export default function OnboardingPage() {
       try {
         await api.setHandle(draft);
       } catch (e) {
-        // 409 = o apelido já é de outra pessoa. O fã PRECISA ver isso: o apelido
-        // é público e é por ele que a sala inteira vai chamá-lo. A mensagem do
-        // ApiError é a do DOMÍNIO (pt-BR, sem culpar o fã) — reescrevê-la aqui
-        // criaria uma segunda verdade sobre a MESMA regra.
-        //
-        // Só o ApiError, porém: um `fetch` que nem saiu do browser estoura
-        // TypeError('Failed to fetch'), e despejar isso na tela é jogar erro de
-        // rede em inglês na cara de quem só queria escolher um apelido.
         setErroNome(e instanceof ApiError ? e.message : t.nameSaveFailed);
         return;
       } finally {
@@ -79,12 +52,6 @@ export default function OnboardingPage() {
   };
 
   const back = async () => {
-    // No passo 0 não há pra onde voltar dentro do fluxo: desfaz o login.
-    // (O protótipo travava em 0; aqui existe rota de verdade e sair é o certo.)
-    //
-    // await: sem ele o `logout` limpava só a sessão local, a Privy seguia
-    // autenticada e o login jogava o fã de volta pra cá — o botão prometia
-    // "desfaz o login" e não desfazia nada.
     if (step === 0) {
       await logout();
       router.replace('/');
@@ -101,7 +68,6 @@ export default function OnboardingPage() {
 
   return (
     <Screen style={{ display: 'flex', flexDirection: 'column', padding: '8px 26px 30px' }}>
-      {/* cabeçalho: voltar · progresso · passo */}
       <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '6px 0 18px' }}>
         <button
           onClick={back}
@@ -154,7 +120,6 @@ export default function OnboardingPage() {
         </span>
       </div>
 
-      {/* passo 0 — boas-vindas / confirmação da autenticação */}
       {step === 0 && (
         <>
           <div
@@ -224,7 +189,6 @@ export default function OnboardingPage() {
         </>
       )}
 
-      {/* passo 1 — apelido */}
       {step === 1 && (
         <>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', animation: `fadeUp .45s ${EASE} both` }}>
@@ -256,8 +220,6 @@ export default function OnboardingPage() {
               value={nameDraft}
               onChange={(v) => {
                 setNameDraft(v);
-                // O erro é sobre o apelido ANTERIOR: mantê-lo enquanto o fã
-                // digita outro acusa de repetido um apelido que ninguém checou.
                 setErroNome(null);
               }}
               invalid={nameInvalid}
@@ -300,7 +262,6 @@ export default function OnboardingPage() {
         </>
       )}
 
-      {/* passo 2 — pronto */}
       {step === 2 && (
         <>
           <div
@@ -338,9 +299,6 @@ export default function OnboardingPage() {
                 textWrap: 'pretty',
               }}
             >
-              {/* O fallback sai do dicionário: 'craque' hardcoded aqui apareceria
-                  em português no meio de uma tela em inglês. A chave existia e
-                  estava sem uso. */}
               {t.obReadyTitle} {session.nickname.trim() || t.readyNameFallback}!
             </div>
             <p

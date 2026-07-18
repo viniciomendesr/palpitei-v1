@@ -1,22 +1,5 @@
 'use client';
 
-/**
- * RANKING — a temporada inteira, por XP.
- *
- * "atualizada ao vivo", nunca "odds"/"mercado". A linha do fã aparece destacada
- * em lime; as três primeiras posições em --gold.
- *
- * A bifurcação é a mesma da home, pela mesma regra:
- *
- *   demo (§5.1)  → mock LOCAL, sem rede. É o caminho do jurado.
- *   fã logado    → GET /api/ranking (o topByXp do banco). Erro vira ERRO na
- *                  tela — mock com cara de real para fã logado é a regra 4
- *                  (G6). Era exatamente o que esta página fazia antes:
- *                  Dudu_10 e MarianaGols eram inventados.
- *
- * `pos: null` = a minha linha fora do top 50 — a tela mostra "—", porque a
- * posição exata de quem está além do corte não foi calculada.
- */
 
 import { useEffect, useState } from 'react';
 import { Screen } from '@/components/Shell';
@@ -49,8 +32,6 @@ export default function RankingPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const ehDemo = !session || session.authMethod === 'demo';
-  // Espera o `ready` da ilha antes de buscar — a sessão local revive na hora e
-  // correr contra a ilha manda o fetch sem Bearer (401 num fã logado, CONTEXT §11).
   const podeBuscar = !ehDemo && privy.ready && privy.authenticated;
 
   useEffect(() => {
@@ -95,7 +76,6 @@ export default function RankingPage() {
         {t.rankingSub}
       </div>
 
-      {/* Fã logado com o servidor fora vê ERRO — nunca a lista inventada. */}
       {erro && (
         <p role="alert" style={{ textAlign: 'center', padding: 24, fontSize: 13, fontWeight: fw.bold, color: 'var(--red)' }}>
           {erro}

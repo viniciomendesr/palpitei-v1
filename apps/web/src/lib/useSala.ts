@@ -1,13 +1,13 @@
 'use client';
 
-/** Cliente SSE da sala: exibe estado autoritativo e mantém recibos locais. */
+/** Room SSE client: renders authoritative state and keeps local receipts. */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { esperaDeReconexao } from '@/lib/reconexao';
 import { limitarSegundoDoReplay, segundoDoReplay } from '@/lib/relogio';
 import { idDaOpcaoChance } from '@/lib/chances';
 
-/** Cap do contrato para a lista de leituras de chance — o mesmo do servidor. */
+/** Server contract cap for chance readings. */
 const CAP_DE_CHANCES = 60;
 
 export type SalaOpcao = { id: string; label: string; pct: number | null };
@@ -18,11 +18,11 @@ export type SalaDesafio = {
   prompt: string;
   options: SalaOpcao[];
   xp: number;
-  /** Fechamento em ms de relógio local, calculado pelo servidor. */
+  /** Local-clock deadline calculated by the server. */
   fechaEm: number;
-  /** O que EU escolhi. null = ainda não palpitei nesta. */
+  /** Current user's choice; `null` means unanswered. */
   minhaEscolha: string | null;
-  /** Janela fechada, mas ainda aguardando o evento que a resolve. */
+  /** Window closed while awaiting the resolving event. */
   fechado: boolean;
 };
 
@@ -32,10 +32,10 @@ export type SalaLance = {
   goals: { p1: number; p2: number } | null;
 };
 
-/** Totais acumulados do feed; o mapa é aberto porque as chaves variam por partida. */
+/** Accumulated feed totals; keys vary by fixture. */
 export type SalaTotais = { p1: Record<string, number>; p2: Record<string, number> };
 
-/** Leitura estruturada do `odds_explain`; a UI traduz campos, não inventa contexto. */
+/** Structured `odds_explain` reading; UI renders fields without inventing context. */
 export type SalaChance = {
   id: string;
   ts: number;
@@ -54,48 +54,48 @@ export type SalaState = {
   source: string;
   score: { p1: number; p2: number };
   minute: number | null;
-  /** Âncora do relógio (segundos de jogo do último evento com relógio). */
+  /** Clock anchor from the most recent event carrying a game clock. */
   clockSeconds?: number | null;
-  /** Minutos de jogo por segundo real — 12 no replay padrão, 1 ao vivo. */
+  /** Game minutes per real second: standard replay is 12, live is 1. */
   replaySpeed?: number;
-  /** Último relógio real da timeline; impede extrapolação depois do feed. */
+  /** Last real timeline clock; prevents extrapolation beyond the feed. */
   clockMaxSeconds?: number | null;
   finished: boolean;
   feed: SalaLance[];
-  /** Vazio = a partida ainda não mandou total nenhum. Não é "tudo zero". */
+  /** Empty means no totals have arrived, not that every total is zero. */
   totals: SalaTotais;
-  /** Leituras de chance, opcionais para compatibilidade com servidores antigos. */
+  /** Optional chance readings for compatibility with older servers. */
   chances?: SalaChance[];
 };
 
-/** Linha de ranking da sala, sem identificadores internos de terceiros. */
+/** Room ranking row without third-party internal identifiers. */
 export type SalaRankRow = { name: string; xp: number; me?: boolean };
 
-/** O jogo no instante da liquidação — a matéria-prima da explicação. */
+/** Game facts at settlement time, used for the explanation. */
 export type SalaFatos = {
   minute: number | null;
   score: { p1: number; p2: number };
-  /** null = o Total não trazia a chave (ausente ≠ zero, G7). */
+  /** `null` means the feed did not include this total key. */
   corners: { p1: number; p2: number } | null;
 };
 
 export type SalaResultado = {
   questionId: string;
   prompt: string;
-  /** O TIPO da pergunta — é ele que escolhe o texto e a explicação na tela. */
+  /** Question type selects the UI copy and explanation. */
   qtype?: string;
   correctOptionId?: string;
-  /** Anulada: o lance resolvedor chegou com a janela aberta. Sem XP, e é justo. */
+  /** Present when the resolving event arrived while the window was open; no XP is awarded. */
   voidReason?: string;
-  /** O XP que EU ganhei. O servidor é quem soma — a tela nunca. */
+  /** XP awarded to the current user by the server. */
   gained: number;
   minhaEscolha: string | null;
-  /** Rótulos das opções: o resultado fala por nome, nunca por id. */
+  /** Option labels allow results to render names instead of IDs. */
   options?: { id: string; label: string }[];
   facts?: SalaFatos | null;
 };
 
-/** O que o servidor manda no primeiro pacote. */
+/** Question shape included in the initial server packet. */
 type QuestionDoServidor = {
   id: string;
   type: string;
@@ -103,13 +103,13 @@ type QuestionDoServidor = {
   options: { id: string; label: string; pct?: number | null }[];
   closesAt: number;
   state: string;
-  /** O piso de XP, do motor — a mesma régua do question_open. */
+  /** Base XP from the engine, matching `question_open`. */
   xp?: number;
-  /** Quanto falta DE VERDADE, em ms reais, pelo relógio da sala. */
+  /** Remaining real milliseconds from the authoritative room clock. */
   closesInRealMs?: number;
 };
 
-/** O que os MEUS palpites já renderam, como o servidor os liquidou. */
+/** Current user's settled prediction result. */
 type ResultadoDoServidor = {
   questionId: string;
   prompt: string;
@@ -132,21 +132,21 @@ export function useSala(
   const [desafios, setDesafios] = useState<SalaDesafio[]>([]);
   const [resultados, setResultados] = useState<SalaResultado[]>([]);
   const [ranking, setRanking] = useState<SalaRankRow[]>([]);
-  /** Leituras de chance, mais recente PRIMEIRO (cap 60 — o mesmo do servidor). */
+  /** Chance readings, newest first, capped to the server limit. */
   const [chances, setChances] = useState<SalaChance[]>([]);
   const [erro, setErro] = useState<string | null>(null);
-  /** Meus palpites valem XP? Apenas `treino-*` responde não. */
-  const [treino, setTreino] = useState(false);
-  /** Relógio interpolado a partir do último evento com clock. */
+  /** Training rooms do not award XP. */
+  const [training, setTraining] = useState(false);
+  /** Clock interpolated from the latest event carrying a clock. */
   const [segundosVivos, setSegundosVivos] = useState<number | null>(null);
   const ancora = useRef<{ game: number; realAt: number } | null>(null);
   const speedRef = useRef<number | null>(null);
   const clockMaxRef = useRef<number | null>(null);
   const acabouRef = useRef(false);
-  /** O enunciado de cada pergunta, para o resultado poder dizer do que se tratava. */
+  /** Prompts retained so settled results can identify their question. */
   const enunciados = useRef<Map<string, string>>(new Map());
   const escolhas = useRef<Map<string, string>>(new Map());
-  /** Ref evita reconectar o SSE e impede recontar resultados restaurados. */
+  /** Ref avoids reconnecting SSE and recounting restored results. */
   const onGanhoRef = useRef(onGanho);
   onGanhoRef.current = onGanho;
 
@@ -154,12 +154,12 @@ export function useSala(
     if (!ativo) return;
     let vivo = true;
     let es: EventSource | null = null;
-    /** No máximo um timer de reconexão. */
+    /** At most one reconnection timer. */
     let proxima: ReturnType<typeof setTimeout> | null = null;
     let tentativa = 0;
-    /** Diferencia falha inicial de reconexão após estado válido. */
+    /** Distinguishes initial failure from reconnection after valid state. */
     let temEstado = false;
-    /** Evita conexões concorrentes. */
+    /** Prevents concurrent connections. */
     let conectando = false;
 
     const agendar = () => {
@@ -172,14 +172,13 @@ export function useSala(
       }, espera);
     };
 
-    /** Reconecta manualmente para obter um ticket SSE novo a cada conexão. */
+    /** Fetches a fresh SSE ticket for every connection. */
     const conectar = async () => {
       if (!vivo || conectando) return;
       conectando = true;
       es?.close();
       es = null;
-      // O POST usa o Bearer no header e devolve só um ticket curto para a URL
-      // do EventSource. Falha é transitória e entra no backoff.
+      // Exchange the Bearer token for a short-lived URL ticket; retry transient failures with backoff.
       const ticket = await import('@/lib/api')
         .then((m) => m.api.sseTicket(fixtureId, partyId, 'room'))
         .then((response) => response.ticket)
@@ -197,7 +196,7 @@ export function useSala(
       );
 
       es.onopen = () => {
-        // Uma conexão aberta reinicia o backoff.
+        // A successful connection resets backoff.
         tentativa = 0;
       };
 
@@ -209,12 +208,12 @@ export function useSala(
 
         switch (msg.type) {
           case 'room_state': {
-            // O pacote inteiro ressemeia a tela; reconexão não pode duplicar estado.
+            // The full packet reseeds UI state so reconnection cannot duplicate it.
             temEstado = true;
             setErro(null);
             const s = msg.state as SalaState & { questions?: QuestionDoServidor[] };
-            setTreino(Boolean(msg.treino));
-            // A âncora permite que a tela entre com o relógio já em movimento.
+            setTraining(Boolean(msg.training));
+            // Anchor the clock immediately when joining mid-match.
             if (typeof s.clockSeconds === 'number') {
               ancora.current = { game: s.clockSeconds, realAt: Date.now() };
             }
@@ -230,18 +229,18 @@ export function useSala(
               minute: s.minute,
               finished: s.finished,
               feed: s.feed ?? [],
-              // O estado inicial já contém os totais acumulados.
+              // Initial state already contains accumulated totals.
               totals: s.totals ?? { p1: {}, p2: {} },
             });
 
-            // Substitui leituras acumuladas para evitar duplicação na reconexão.
+            // Replace accumulated readings to avoid duplication after reconnection.
             setChances((s.chances ?? []).slice(0, CAP_DE_CHANCES));
 
-            // Semeia recibos antes de montar perguntas para sobreviver a reload.
+            // Seed receipts before questions so they survive reloads.
             const minhas = (msg.minhas ?? []) as { questionId: string; choice: string }[];
             for (const m of minhas) escolhas.current.set(m.questionId, m.choice);
 
-            // Mantém janelas abertas e fechadas nas quais este fã já respondeu.
+            // Retain open questions and closed questions already answered by this user.
             const agora = Date.now();
             setDesafios(
               (s.questions ?? [])
@@ -255,9 +254,9 @@ export function useSala(
                     type: q.type,
                     prompt: q.prompt,
                     options: q.options.map((o) => ({ id: o.id, label: o.label, pct: o.pct ?? null })),
-                    // O piso de XP vem do servidor.
+                    // Base XP comes from the server.
                     xp: q.xp ?? 0,
-                    // Fallback de compatibilidade para servidor sem prazo.
+                    // Compatibility fallback for servers without a deadline.
                     fechaEm: agora + (q.closesInRealMs ?? 60_000),
                     minhaEscolha: escolhas.current.get(q.id) ?? null,
                     fechado: q.state === 'closed',
@@ -265,7 +264,7 @@ export function useSala(
                 }),
             );
 
-            // Restaura os resultados deste fã do mais recente para o mais antigo.
+            // Restore this user's results from newest to oldest.
             const liquidados = (msg.resultados ?? []) as ResultadoDoServidor[];
             for (const r of liquidados) enunciados.current.set(r.questionId, r.prompt);
             setResultados(
@@ -288,7 +287,7 @@ export function useSala(
             const scoreA = msg.scoreA as number | null;
             const scoreB = msg.scoreB as number | null;
             const totais = msg.totals as SalaTotais | undefined;
-            // Evento sem clock preserva a âncora anterior.
+            // Events without a clock retain the previous anchor.
             if (typeof msg.clockSeconds === 'number') {
               ancora.current = { game: msg.clockSeconds as number, realAt: Date.now() };
             }
@@ -296,11 +295,11 @@ export function useSala(
               p
                 ? {
                     ...p,
-                    // `null` significa placar não informado, nunca 0–0.
+                    // `null` means score not provided, never 0–0.
                     score: { p1: scoreA ?? p.score.p1, p2: scoreB ?? p.score.p2 },
                     minute: (msg.minute as number | null) ?? p.minute,
                     feed: [msg.lance as SalaLance, ...p.feed].slice(0, 40),
-                    // O servidor já mesclou totais; ausência preserva o estado local.
+                    // Server totals are merged; absence preserves local state.
                     totals: totais ?? p.totals,
                   }
                 : p,
@@ -309,7 +308,7 @@ export function useSala(
           }
 
           case 'odds_explain': {
-            // Mantém ordem, cap e deduplicação para reentregas do SSE.
+            // Preserve order, cap, and deduplication for redelivered SSE events.
             const nova: SalaChance = {
               id: String(msg.id ?? `${String(msg.ts)}:${String(msg.priceName)}:${String(msg.fromPct)}:${String(msg.toPct)}`),
               ts: msg.ts as number,
@@ -320,7 +319,7 @@ export function useSala(
               contextAction: msg.contextAction as string | undefined,
               text: (msg.text as string) ?? '',
             };
-            // Atualiza o percentual 1X2 sem transmitir cada tick de odds.
+            // Update 1X2 percentages without broadcasting every odds tick.
             const optionId = idDaOpcaoChance(nova.priceName);
             if (optionId) {
               setDesafios((ds) =>
@@ -367,9 +366,9 @@ export function useSala(
             const id = msg.questionId as string;
             setDesafios((ds) =>
               ds
-                // Sem palpite, não há recibo a manter.
+                // Unanswered questions have no receipt to retain.
                 .filter((d) => d.questionId !== id || d.minhaEscolha !== null)
-                // Quem respondeu permanece até a resolução.
+                // Answered questions remain until settlement.
                 .map((d) => (d.questionId === id ? { ...d, fechado: true } : d)),
             );
             return;
@@ -379,7 +378,7 @@ export function useSala(
           case 'question_void': {
             const id = msg.questionId as string;
             tirar(id);
-            // Exibe resultado somente de pergunta respondida por este fã.
+            // Only show results for questions answered by this user.
             if (escolhas.current.has(id)) {
               const gained = (msg.gained as number) ?? 0;
               setResultados((rs) => [
@@ -396,14 +395,14 @@ export function useSala(
                 },
                 ...rs,
               ]);
-              // O contador acompanha o valor do motor; banco continua autoritativo.
+              // Counter follows the engine value; the database remains authoritative.
               if (gained > 0) onGanhoRef.current?.(gained);
             }
             return;
           }
 
           case 'ranking': {
-            // Ranking é ordenado e marcado pelo servidor autoritativo.
+            // Ranking order and current-user marker are server-authoritative.
             setRanking(msg.rows as SalaRankRow[]);
             return;
           }
@@ -419,7 +418,7 @@ export function useSala(
       };
 
       es.onerror = () => {
-        // Nova conexão emite ticket fresco; após estado válido, reconexão é silenciosa.
+        // Each reconnection uses a fresh ticket; after valid state, retry silently.
         es?.close();
         es = null;
         if (!vivo) return;
@@ -428,10 +427,10 @@ export function useSala(
       };
     };
 
-    /** Ao voltar do background, reabre uma conexão fechada sem esperar o timer. */
+    /** Reopens a closed connection after returning from background without waiting for the timer. */
     const aoVoltar = () => {
       if (!vivo || conectando || document.visibilityState !== 'visible') return;
-      // Conexões abertas ou em andamento não precisam de intervenção.
+      // Open or in-flight connections need no intervention.
       if (es && es.readyState !== EventSource.CLOSED) return;
       if (proxima) {
         clearTimeout(proxima);
@@ -454,7 +453,7 @@ export function useSala(
     };
   }, [fixtureId, partyId, ativo]);
 
-  // Atualiza o relógio em 250 ms e congela ao fim da partida.
+  // Update the clock every 250 ms and freeze it after the fixture ends.
   useEffect(() => {
     if (!ativo) return;
     const tick = () => {
@@ -473,7 +472,7 @@ export function useSala(
     return () => clearInterval(timer);
   }, [ativo, fixtureId, partyId]);
 
-  /** Envia o palpite ao servidor e atualiza apenas o recibo local. */
+  /** Sends a prediction to the server and updates only the local receipt. */
   const palpitar = useCallback(
     async (questionId: string, optionId: string): Promise<{ ok: boolean; error?: string }> => {
       const { api } = await import('@/lib/api');
@@ -498,7 +497,7 @@ export function useSala(
     ranking,
     chances,
     erro,
-    treino,
+    training,
     segundosVivos,
     palpitar,
   };

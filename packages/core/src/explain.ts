@@ -1,13 +1,11 @@
 import type { EngineEmit, Fixture, OddsEvent, ScoreEvent } from "./types.ts";
 
-// Explicação didática da cotação: template + matemática sobre a probabilidade
-// implícita do StablePrice. Deliberadamente SEM LLM — determinístico.
+// Deterministic odds explanation from templates and implied probability.
 
-const DELTA_THRESHOLD_PP = 3; // pontos percentuais
+const DELTA_THRESHOLD_PP = 3; // percentage points
 const CONTEXT_WINDOW_MS = 180_000;
 
-// Já contraídos com a preposição do template ("depois de" + isto). Guardar o
-// artigo solto ("o gol") gerava "depois de o gol" na tela do usuário.
+// Phrases are stored with the template preposition to preserve grammar.
 const ACTION_PT: Record<string, string> = {
   goal: "do gol",
   corner: "do escanteio",
@@ -26,12 +24,10 @@ export class OddsExplainer {
   private fixture: Fixture;
   private emit: EngineEmit;
   /**
-   * A referência da ÚLTIMA leitura que chegou à tela, por opção. Não é o
-   * último tick bruto: a TxLINE frequentemente reparte uma mudança relevante
-   * em dezenas de ajustes de décimos. Comparar só ticks vizinhos faz a chance
-   * andar o primeiro tempo inteiro sem nunca virar leitura.
+   * Last published value per option, rather than the raw previous tick, so
+   * small changes accumulate until they cross the explanation threshold.
    */
-  private lastExplainedPcts = new Map<string, number>(); // `${mercado}|${priceName}` -> pct
+  private lastExplainedPcts = new Map<string, number>(); // `${market}|${priceName}` -> pct
   private lastAction: { action: string; ts: number } | null = null;
 
   constructor(opts: { fixture: Fixture; emit: EngineEmit }) {
@@ -48,9 +44,8 @@ export class OddsExplainer {
     for (const price of ev.prices) {
       const key = `${marketKey}|${price.name}`;
       const prev = this.lastExplainedPcts.get(key);
-      // A primeira cotação só estabelece a referência. Depois, ela só avança
-      // quando uma leitura é publicada: assim pequenos ajustes consecutivos
-      // acumulam até o limiar sem transformar cada microvariação em ruído.
+      // The first price establishes a baseline. Update it only when publishing
+      // an explanation so consecutive small changes can accumulate.
       if (prev === undefined) {
         this.lastExplainedPcts.set(key, price.pct);
         continue;
@@ -67,8 +62,7 @@ export class OddsExplainer {
         const acao = ACTION_PT[this.lastAction.action];
         if (acao) {
           contexto = ` depois ${acao}`;
-          // A causa em FORMA, não só em frase: é o que deixa a tela redigir
-          // no idioma do fã sem perder o "depois do gol".
+          // Preserve structured context so the UI can render it in its locale.
           contextAction = this.lastAction.action;
         }
       }
@@ -96,9 +90,7 @@ export class OddsExplainer {
     const n = name.toLowerCase();
     if (n === "over" && line !== undefined) return `mais de ${line} gols`;
     if (n === "under" && line !== undefined) return `menos de ${line} gols`;
-    // O feed 1X2 real manda "part1"/"draw"/"part2" — só "draw" estava mapeado,
-    // então a explicação saía "A chance de part2 subiu…" na cara do usuário.
-    // Os aliases 1/home/2/away ficam por segurança (outros mercados/fontes).
+    // TxLINE 1X2 uses part1/draw/part2; keep aliases for other sources.
     if (n === "1" || n === "home" || n === "part1") return this.fixture.p1;
     if (n === "2" || n === "away" || n === "part2") return this.fixture.p2;
     if (n === "x" || n === "draw") return "empate";

@@ -1,17 +1,5 @@
-// Testes da camada de repositório contra um Postgres DE VERDADE.
-//
-// Não precisa de banco instalado, nem de Docker, nem da internet: o PGlite é o
-// Postgres compilado para WASM, e o socket-server faz ele falar o protocolo de
-// rede — então o `pg` conecta nele igualzinho conectaria no Supabase. O que
-// está sendo exercitado aqui é o MESMO código que vai para produção, contra o
-// MESMO motor de banco (não um mock, não um SQLite fingindo).
-//
-//   npm test -w @palpitei/db
-//
-// O que estes testes protegem é sempre a mesma coisa: as falhas SILENCIOSAS.
-// Nenhuma delas dá erro em produção — todas dão número errado no ranking do
-// jurado. Por isso o teste tenta ATIVAMENTE pagar duas vezes, regredir placar,
-// colapsar a série de odds e roubar apelido.
+// Repository integration tests run against PGlite through the PostgreSQL wire protocol.
+// They focus on invariants that would otherwise fail silently in production.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,13 +23,7 @@ import {
 } from '../dist/index.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
-/**
- * TODAS as migrations, na ordem — não só a 0001.
- *
- * Ficar preso à 0001 significaria que a tabela criada na migration seguinte não
- * existe no teste: o teste da feature nova falharia com "relation does not
- * exist" e pareceria bug do código. Migration nova entra aqui.
- */
+/** Keep the test schema aligned with every production migration. */
 const MIGRATIONS = [
   resolve(AQUI, '../../../supabase/migrations/0001_init.sql'),
   resolve(AQUI, '../../../supabase/migrations/0002_leagues.sql'),
@@ -49,25 +31,14 @@ const MIGRATIONS = [
   resolve(AQUI, '../../../supabase/migrations/0004_lobby_presence.sql'),
   resolve(AQUI, '../../../supabase/migrations/0005_pregame_picks.sql'),
   resolve(AQUI, '../../../supabase/migrations/0006_pregame_txline_lines.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0007_live_sessions_templates.sql'),
 ];
 const PORTA = 5599;
 
-/**
- * Espera uma rejeição E limpa a conexão depois.
- *
- * Peculiaridade do HARNESS, não do código: o socket-server do PGlite FECHA a
- * conexão depois de responder um erro de SQL. O Postgres de verdade não faz
- * isso — erro de constraint deixa a conexão perfeitamente usável (foi medido:
- * com 100ms de espera a query seguinte passa; sem espera, o pool entrega o
- * cliente moribundo e vem ECONNRESET). Como o pool descarta o cliente morto
- * sozinho, uma query sacrificial devolve o pool ao normal.
- *
- * Fica registrado para ninguém "consertar" o pool por causa de um artefato do
- * banco de teste.
- */
+/** PGlite closes the socket after a SQL error, unlike PostgreSQL; drain that client. */
 async function rejeitaCom(fn, matcher) {
   await assert.rejects(fn, matcher);
-  await p.db.query('select 1').catch(() => {}); // drena o cliente morto (só PGlite)
+  await p.db.query('select 1').catch(() => {}); // drain the dead PGlite client
 }
 
 let pg;
@@ -92,7 +63,7 @@ after(async () => {
 const DID = 'did:privy:teste1';
 
 // ---------------------------------------------------------------------------
-// Identidade
+// identity
 // ---------------------------------------------------------------------------
 
 test('find-or-create é pelo DID, e a carteira pode mudar sem criar conta nova', async () => {
@@ -100,7 +71,7 @@ test('find-or-create é pelo DID, e a carteira pode mudar sem criar conta nova',
     wallet: 'Wallet111',
     walletSource: 'privy_embedded',
   });
-  // Segundo login, MESMO DID, carteira diferente (o fã vinculou a Phantom).
+  // A second login may use the same DID with a different linked wallet.
   const b = await p.users.findOrCreateByPrivyDid(DID, {
     wallet: 'Wallet222',
     walletSource: 'external',
@@ -142,8 +113,7 @@ test('apelido tomado devolve 409, inclusive com outra caixa', async () => {
 });
 
 test('conta demo não pode se passar por conta com carteira de verdade', async () => {
-  // Modo demo (§5.1) é conta real do ponto de vista do banco, mas o namespace
-  // do DID e a origem da carteira têm de contar a mesma história.
+  // Demo DID namespaces and wallet sources must remain consistent.
   const demo = await p.users.findOrCreateByPrivyDid('demo:jurado1', {
     wallet: 'SimKey',
     walletSource: 'simulated',
@@ -156,15 +126,13 @@ test('conta demo não pode se passar por conta com carteira de verdade', async (
 });
 
 test('fã da Privy SEM carteira lê walletSource NULL — não "simulated" (E2 tem que ficar visível)', async () => {
-  // O createOnLogin da Privy defaulta a 'off': o login social entra e o fã fica
-  // SEM carteira Solana. O schema guarda NULL exatamente para essa regressão dar
-  // para ver. Se a leitura inventar uma origem, o requisito da trilha volta a
-  // cair calado — e ainda por cima marcando um did:privy:* real como modo demo.
+  // A social Privy login may have no Solana wallet; preserve NULL rather than
+  // fabricating a source or misclassifying the account as demo.
   const u = await p.users.findOrCreateByPrivyDid('did:privy:e2_sem_carteira');
   assert.equal(u.wallet, null);
   assert.equal(u.walletSource, null, 'ausente é ausente: NULL não pode virar "simulated"');
 
-  // A combinação que o ?? 'simulated' fabricava é a que o banco RECUSA gravar.
+  // The database rejects the invalid combination a simulated fallback created.
   await rejeitaCom(
     () => p.db.query(
       `insert into users (privy_did, wallet_pubkey, wallet_source)
@@ -173,7 +141,7 @@ test('fã da Privy SEM carteira lê walletSource NULL — não "simulated" (E2 t
     /users_did_namespace_ck/
   );
 
-  // E a consulta de diagnóstico que o próprio schema documenta tem que enxergar.
+  // The schema's diagnostic query must identify those accounts.
   const [diag] = await p.db.query(
     `select count(*)::int as n from users
       where privy_did like 'did:privy:%' and wallet_pubkey is null`
@@ -202,7 +170,7 @@ test('nível é FUNÇÃO do xp — a fórmula do v0, calculada pelo banco', asyn
 });
 
 // ---------------------------------------------------------------------------
-// O XP não pode ser pago duas vezes — o teste mais importante do arquivo
+// XP settlement idempotency
 // ---------------------------------------------------------------------------
 
 test('resolver o MESMO palpite duas vezes paga UMA vez (entrega duplicada é idempotente)', async () => {
@@ -231,11 +199,11 @@ test('resolver o MESMO palpite duas vezes paga UMA vez (entrega duplicada é ide
   const um = await p.predictions.settle('pred_idem', 'won', 150);
   assert.equal(um.pagou, true);
 
-  // Uma entrega duplicada reemite o gol: a mesma pergunta resolve de novo.
+  // A duplicated delivery can resolve the same question again.
   const dois = await p.predictions.settle('pred_idem', 'won', 150);
   assert.equal(dois.pagou, false, 'a segunda resolução NÃO pode pagar');
 
-  // E de novo, agora pelo caminho que a sala usa (question_resolved).
+  // Repeat through the room's question_resolved path.
   const tres = await p.predictions.settleQuestion('q_idem', [
     { userId: u.id, result: 'won', awardedXp: 150 },
   ]);
@@ -342,7 +310,7 @@ test('palpite em pergunta não gravada falha com mensagem que explica o que faze
 });
 
 // ---------------------------------------------------------------------------
-// Ingestão: idempotência, A4 e a série de odds
+// ingestion idempotency, A4, and odds series
 // ---------------------------------------------------------------------------
 
 const evento = (seq, extra = {}) => ({
@@ -384,7 +352,7 @@ test('A4: evento sem bloco Score não pode carregar totais — o banco recusa', 
 test('A4: evento sem Score grava NULL e o último placar CONHECIDO não regride', async () => {
   await p.events.upsertMany([
     evento(20, { hasScore: true, totals: { p1: { Goals: 2 }, p2: { Goals: 1 } }, goals: { p1: 2, p2: 1 } }),
-    // kickoff do 2º tempo: o normalize entrega totals zerados + hasScore=false
+    // Second-half kickoff: normalize supplies zero totals with hasScore=false.
     evento(21, { action: 'kickoff', hasScore: false, totals: { p1: { Goals: 0 }, p2: { Goals: 0 } }, goals: { p1: 0, p2: 0 } }),
   ]);
   const placar = await p.events.ultimoPlacar(900002);
@@ -405,8 +373,7 @@ test('replay compacto não transporta o payload raw que o motor não consome', a
 });
 
 test('message_id é STRING: ids que Number() colapsaria continuam sendo registros distintos', async () => {
-  // Este é o bug do v0 em forma de teste: num() devolvia -1 para os dois e o
-  // Map guardava um só. A série inteira (3.758 eventos) virava 1 registro.
+  // Numeric parsing previously collapsed distinct string IDs into one Map entry.
   const linha = (messageId, ts) => ({
     FixtureId: 900002,
     MessageId: messageId,
@@ -453,7 +420,7 @@ test('G8: Prices vazio com PriceNames cheio é DADO REAL — grava vazio, não z
       FixtureId: 900002, MessageId: 'sem-cotacao', Ts: 6,
       SuperOddsType: '1X2_PARTICIPANT_RESULT', MarketPeriod: null,
       PriceNames: ['part1', 'draw', 'part2'],
-      Prices: [], // mercado sem cotação naquele instante
+      Prices: [], // market had no quote at that instant
     },
   ]);
   const desalinhadas = await p.odds.listaDesalinhadas(900002);
@@ -464,7 +431,7 @@ test('G8: Prices vazio com PriceNames cheio é DADO REAL — grava vazio, não z
 });
 
 // ---------------------------------------------------------------------------
-// Cache de partida (substitui o .cache/ em disco — T&C §7)
+// match cache (replaces the on-disk .cache/ — T&C §7)
 // ---------------------------------------------------------------------------
 
 test('cache: grava e lê a timeline, e é idempotente', async () => {
@@ -502,7 +469,7 @@ test('cache: grava e lê a timeline, e é idempotente', async () => {
   assert.equal(lido.odds.length, 1);
   assert.equal(lido.gravadoEm, 1_700_000_500_000, 'a idade do cache é do cache, não de agora');
 
-  // 900001 tem perguntas mas nenhum match_event: cache.list() lista quem tem TIMELINE.
+  // 900001 has questions but no match events; cache.list() returns timeline owners.
   assert.deepEqual(await p.cache.list(), [900002, 900003]);
   assert.equal(await p.cache.load(111111), null, 'sem timeline = null, para o replay cair na API');
 });
@@ -516,34 +483,32 @@ test('cache sem startTime é RECUSADO (G4: o desafio nasceria fechado)', async (
 
 test('upsert de partida nunca sobrescreve start_ts conhecido com nulo', async () => {
   await p.matches.upsert({ fixtureId: 900005, p1: 'A', p2: 'B', startTime: 1_700_000_000_000 });
-  // Um segundo upsert vindo de uma fonte mais pobre (sem StartTime).
+  // A later upsert from a source that lacks StartTime.
   const depois = await p.matches.upsert({ fixtureId: 900005, p1: 'A', p2: 'B' });
   assert.equal(depois.startTime, 1_700_000_000_000, 'perder o start_ts é o G4 de volta');
   assert.deepEqual(await p.matches.semStartTs(), [], 'o detector do G4 tem que estar limpo');
 });
 
 test('upsert sem state NÃO rebaixa uma partida ao vivo para "scheduled"', async () => {
-  // É o caminho real da demo: a partida está AO VIVO e alguém reupserta de uma
-  // fonte que não carrega estado (matchCacheStore.save, refresh do /fixtures).
-  // O 'scheduled' do VALUES é default de INSERT — não pode vazar para o UPDATE.
+  // A partial source must not downgrade a live match through the INSERT default.
   await p.matches.upsert({ fixtureId: 900006, p1: 'França', p2: 'Inglaterra', startTime: 1, state: 'live' });
   const depois = await p.matches.upsert({ fixtureId: 900006, p1: 'França', p2: 'Inglaterra' });
   assert.equal(depois.state, 'live', 'não saber o estado não é motivo para rebaixar a partida');
   assert.equal((await p.matches.list({ state: 'live' })).some((m) => m.fixtureId === 900006), true,
     'a sala tem que continuar na aba "Ao Vivo"');
 
-  // E o cache da partida (gravado logo que ela acaba) não pode ressuscitá-la.
+  // A cache saved at full time must not resurrect the fixture.
   await p.matches.setState(900006, 'finished');
   await p.matches.upsert({ fixtureId: 900006, p1: 'França', p2: 'Inglaterra' }, { source: 'txline-cache' });
   assert.equal((await p.matches.findById(900006)).state, 'finished');
 
-  // Quem sabe o estado continua mandando nele.
+  // An explicit state remains authoritative.
   const vivo = await p.matches.upsert({ fixtureId: 900006, p1: 'França', p2: 'Inglaterra', state: 'live' });
   assert.equal(vivo.state, 'live', 'state explícito tem que valer');
 });
 
 // ---------------------------------------------------------------------------
-// Mercado (prévia da v2, USDC simulado)
+// market (v2 preview, simulated USDC)
 // ---------------------------------------------------------------------------
 
 test('a mesma aposta não debita duas vezes, e o mercado não paga duas vezes', async () => {
@@ -570,10 +535,7 @@ test('a mesma aposta não debita duas vezes, e o mercado não paga duas vezes', 
 });
 
 test('saveMarket do mercado já resolvido NÃO queima o CAS do pagamento', async () => {
-  // O motor marca o mercado como resolvido em memória e emite market_resolved.
-  // Se quem escuta gravar o mercado ANTES de chamar markets.resolve(), o save()
-  // não pode virar o state para 'resolved': isso mataria o CAS e o resolve()
-  // devolveria {pagou:false} — ninguém recebe e nada estoura.
+  // Saving an in-memory resolved market must not consume resolve()'s settlement CAS.
   const u = await p.users.findOrCreateByPrivyDid('did:privy:mkt_ordem');
   const saldoInicial = (await p.users.findById(u.id)).balanceCents;
 
@@ -586,7 +548,7 @@ test('saveMarket do mercado já resolvido NÃO queima o CAS do pagamento', async
   const bet = { id: 'bet_ordem', marketId: 'mkt_ordem', userId: u.id, outcome: 'p1', amountCents: 1000, ts: 1 };
   await p.markets.saveBet(bet);
 
-  // A ordem perigosa: grava resolvido, DEPOIS paga.
+  // Exercise the risky order: save resolved, then settle.
   const resolvido = { ...aberto, state: 'resolved', winner: 'p1', pools: { p1: 1000, draw: 0, p2: 0 } };
   await p.markets.save(resolvido);
   const pago = await p.markets.resolve(resolvido, [{ ...bet, payoutCents: 950 }]);
@@ -595,7 +557,7 @@ test('saveMarket do mercado já resolvido NÃO queima o CAS do pagamento', async
   assert.equal(pago.creditados, 1);
   assert.equal((await p.users.findById(u.id)).balanceCents, saldoInicial - 1000 + 950);
 
-  // E continua valendo o outro lado: resolvido não volta atrás por save().
+  // A resolved market must not reopen through save().
   await p.markets.save({ ...aberto, state: 'open' });
   const [linha] = await p.db.query(`select state from markets where id = 'mkt_ordem'`);
   assert.equal(linha.state, 'resolved', 'mercado resolvido não reabre por reprocessamento');
@@ -610,7 +572,7 @@ test('saldo não fica negativo nem se o motor achar que dá', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Missões e conquistas
+// missions and achievements
 // ---------------------------------------------------------------------------
 
 test('conquista desbloqueia e paga uma vez só', async () => {
@@ -646,7 +608,7 @@ test('missão paga só na virada do alvo', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// EnginePorts — o contrato com @palpitei/core
+// EnginePorts — @palpitei/core contract
 // ---------------------------------------------------------------------------
 
 test('EnginePorts: uid tem prefixo e não repete', async () => {
@@ -656,12 +618,11 @@ test('EnginePorts: uid tem prefixo e não repete', async () => {
 });
 
 test('EnginePorts: escrita que falha NÃO derruba o processo — e flush() conta a verdade', async () => {
-  // O core chama as portas sem await. Se a Promise rejeitar solta, o Node 22
-  // mata o processo: o fã veria {ok:true} e o servidor morreria em seguida.
+  // Core calls ports without await; unhandled rejections must not terminate Node.
   const erros = [];
   const ports = createEnginePorts(p.db, { onError: (e, ctx) => erros.push(ctx) });
 
-  // Palpite órfão: a pergunta não existe -> violação de FK no banco.
+  // Orphan prediction: the database rejects its missing question foreign key.
   ports.savePrediction({ id: 'pred_boom', userId: '00000000-0000-0000-0000-000000000000', questionId: 'q_inexistente', choice: 'p1', placedAt: 1 });
   assert.equal(ports.pendentes(), 1);
 
@@ -669,7 +630,7 @@ test('EnginePorts: escrita que falha NÃO derruba o processo — e flush() conta
   assert.equal(erros.length, 1, 'o erro tem que ser reportado, não engolido em silêncio');
   await p.db.query('select 1').catch(() => {});
 
-  // E o processo continua vivo para o próximo palpite.
+  // The process remains usable for the next prediction.
   await ports.flush();
   assert.equal(ports.pendentes(), 0);
 });
@@ -686,7 +647,7 @@ test('EnginePorts: savePrediction registra e depois resolve, pagando uma vez', a
   await p.ports.flush();
 
   const xp0 = (await p.users.findById(u.id)).xp;
-  // O motor preenche result/awardedXp e manda salvar de novo (fire-and-forget).
+  // The engine fills result/awardedXp and resaves it asynchronously.
   p.ports.savePrediction({ ...pred, result: 'won', awardedXp: 225 });
   await p.ports.flush();
   p.ports.savePrediction({ ...pred, result: 'won', awardedXp: 225 }); // replay
@@ -696,19 +657,84 @@ test('EnginePorts: savePrediction registra e depois resolve, pagando uma vez', a
 });
 
 // ---------------------------------------------------------------------------
-// Boot: a RLS ligada sem policy é uma armadilha para a role errada
+// recoverable sessions, live fixtures, and templates
+// ---------------------------------------------------------------------------
+
+test('templates ativos são versionados e a sessão fixa o conjunto no seu início', async () => {
+  const templates = await p.questionTemplates.listActive();
+  assert.deepEqual(templates.map((t) => t.questionType).sort(), ['final_result', 'hilo_corners', 'next_goal']);
+
+  const fixture = 991_007;
+  await p.matches.upsert({ fixtureId: fixture, p1: 'Brasil', p2: 'México', startTime: 2_000_000 });
+  const templateSet = Object.fromEntries(templates.map((t) => [t.questionType, { id: t.id, version: t.version }]));
+  const first = await p.sessions.findOrCreateActive({
+    fixtureId: fixture,
+    partyId: 'ABC123',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet,
+  });
+  const again = await p.sessions.findOrCreateActive({
+    fixtureId: fixture,
+    partyId: 'ABC123',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+  assert.equal(again.id, first.id, 'restart não pode criar uma execução paralela do mesmo grupo');
+  assert.deepEqual(again.templateSet, templateSet, 'a versão original fica pinada');
+});
+
+test('checkpoint persiste cursores e estado da sessão para recuperação', async () => {
+  const fixture = 991_008;
+  await p.matches.upsert({ fixtureId: fixture, p1: 'França', p2: 'Inglaterra', startTime: 2_000_000 });
+  const session = await p.sessions.findOrCreateActive({
+    fixtureId: fixture,
+    partyId: 'DEF456',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+  await p.sessions.checkpoint(session.id, { engine: { tracked: [] }, room: { score: { p1: 1, p2: 0 } } }, {
+    lastScoreSeq: 42,
+    lastOddsTs: 2_100_000,
+    lastOddsMessageId: 'odds-42',
+  });
+  const restored = await p.sessions.findOrCreateActive({
+    fixtureId: fixture,
+    partyId: 'DEF456',
+    treino: false,
+    engineVersion: 'ignored',
+    templateSet: {},
+  });
+  assert.equal(restored.lastScoreSeq, 42);
+  assert.equal(restored.lastOddsTs, 2_100_000);
+  assert.equal(restored.lastOddsMessageId, 'odds-42');
+  assert.equal(restored.snapshot.room.score.p1, 1);
+});
+
+test('registro de fixtures live permite ativar e desativar sem editar env', async () => {
+  const fixture = 991_009;
+  await p.matches.upsert({ fixtureId: fixture, p1: 'Espanha', p2: 'Argentina', startTime: 2_000_000 });
+  await p.liveFixtures.activate(fixture, 10);
+  assert.ok((await p.liveFixtures.listActive()).some((f) => f.fixtureId === fixture));
+  await p.liveFixtures.deactivate(fixture);
+  assert.equal((await p.liveFixtures.listActive()).some((f) => f.fixtureId === fixture), false);
+});
+
+// ---------------------------------------------------------------------------
+// boot: RLS without a policy is hazardous for the wrong role
 // ---------------------------------------------------------------------------
 
 test('assertDbReady detecta a role sujeita à RLS (o banco "funcionando" e vazio)', async () => {
-  // schema_migrations é criada pelo migrate.mjs, não pela 0001 — aqui ela é
-  // encenada para o assertDbReady poder chegar no que interessa.
+  // migrate.mjs creates schema_migrations; create it here for assertDbReady.
   await p.db.query(`create table if not exists schema_migrations (
     version text primary key, checksum text not null,
     applied_at timestamptz not null default now())`);
   await p.db.query(`insert into schema_migrations (version, checksum) values ('0001_init', 'x')
                     on conflict (version) do nothing`);
 
-  // A dona do schema ignora a RLS: tem que passar.
+  // The schema owner bypasses RLS and must pass.
   const ok = await assertDbReady(p.db);
   assert.equal(ok.migrations, 1);
 
@@ -721,9 +747,8 @@ test('assertDbReady detecta a role sujeita à RLS (o banco "funcionando" e vazio
     () =>
       p.db.withTx(async (tx) => {
         await tx.query(`set local role fa_rls`);
-        // ESTE é o ponto: a leitura NÃO dá erro. A RLS sem policy só devolve
-        // zero linhas — e count(*) devolve UMA linha dizendo n=0. Um check do
-        // tipo "voltou linha?" nunca dispararia.
+        // RLS without a policy returns zero rows rather than an error, including
+        // a count row with n=0, so readiness must detect the empty result.
         const [c] = await tx.query(`select count(*)::int as n from users`);
         assert.equal(c.n, 0, 'a RLS zera a leitura em silêncio: é este o banco vazio');
         return assertDbReady(tx);
@@ -734,13 +759,7 @@ test('assertDbReady detecta a role sujeita à RLS (o banco "funcionando" e vazio
 });
 
 // ---------------------------------------------------------------------------
-// Ligas privadas
-//
-// O que estes testes protegem: a liga existir DE VERDADE. Antes da 0002 ela era
-// um contador na sessão do browser (`session.leaguesCount++`) que sumia no F5 —
-// e o "1 membro · você lidera" era string fixa do dicionário. Por isso os testes
-// abaixo insistem em duas coisas: o número sai do banco, e o gate do free não
-// pode ser furado por corrida.
+// private leagues
 // ---------------------------------------------------------------------------
 
 async function faNovo(sufixo) {
@@ -751,12 +770,11 @@ test('a liga PERSISTE, e o dono já entra como membro', async () => {
   const dono = await faNovo('persiste');
   const liga = await p.leagues.create(dono.id, 'Resenha FC');
 
-  // Relido do banco, não do objeto que create() devolveu: é o F5.
+  // Reload from storage rather than trusting the object returned by create().
   const lido = await p.leagues.findById(liga.id);
   assert.equal(lido.name, 'Resenha FC');
   assert.equal(lido.ownerId, dono.id);
-  // 1 membro porque o DONO tem linha em league_members — não porque alguém
-  // somou "+1" em cima de uma lista vazia.
+  // The owner is persisted in league_members, so the count is derived data.
   assert.equal(lido.memberCount, 1, 'o dono é membro: o count É o número de gente na liga');
   assert.match(lido.inviteCode, /^[A-HJKMNP-Z2-9]{6}$/, 'o código não pode ter sósia (I, L, O, 0, 1)');
 });
@@ -778,20 +796,8 @@ test('premium cria quantas quiser', async () => {
 });
 
 test('o gate NÃO pode ser furado por dois pedidos simultâneos do mesmo fã', async () => {
-  // O defeito clássico: ler o contador fora de trava. Os dois pedidos leem 0, os
-  // dois criam, o fã free fica com 2 ligas — e ninguém vê erro nenhum. É por
-  // isso que o create trava a linha do fã com `for update`.
-  //
-  // LIMITE DO HARNESS (não do código): aqui NÃO dá para afirmar QUAL erro a
-  // perdedora recebe. O PGlite é Postgres de uma thread só (WASM): enquanto a
-  // primeira transação segura a trava, ele não consegue atender a segunda
-  // conexão, e o socket-server a derruba com ECONNRESET antes de o gate chegar a
-  // responder. É a mesma classe de artefato já documentada no `rejeitaCom` lá em
-  // cima.
-  //
-  // Contra o Postgres de verdade (Supabase, medido) a perdedora recebe
-  // LeagueLimitError/402 — o caminho do paywall. O que ESTE teste garante nos
-  // dois motores é o invariante que importa: o fã free não termina com 2 ligas.
+  // The invariant is one owned league for a free user. PGlite serializes the
+  // competing request differently than PostgreSQL, so do not assert its error type.
   const dono = await faNovo('corrida');
   const r = await Promise.allSettled([
     p.leagues.create(dono.id, 'Corrida Um'),
@@ -800,7 +806,7 @@ test('o gate NÃO pode ser furado por dois pedidos simultâneos do mesmo fã', a
   const criou = r.filter((x) => x.status === 'fulfilled').length;
   assert.equal(criou, 1, 'exatamente uma pode ter sido criada');
   assert.equal(await p.leagues.countOwned(dono.id), 1, 'o free não pode terminar com 2 ligas');
-  await p.db.query('select 1').catch(() => {}); // drena o cliente morto (só PGlite)
+  await p.db.query('select 1').catch(() => {}); // drain the dead PGlite client
 });
 
 test('entrar pelo código põe o amigo na liga — e repetir não duplica', async () => {
@@ -811,7 +817,7 @@ test('entrar pelo código põe o amigo na liga — e repetir não duplica', asyn
   const entrou = await p.leagues.joinByCode(amigo.id, liga.inviteCode);
   assert.equal(entrou.memberCount, 2);
 
-  // Clicar no link duas vezes é o caso NORMAL, não o exótico.
+  // Reopening the invite link is a normal idempotency case.
   const denovo = await p.leagues.joinByCode(amigo.id, liga.inviteCode);
   assert.equal(denovo.memberCount, 2, 'o mesmo fã não pode contar duas vezes no ranking da liga');
 });
@@ -830,8 +836,7 @@ test('código que não abre liga nenhuma é 404, não um 200 mudo', async () => 
 });
 
 test('ENTRAR na liga de um amigo NÃO gasta a cota do free', async () => {
-  // Se gastasse, o primeiro amigo que você chamasse — que provavelmente já tem
-  // a própria liga — não conseguiria aceitar o convite.
+  // Joining another league must not consume the user's owned-league allowance.
   const dono = await faNovo('cota-dono');
   const amigo = await faNovo('cota-amigo');
   const liga = await p.leagues.create(dono.id, 'Liga do Dono');
@@ -857,8 +862,7 @@ test('o apelido do membro pode ser NULL — e continua NULL (E12: nunca do e-mai
   const dono = await faNovo('sem-apelido');
   const liga = await p.leagues.create(dono.id, 'Sem Nome Ainda');
   const [membro] = await p.leagues.listMembers(liga.id);
-  // O onboarding grava o apelido só na sessão local; `users.handle` é NULL. A
-  // tela diz "sem apelido" — inventar um nome aqui mentiria pra liga inteira.
+  // A missing persisted handle must remain NULL rather than being fabricated.
   assert.equal(membro.handle, null);
   assert.equal(membro.role, 'owner');
 });
@@ -869,7 +873,7 @@ test('nome de liga vazio, curto ou gigante não entra', async () => {
   for (const ruim of ['', '  ', 'ab', 'x'.repeat(25)]) {
     await assert.rejects(() => p.leagues.create(dono.id, ruim), LeagueNameInvalidError);
   }
-  // O espaço repetido é normalizado, não recusado.
+  // Repeated whitespace is normalized rather than rejected.
   const liga = await p.leagues.create(dono.id, '  Resenha    FC  ');
   assert.equal(liga.name, 'Resenha FC');
 });
@@ -891,7 +895,7 @@ test('o LÍDER apaga a liga: os membros saem junto e a cota do free VOLTA', asyn
   assert.equal(await p.leagues.listForUser(amigo.id).then((l) => l.length), 0,
     'o amigo não pode continuar vendo uma liga que não existe');
 
-  // A cota do free conta ligas CRIADAS: a linha sumiu, a cota voltou.
+  // The free quota counts owned leagues, so deletion restores the allowance.
   assert.equal(await p.leagues.countOwned(dono.id), 0, 'a cota do free tem que voltar');
   const outra = await p.leagues.create(dono.id, 'A Que Ficou');
   assert.ok(outra.id, 'o free apagou a dele e pode criar outra no lugar');
@@ -920,8 +924,7 @@ test('quem NÃO é membro recebe o MESMO 404 de liga inexistente — apagar não
   const estranho = await faNovo('estranho-fa');
   const liga = await p.leagues.create(dono.id, 'Invisível FC');
 
-  // Liga que existe mas não é dele × liga que não existe: o MESMO erro, de
-  // propósito — um 403 aqui contaria a quem só tem o id que a liga existe.
+  // Use the same error for an unknown league and a non-member to avoid leaking existence.
   await assert.rejects(() => p.leagues.delete(liga.id, estranho.id), LeagueNotFoundError);
   await assert.rejects(
     () => p.leagues.delete('00000000-0000-0000-0000-000000000000', estranho.id),
@@ -934,8 +937,7 @@ test('uma liga tem UM dono — o banco recusa o segundo', async () => {
   const dono = await faNovo('um-dono');
   const outro = await faNovo('um-dono-outro');
   const liga = await p.leagues.create(dono.id, 'Um Dono Só');
-  // Sem o índice parcial, isto passaria e a tela mostraria "você lidera" para
-  // duas pessoas — sem erro nenhum.
+  // The partial index enforces a single owner per league.
   await rejeitaCom(
     () =>
       p.db.query(`insert into league_members (league_id, user_id, role) values ($1, $2, 'owner')`, [
@@ -947,7 +949,7 @@ test('uma liga tem UM dono — o banco recusa o segundo', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Lobby persistente — convite, anfitrião e membros sobrevivem ao processo web
+// persistent lobby: invitation, host, and members survive web-process restarts
 // ---------------------------------------------------------------------------
 
 test('lobby nasce com código seguro e anfitrião como primeiro membro', async () => {
@@ -1023,18 +1025,10 @@ test('o runner consegue encerrar o lobby quando todos fecharam o navegador', asy
 });
 
 // ---------------------------------------------------------------------------
-// Palpite pré-jogo — persistência dos quatro mercados e liquidação idempotente
-//
-// O que estes testes protegem é a mesma coisa do predictionRepo: o XP não pode
-// ser pago duas vezes (o GET liquida "lazy" e pode rodar de novo a cada leitura),
-// e o placar/escanteios finais têm de sobreviver às armadilhas do §11 (chave que
-// entra no meio do jogo, evento final sem bloco Score).
+// pre-match picks: four markets and idempotent settlement
 // ---------------------------------------------------------------------------
 
-// A regra de pontuação vive no @palpitei/core (gradePregame). O repositório só a
-// APLICA — recebe a função por injeção para não puxar o core para dentro do db.
-// Aqui restatamos a semântica de propósito: é a expectativa do teste sobre o que
-// uma grade faz; o que se mede é o repo persistir e creditar certo.
+// Scoring is injected so the repository can be tested without depending on core.
 const gradeFake = (pick, final) => {
   const outcome =
     final.goalsP1 > final.goalsP2 ? 'home' : final.goalsP2 > final.goalsP1 ? 'away' : 'draw';
@@ -1089,7 +1083,7 @@ test('pregame: reeditar NÃO duplica a linha e preserva o submitted_at original'
 test('pregame: liquidar credita o XP dos acertos, e liquidar de novo paga ZERO', async () => {
   const u = await p.users.findOrCreateByPrivyDid('did:privy:pregame-settle');
   await p.matches.upsert({ fixtureId: 920003, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
-  // Crava tudo certo para o final 2×1, 12 escanteios: 30+60+25+25 = 140.
+  // Match every prediction for a 2–1 final score and 12 corners: 140 XP.
   await p.pregame.upsert(u.id, 920003, {
     result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', goalsLine: 2.5, corners: 'over', cornersLine: 9.5,
   });
@@ -1103,10 +1097,7 @@ test('pregame: liquidar credita o XP dos acertos, e liquidar de novo paga ZERO',
   const depois = await p.users.findById(u.id);
   assert.equal(depois.xp - xpAntes, 140, 'quatro acertos = 140 XP');
 
-  // O GET liquida lazy a cada leitura: rodar de novo NÃO pode pagar de novo. O
-  // filtro `settled_at is null` já exclui a linha liquidada, então a 2ª varredura
-  // não re-seleciona nada (liquidados 0, jaEstavam 0) — a prova de que não pagou
-  // duas vezes é o XP seguir 140.
+  // Lazy settlement can run on every GET; settled_at prevents duplicate awards.
   const dois = await p.pregame.settleFixture(920003, final, gradeFake);
   assert.equal(dois.liquidados, 0, 'a segunda liquidação não paga');
   assert.equal(dois.jaEstavam, 0, 'o filtro já pulou a linha liquidada');
@@ -1126,7 +1117,7 @@ test('pregame: só os acertos pagam — resultado certo e placar errado credita 
   });
   const xpAntes = (await p.users.findById(u.id)).xp;
 
-  // Final 2×1 (3 gols → 'over'): acerta só o resultado. Errou placar (3×0) e gols (under).
+  // A 2–1 final selects over and only the outcome prediction is correct.
   await p.pregame.settleFixture(920004, { goalsP1: 2, goalsP2: 1, cornersTotal: 3 }, gradeFake);
 
   const lido = await p.pregame.getByUserFixture(u.id, 920004);
@@ -1141,13 +1132,13 @@ test('pregame: só os acertos pagam — resultado certo e placar errado credita 
 test('totaisFinais: usa o último valor CONHECIDO de cada chave (§11: a chave entra no meio do jogo)', async () => {
   await p.matches.upsert({ fixtureId: 920010, p1: 'A', p2: 'B', startTime: 1 });
   await p.events.upsertMany([
-    // seq 76: 1º evento com Score, Total VAZIO (nenhuma chave ainda)
+    // seq 76: first score event with no totals keys yet
     evento(76, { fixtureId: 920010, action: 'corner', hasScore: true, goals: { p1: 0, p2: 0 }, corners: { p1: 0, p2: 0 }, totals: { p1: {}, p2: {} } }),
-    // seq 77: nasce o contador de escanteios
+    // seq 77: the corners counter appears
     evento(77, { fixtureId: 920010, action: 'corner', hasScore: true, corners: { p1: 1, p2: 0 }, totals: { p1: { Corners: 1 }, p2: { Corners: 0 } } }),
-    // seq 539: 1º gol; a chave Goals aparece só agora
+    // seq 539: first goal; the Goals key appears only now
     evento(539, { fixtureId: 920010, action: 'goal', hasScore: true, goals: { p1: 1, p2: 0 }, corners: { p1: 4, p2: 2 }, totals: { p1: { Goals: 1, Corners: 4 }, p2: { Goals: 0, Corners: 2 } } }),
-    // seq 900: apito. Total com placar 2×1 e 6×4 escanteios (10 no total)
+    // seq 900: final score is 2–1 with 6–4 corners (10 total)
     evento(900, { fixtureId: 920010, action: 'goal', hasScore: true, goals: { p1: 2, p2: 1 }, corners: { p1: 6, p2: 4 }, totals: { p1: { Goals: 2, Corners: 6 }, p2: { Goals: 1, Corners: 4 } } }),
   ]);
 
@@ -1160,7 +1151,7 @@ test('totaisFinais: evento final SEM bloco Score não zera o que já se sabia (A
   await p.matches.upsert({ fixtureId: 920011, p1: 'A', p2: 'B', startTime: 1 });
   await p.events.upsertMany([
     evento(10, { fixtureId: 920011, action: 'goal', hasScore: true, goals: { p1: 2, p2: 1 }, corners: { p1: 5, p2: 4 }, totals: { p1: { Goals: 2, Corners: 5 }, p2: { Goals: 1, Corners: 4 } } }),
-    // game_finalised sem Score (acontece no feed): normalize entrega hasScore=false
+    // game_finalised may omit Score; normalize produces hasScore=false.
     evento(11, { fixtureId: 920011, action: 'game_finalised', hasScore: false, goals: { p1: 0, p2: 0 }, corners: { p1: 0, p2: 0 }, totals: { p1: {}, p2: {} } }),
   ]);
   const t = await p.events.totaisFinais(920011);

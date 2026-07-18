@@ -1,12 +1,5 @@
 'use client';
 
-/**
- * PALPITE PRÉ-JOGO — o fã crava até quatro palpites antes do apito, valendo XP.
- *
- * Estrutura do mockup: cabeçalho FIXO (times + horário), corpo que ROLA (os
- * quatro mercados) e rodapé FIXO (progresso + confirmar) — como a sala. O cérebro
- * (demo × logado, estado, trava, liquidação) vive em usePalpitePreJogo.
- */
 
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ds';
@@ -26,7 +19,6 @@ import {
   ToastBanner,
 } from '@/components/palpite/PreJogoUI';
 
-/** Os três amigos do demo — as mesmas iniciais/cores do mockup. */
 const AMIGOS_DEMO = [
   { label: 'DD', color: 'var(--gold)', ink: 'var(--bg-app)' },
   { label: 'MG', color: 'var(--blue)', ink: 'var(--bg-app)' },
@@ -74,7 +66,6 @@ export default function PalpitePreJogoPage() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      {/* ---------- cabeçalho fixo ---------- */}
       <div
         style={{
           flex: 'none',
@@ -139,7 +130,6 @@ export default function PalpitePreJogoPage() {
           <TimeBadge code={vm.codeB} color={vm.colB} name={vm.teamB} />
         </div>
 
-        {/* pill: fecha em … / travado */}
         {locked ? (
           <div style={pillStyle}>
             <Lock size={12} color="var(--text-muted)" />
@@ -155,9 +145,7 @@ export default function PalpitePreJogoPage() {
         )}
       </div>
 
-      {/* ---------- corpo rolável ---------- */}
       <Screen padding="14px 18px 20px">
-        {/* social — só no demo (o logado não inventa "amigos já palpitaram") */}
         {vm.friends != null && (
           <div
             style={{
@@ -203,7 +191,6 @@ export default function PalpitePreJogoPage() {
           <MercadoIndisponivel text={vm.friends != null ? t.pmDemoOddsUnavailable : t.pmMarketUnavailable} />
         )}
 
-        {/* A lista da TxLINE, não quatro cards previamente desenhados. */}
         {vm.markets.map((market) => (
           <MercadoTxline
             key={market.id}
@@ -224,7 +211,6 @@ export default function PalpitePreJogoPage() {
           />
         ))}
 
-        {/* 2. PLACAR EXATO */}
         <MercadoCard label={t.pmScoreHdr} sub={t.pmScoreSub} worthText={worth(60)} selectedText={t.pmSelected} selected={m.scoreTouched}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 18, marginTop: 16 }}>
             <Stepper code={vm.codeA} color={vm.colA} value={m.scoreA} onDec={() => jogo.step('a', -1)} onInc={() => jogo.step('a', 1)} disabled={locked} />
@@ -233,7 +219,6 @@ export default function PalpitePreJogoPage() {
           </div>
         </MercadoCard>
 
-        {/* nota de justiça */}
         <div
           style={{
             display: 'flex',
@@ -255,7 +240,6 @@ export default function PalpitePreJogoPage() {
         </div>
       </Screen>
 
-      {/* ---------- rodapé fixo ---------- */}
       {!locked && (
         <div
           style={{
@@ -323,7 +307,6 @@ function TimeBadge({ code, color, name }: { code: string; color: string; name: s
   );
 }
 
-/** Um card por item recebido na lista TxLINE; nenhuma categoria é reservada na UI. */
 function MercadoTxline({
   market,
   teamA,

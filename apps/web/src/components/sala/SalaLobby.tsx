@@ -129,7 +129,7 @@ function LobbyView({
       </button>
 
       <div style={{ textAlign: 'center', marginTop: 22 }}>
-        <Badge tone="neutral">{state?.treino ? t.treinoTag : t.replayShort}</Badge>
+        <Badge tone="neutral">{state?.training ? t.treinoTag : t.replayShort}</Badge>
         <h1 style={{ margin: '14px 0 0', fontSize: 24, fontWeight: fw.black }}>{t.lobbyTitle}</h1>
         <p style={{ margin: '8px auto 0', maxWidth: 310, color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
           {t.lobbyBody}

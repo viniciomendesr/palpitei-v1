@@ -2,9 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeOdds, normalizeScore } from "../src/normalize.ts";
 
-// Payloads de exemplo montados a partir do mapa de campos verificado pelo
-// txline-spike contra a devnet. NÃO é payload da TxLINE versionado (§7): é
-// exemplo mínimo escrito à mão a partir do mapa de campos, sem dado real.
+// Handwritten example payloads derived from a field map verified against devnet.
+// They do not contain versioned TxLINE data.
 
 const goalRaw = {
   FixtureId: 18241006,
@@ -61,7 +60,7 @@ test("normalizeScore: game_finalised (statusId=100, period=100) sem Score", () =
   assert.equal(ev.action, "game_finalised");
   assert.equal(ev.statusId, 100);
   assert.equal(ev.period, 100);
-  // Sem bloco Score, os totais caem para 0 (quem consome usa o último estado conhecido)
+  // Without Score, totals are zero placeholders; consumers retain the last known state.
   assert.deepEqual(ev.goals, { p1: 0, p2: 0 });
   assert.deepEqual(ev.corners, { p1: 0, p2: 0 });
 });
@@ -80,8 +79,8 @@ test("normalizeScore: sem FixtureId numérico => null", () => {
   assert.equal(normalizeScore("goal"), null);
 });
 
-// MessageId no formato ESTRUTURADO que o feed manda de verdade (mapa de campos
-// do v0, G2). Um `555` aqui esconderia o bug: só o formato real prova o parser.
+// Use the structured MessageId format emitted by the feed; a numeric ID would
+// not exercise the parser's production shape.
 const MSG_ID = "1837922149:00003:000572-10021-stab";
 
 const oddsRaw = {
@@ -128,8 +127,7 @@ test("normalizeOdds: sem Pct deriva probabilidade implícita da odd", () => {
 });
 
 test("normalizeOdds: MessageId estruturado sobrevive inteiro (chave de dedupe, G2)", () => {
-  // Regressão do G2: num() devolvia NaN->undefined para TODO MessageId real, a
-  // chave de dedupe sumia e 3.758 eventos colapsavam num só — calado.
+  // Regression: structured IDs must remain distinct deduplication keys.
   const a = normalizeOdds({ ...oddsRaw, MessageId: "1837922149:00003:000572-10021-stab" })!;
   const b = normalizeOdds({ ...oddsRaw, MessageId: "1837922149:00003:000573-10021-stab" })!;
   assert.equal(a.messageId, "1837922149:00003:000572-10021-stab");
@@ -138,17 +136,16 @@ test("normalizeOdds: MessageId estruturado sobrevive inteiro (chave de dedupe, G
   const dedupe = new Map([a, b].map((e) => [e.messageId, e]));
   assert.equal(dedupe.size, 2, "dois eventos distintos => duas entradas");
 
-  // Id numérico (fonte sintética) vira string, sem perder identidade.
+  // A numeric synthetic-source ID becomes a string without losing identity.
   assert.equal(normalizeOdds({ ...oddsRaw, MessageId: 555 })!.messageId, "555");
-  // Ausente continua ausente (não vira "undefined").
+  // An absent ID remains absent rather than becoming the string "undefined".
   const semId = { ...oddsRaw } as Record<string, unknown>;
   delete semId.MessageId;
   assert.equal(normalizeOdds(semId)!.messageId, undefined);
 });
 
 test("normalizeOdds: arrays paralelos desalinhados => null (sem preço fantasma, G8)", () => {
-  // 3 nomes, 2 preços: names.map() inventava um 3º preço zerado e o explicador
-  // anunciava "a chance caiu para 0.0%". Vazio ≠ zero — e ausente também não.
+  // Mismatched parallel arrays must not invent a zero-priced third outcome.
   assert.equal(
     normalizeOdds({
       FixtureId: 1, Ts: 1, SuperOddsType: "1X2_PARTICIPANT_RESULT",
@@ -157,7 +154,7 @@ test("normalizeOdds: arrays paralelos desalinhados => null (sem preço fantasma,
     }),
     null
   );
-  // Pct mais curto que os outros dois também desalinha.
+  // A shorter Pct array is also misaligned.
   assert.equal(
     normalizeOdds({
       FixtureId: 1, Ts: 1, SuperOddsType: "1X2_PARTICIPANT_RESULT",
@@ -167,7 +164,7 @@ test("normalizeOdds: arrays paralelos desalinhados => null (sem preço fantasma,
     }),
     null
   );
-  // Prices vazio com PriceNames cheio (o G8 original) segue barrado.
+  // Empty Prices with populated PriceNames remains invalid.
   assert.equal(
     normalizeOdds({
       FixtureId: 1, Ts: 1, SuperOddsType: "1X2_PARTICIPANT_RESULT",
@@ -176,7 +173,7 @@ test("normalizeOdds: arrays paralelos desalinhados => null (sem preço fantasma,
     }),
     null
   );
-  // E o caso alinhado continua passando.
+  // Aligned arrays remain valid.
   const ok = normalizeOdds({
     FixtureId: 1, Ts: 1, SuperOddsType: "1X2_PARTICIPANT_RESULT",
     PriceNames: ["part1", "draw", "part2"],
@@ -191,7 +188,7 @@ test("normalizeOdds: preço ilegível some da lista, não vira 0% (ausente ≠ z
   const ev = normalizeOdds({
     FixtureId: 1, Ts: 1, SuperOddsType: "1X2_PARTICIPANT_RESULT",
     PriceNames: ["part1", "draw", "part2"],
-    Prices: [2076, null, 3200], // alinhados 3/3, mas "draw" não tem preço legível
+    Prices: [2076, null, 3200], // Aligned 3/3, but "draw" has no readable price.
   });
   assert.ok(ev);
   assert.deepEqual(
@@ -201,7 +198,7 @@ test("normalizeOdds: preço ilegível some da lista, não vira 0% (ausente ≠ z
   );
   assert.ok(!ev.prices.some((p) => p.odds === 0 || p.pct === 0), "nenhum zero fantasma");
 
-  // Nenhum preço legível => evento inteiro descartado.
+  // No readable price means the full event is discarded.
   assert.equal(
     normalizeOdds({
       FixtureId: 1, Ts: 1, SuperOddsType: "X",
@@ -212,8 +209,8 @@ test("normalizeOdds: preço ilegível some da lista, não vira 0% (ausente ≠ z
 });
 
 test("normalizeOdds: payload inválido => null", () => {
-  assert.equal(normalizeOdds({ Ts: 1, PriceNames: ["over"], Prices: [2000] }), null); // sem FixtureId
-  assert.equal(normalizeOdds({ FixtureId: 1, PriceNames: "over", Prices: [2000] }), null); // PriceNames não-array
-  assert.equal(normalizeOdds({ FixtureId: 1, PriceNames: ["over"], Prices: 2000 }), null); // Prices não-array
+  assert.equal(normalizeOdds({ Ts: 1, PriceNames: ["over"], Prices: [2000] }), null); // Missing FixtureId.
+  assert.equal(normalizeOdds({ FixtureId: 1, PriceNames: "over", Prices: [2000] }), null); // PriceNames is not an array.
+  assert.equal(normalizeOdds({ FixtureId: 1, PriceNames: ["over"], Prices: 2000 }), null); // Prices is not an array.
   assert.equal(normalizeOdds(null), null);
 });

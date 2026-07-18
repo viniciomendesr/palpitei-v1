@@ -1,13 +1,3 @@
-/**
- * POST /api/leagues/join — entra numa liga pelo código do convite. Corpo: `{ code }`.
- *
- * É o outro lado do "chame a galera": sem isto, criar liga privada seria criar
- * um grupo de uma pessoa só.
- *
- * ENTRAR NÃO GASTA A COTA DO FREE (a cota é sobre a liga que você CRIA). Se
- * gastasse, o primeiro amigo que você chamasse — que provavelmente já tem a
- * própria liga — não conseguiria aceitar o convite.
- */
 
 import { NextResponse } from 'next/server';
 import { createLeagueRepo, createUserRepo } from '@palpitei/db';
@@ -35,8 +25,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   const db = createDb();
   try {
     const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
-    // Código que não abre liga nenhuma vira 404 com mensagem de gente — não um
-    // 200 mudo que deixaria o fã achando que entrou.
     const liga = await createLeagueRepo(db).joinByCode(user.id, code);
     return NextResponse.json({
       ok: true,

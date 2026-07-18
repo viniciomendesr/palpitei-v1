@@ -1,37 +1,23 @@
-// pregamePickRepo — o palpite pré-jogo do fã e o pagamento do XP no apito final.
-//
-// A mesma disciplina do predictionRepo (leia o cabeçalho de lá): o XP é FUNÇÃO
-// da liquidação, não um "+=". A rota GET liquida "lazy" — recalcula a cada
-// leitura de uma partida encerrada — então o pagamento TEM de ser idempotente. O
-// UPDATE de liquidação só morde `where settled_at is null`: rodar de novo não
-// paga de novo.
-//
-// A REGRA DE PONTUAÇÃO não vive aqui: ela é `gradePregame` em @palpitei/core, e
-// entra por INJEÇÃO. Este pacote não importa o core de propósito (a fronteira
-// está documentada em types.ts) — a rota, que já depende dos dois, passa a
-// função. Assim o repositório continua sabendo só de persistência.
-//
-// O TRAVA-NO-APITO não é aqui: a rota compara `Date.now()` com `matches.start_ts`
-// e recusa a edição depois do apito. O repositório é burro de propósito — um
-// psql aberto ou um seed entram por baixo dele, e a porta é a rota.
+// Pregame picks and final-whistle XP settlement. Scoring is injected from core;
+// settlement uses settled_at CAS so lazy reads and retries cannot pay twice.
 
 import type { Db, Executor } from '../pool.js';
 
-/** O que a tela manda salvar. NULL = mercado não preenchido. */
+/** Fields submitted by the UI. NULL means unanswered market. */
 export interface PregamePickFields {
   result: 'home' | 'draw' | 'away' | null;
   scoreA: number;
   scoreB: number;
   scoreSet: boolean;
   goals: 'over' | 'under' | null;
-  /** Linha de meio gol da TxLINE que estava aberta ao confirmar. */
+  /** TxLINE half-point goals line available at submission. */
   goalsLine: number | null;
   corners: 'over' | 'under' | null;
-  /** Linha de meio gol da TxLINE que estava aberta ao confirmar. */
+  /** TxLINE half-point corners line available at submission. */
   cornersLine: number | null;
 }
 
-/** Uma linha de palpite pré-jogo, como o resto do app a lê (epoch ms nos tempos). */
+/** Pregame-pick row as consumed by the application (timestamps in epoch ms). */
 export interface PregamePick extends PregamePickFields {
   id: string;
   userId: string;
@@ -45,14 +31,14 @@ export interface PregamePick extends PregamePickFields {
   awardedXp: number | null;
 }
 
-/** O desfecho real da partida, do dado no apito. */
+/** Final match outcome derived from final-whistle data. */
 export interface PregameFinalTotals {
   goalsP1: number;
   goalsP2: number;
   cornersTotal: number;
 }
 
-/** A regra de pontuação, injetada de @palpitei/core (gradePregame). */
+/** Scoring function injected from @palpitei/core (gradePregame). */
 export type PregameGradeFn = (
   pick: PregamePickFields,
   final: PregameFinalTotals
@@ -95,7 +81,7 @@ function mapPick(r: Record<string, unknown>): PregamePick {
 
 export function createPregamePickRepo(db: Db) {
   const repo = {
-    /** O palpite deste fã nesta partida, ou null. */
+    /** This fan's pick for the fixture, or null. */
     async getByUserFixture(userId: string, fixtureId: number): Promise<PregamePick | null> {
       const rows = await db.query(
         `select ${COLS} from pregame_picks where user_id = $1 and fixture_id = $2`,
@@ -105,9 +91,8 @@ export function createPregamePickRepo(db: Db) {
     },
 
     /**
-     * Grava (ou atualiza) o palpite. Um por fã por partida — garantido pelo
-     * UNIQUE, não por um SELECT-antes-de-INSERT. `submitted_at` é marcado na 1ª
-     * confirmação e PRESERVADO nas edições seguintes (coalesce).
+     * Upserts one pick per fan and fixture through UNIQUE. submitted_at is set on
+     * the first submission and preserved on later edits.
      */
     async upsert(userId: string, fixtureId: number, pick: PregamePickFields): Promise<PregamePick> {
       const rows = await db.query(
@@ -143,10 +128,8 @@ export function createPregamePickRepo(db: Db) {
     },
 
     /**
-     * Liquida TODOS os palpites de uma partida encerrada, numa transação só.
-     * `grade` (gradePregame do core) diz o que cada mercado acertou; o CAS em
-     * `settled_at is null` garante que reprocessar não paga de novo. Só escreve
-     * `users.xp` — o nível é coluna gerada e se ajusta sozinho.
+     * Settles every pick for a finished fixture in one transaction. settled_at
+     * CAS prevents replayed work from paying XP twice.
      */
     async settleFixture(
       fixtureId: number,
@@ -154,13 +137,7 @@ export function createPregamePickRepo(db: Db) {
       grade: PregameGradeFn
     ): Promise<{ liquidados: number; jaEstavam: number }> {
       return db.withTx(async (tx: Executor) => {
-        // Não trava com `for update`: quem serializa é o PRÓPRIO update com CAS.
-        // Duas liquidações lazy concorrentes leem as duas a linha como não
-        // liquidada; o `update ... where settled_at is null` toma o lock da linha,
-        // e a 2ª, ao destravar, reavalia o WHERE contra a linha já liquidada e
-        // casa 0 linhas — ninguém paga duas vezes. (O `for update` aqui só
-        // provocava um artefato do socket do PGlite: RETURNING vazio num UPDATE
-        // que mexeu na linha.)
+        // CAS in the update serializes concurrent lazy settlement without FOR UPDATE.
         const rows = await tx.query(
           `select ${COLS} from pregame_picks
             where fixture_id = $1 and submitted_at is not null and settled_at is null`,
@@ -197,8 +174,7 @@ export function createPregamePickRepo(db: Db) {
             [pick.id, g.resultCorrect, g.scoreCorrect, g.goalsCorrect, g.cornersCorrect, xp]
           );
           if (upd.length === 0) {
-            // Só cai aqui numa corrida: outra liquidação lazy virou a chave entre
-            // o nosso SELECT e o nosso UPDATE. O CAS garante que ela pagou, nós não.
+            // Another concurrent settlement won the CAS between select and update.
             jaEstavam++;
             continue;
           }

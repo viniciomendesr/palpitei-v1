@@ -1,31 +1,19 @@
-// gamificationRepo — conquistas e missões.
-//
-// As duas coisas pagam XP, e as duas são chamadas de dentro de fluxos que
-// repetem (o fã recarrega a tela, o replay reprocessa, o cliente tenta de
-// novo). Mesma regra do resto desta camada: o XP só sai na TRANSIÇÃO —
-// bloqueada/desbloqueada, em andamento/concluída. Chamar duas vezes é no-op.
+// Achievements and missions. XP is awarded only on a state transition, making
+// retries and replay reprocessing idempotent.
 
 import type { Db, Executor } from '../pool.js';
 import type { Achievement, Mission } from '../types.js';
 
-// "Hoje" para o fã brasileiro é o dia em São Paulo, não em UTC. A missão de
-// hoje virando às 21h de Brasília seria uma esquisitice silenciosa.
+// Daily missions follow the São Paulo calendar rather than UTC.
 const HOJE_BR = `(now() at time zone 'America/Sao_Paulo')::date`;
 
-// Missão de temporada não tem dia; usa uma data sentinela para caber na mesma
-// chave primária (user_id, mission_code, period_date).
+// Seasonal missions use a sentinel date to share the same primary-key shape.
 const EPOCA = '1970-01-01';
 
 export function createGamificationRepo(db: Db) {
   const repo = {
-    // -----------------------------------------------------------------------
-    // Conquistas
-    // -----------------------------------------------------------------------
-
     /**
-     * Desbloqueia a conquista e paga o XP dela UMA vez.
-     * A PK (user_id, achievement_code) faz o trabalho: quem já tinha a conquista
-     * não recebe nada e a função devolve false.
+     * Unlocks an achievement and awards its XP once via the primary key.
      */
     async unlock(userId: string, code: string): Promise<boolean> {
       return db.withTx(async (tx: Executor) => {
@@ -74,16 +62,9 @@ export function createGamificationRepo(db: Db) {
       });
     },
 
-    // -----------------------------------------------------------------------
-    // Missões
-    // -----------------------------------------------------------------------
-
     /**
-     * Anda com a missão. `delta` soma ao progresso do dia.
-     *
-     * Devolve `concluiuAgora: true` só na virada — e é só nessa virada que o XP
-     * sai. Depois de concluída, progresso extra não paga de novo (o
-     * `completed_at is null` no WHERE é o CAS).
+     * Advances a mission by delta. XP is awarded only when completed_at changes
+     * from null, guarded by CAS.
      */
     async progress(
       userId: string,
@@ -118,8 +99,7 @@ export function createGamificationRepo(db: Db) {
           return { progresso, alvo, concluiuAgora: false };
         }
 
-        // Virada: marca a conclusão e paga. O `completed_at is null` garante que
-        // duas chamadas concorrentes não paguem duas vezes.
+        // CAS on completed_at prevents concurrent calls from paying twice.
         const virou = await tx.query(
           `update user_missions
               set completed_at = now(), updated_at = now()
@@ -137,7 +117,7 @@ export function createGamificationRepo(db: Db) {
       });
     },
 
-    /** As missões do fã hoje (é o que a home mostra em "MISSÃO DE HOJE"). */
+    /** Today's missions for the home view. */
     async listMissions(userId: string, opts: { date?: string } = {}): Promise<Mission[]> {
       const rows = await db.query(
         `select m.code, m.title, m.description, m.kind, m.target, m.xp_reward, m.sort_order, m.active,

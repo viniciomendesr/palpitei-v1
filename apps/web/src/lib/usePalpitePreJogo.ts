@@ -1,14 +1,5 @@
-// O cérebro da tela de palpite pré-jogo.
-//
-// Dois caminhos, o mesmo desenho do useFixtures:
-//   demo   → tudo local (fixtures do mock, palpite no sessionStorage). Sem rede:
-//            é o caminho do jurado e ele não pode depender de nada (§5.1).
-//   logado → GET/POST /api/pregame/:id, com a guarda da corrida do Bearer
-//            (privy.ready && authenticated antes de buscar). Falha → ERRO na
-//            tela, nunca mock (G6).
-//
-// A regra de pontuação e os pesos vêm do @palpitei/core (PREGAME_XP) — a mesma
-// fonte que o servidor usa para liquidar. Copiar a tabela seria o bug nº 1.
+// Pre-match prediction state. Demo is local-only; authenticated users use the API.
+// Scoring weights come from `@palpitei/core` to match server-side settlement.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PREGAME_XP } from '@palpitei/core';
@@ -42,13 +33,13 @@ export interface PregameVM {
   colB: string;
   group: string;
   kickoffText: string;
-  /** null = já travou (o apito passou). */
+  /** null when the pick window has already closed. */
   closesText: string | null;
-  /** Amigos que já palpitaram — só no demo; null no logado (não inventa dado). */
+  /** Friends who have picked, available only in demo mode. */
   friends: number | null;
-  /** Lista de mercados que a TxLINE abriu e que o produto sabe liquidar. */
+  /** Markets offered by TxLINE that the product can settle. */
   markets: PregameMarket[];
-  /** false significa falha de leitura da fonte, não "0%". */
+  /** `false` means the source could not be read, not a 0% probability. */
   txlineOddsAvailable: boolean;
   locked: boolean;
   finished: boolean;
@@ -80,7 +71,7 @@ function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-/** "Hoje, 18:00" / "Amanhã, 21:00" / "24/07, 16:00" — o horário do apito. */
+/** Formats the kickoff time for the current locale. */
 function textoDoApito(startTs: number, agora: number, lang: 'pt' | 'en'): string {
   const d = new Date(startTs);
   const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -94,7 +85,7 @@ function textoDoApito(startTs: number, agora: number, lang: 'pt' | 'en'): string
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}, ${hhmm}`;
 }
 
-/** "3h 20min" / "45min" — quanto falta pro apito; null se já passou. */
+/** Formats remaining time to kickoff, or null after kickoff. */
 function textoDoFechamento(startTs: number, agora: number, lang: 'pt' | 'en'): string | null {
   const ms = startTs - agora;
   if (ms <= 0) return null;
@@ -147,9 +138,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
   const { session, hydrated } = useSession();
   const privy = usePrivyAuth();
 
-  // A sessão revive num efeito do provider — nos primeiros renders ela é null.
-  // Esperar a hidratação evita tratar um fã logado, que recarregou uma fixture
-  // numérica, como demo e exibir um erro espúrio antes de a Privy ficar pronta.
+  // Wait for hydration so an authenticated user is not briefly treated as demo.
   const ehDemo = !session || session.authMethod === 'demo';
   const podeBuscar = hydrated && !ehDemo && privy.ready && privy.authenticated;
 
@@ -163,7 +152,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
 
   const demoKey = `pregame:demo:${fixtureId}`;
 
-  // ---- carga do demo (local, sem rede) ----------------------------------
+  // Local, network-free demo loading.
   useEffect(() => {
     if (!hydrated || !ehDemo) return;
     const fx = fixtures(t).next.find((f) => f.id === fixtureId);
@@ -188,8 +177,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
           scoreA: parsed.scoreA,
           scoreB: parsed.scoreB,
           scoreTouched: parsed.scoreTouched,
-          // Versões antigas do demo guardavam totais fixos. Não recuperamos
-          // essas escolhas como se ainda fossem cotadas pela TxLINE.
+          // Legacy demo totals are not restored as if TxLINE still offered them.
           goals: null,
           goalsLine: null,
           corners: null,
@@ -198,7 +186,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
         jaEnviou = parsed.submitted === true;
       }
     } catch {
-      /* sessionStorage indisponível: começa do zero, sem quebrar */
+      /* Storage unavailable: start from a clean local state. */
     }
     if (salvo) setM(salvo);
     setSubmitted(jaEnviou);
@@ -212,7 +200,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
       group: fx.group,
       kickoffText: startTs != null ? textoDoApito(startTs, agora, lang) : fx.status,
       closesText: locked || startTs == null ? null : textoDoFechamento(startTs, agora, lang),
-      // O demo não inventa amigos que já palpitaram; só o fluxo é local.
+      // Demo mode does not fabricate friends' predictions.
       friends: null,
       markets: SEM_MERCADOS,
       txlineOddsAvailable: false,
@@ -224,11 +212,11 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
       awardedXp: null,
     });
     setLoading(false);
-    // fixtureId muda a tela inteira; lang/t só reformatam rótulos.
+    // `fixtureId` changes the data; language only reformats labels.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, ehDemo, fixtureId, lang]);
 
-  // ---- carga do fã logado (API) -----------------------------------------
+  // Authenticated API loading.
   useEffect(() => {
     if (ehDemo || !podeBuscar) return;
     const id = Number(fixtureId);
@@ -259,7 +247,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
           group: r.match.competition ?? '',
           kickoffText: startTs != null ? textoDoApito(startTs, agora, lang) : '',
           closesText: r.locked || startTs == null ? null : textoDoFechamento(startTs, agora, lang),
-          friends: null, // logado: sem dado real de amigos ainda — não inventa
+          friends: null, // Do not fabricate social data until a real source exists.
           markets: r.markets,
           txlineOddsAvailable: r.txlineOddsAvailable,
           locked: r.locked,
@@ -290,7 +278,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ehDemo, podeBuscar, fixtureId, lang]);
 
-  // O toast some sozinho — a tela não tem toast global que faça isso por ela.
+  // This screen owns its toast lifecycle because there is no global toast host.
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(null), 3200);
@@ -349,7 +337,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
       try {
         sessionStorage.setItem(demoKey, JSON.stringify({ ...m, submitted: true }));
       } catch {
-        /* sessionStorage indisponível: o palpite não persiste entre reloads, mas o fluxo segue */
+        /* Storage unavailable: the pick is not persisted, but the flow continues. */
       }
       marcarEnviado();
       return;

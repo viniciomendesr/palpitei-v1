@@ -1,9 +1,6 @@
 /**
- * Ponte de persistência do core para Postgres.
- *
- * As portas são fire-and-forget: nunca deixe uma rejeição escapar; registre-a e
- * exponha-a por `flush`/`flushDe`. XP e saldo usam operações relativas e
- * idempotentes; não implemente `saveUser` com um valor absoluto.
+ * Persistence bridge from core to Postgres. Ports are fire-and-forget; capture
+ * rejections through flush/flushDe. XP and balance writes are relative and idempotent.
  */
 
 import type { Db } from './pool.js';
@@ -14,7 +11,7 @@ import { createPredictionRepo } from './repos/predictionRepo.js';
 import { createQuestionRepo } from './repos/questionRepo.js';
 
 export type EnginePortsOptions = {
-  /** Chamado quando uma escrita disparada pelo motor falha. Padrão: console.error. */
+  /** Called when an engine-triggered write fails. Defaults to console.error. */
   onError?: (erro: Error, contexto: string) => void;
 };
 
@@ -22,15 +19,15 @@ export interface EnginePorts {
   uid(prefix: string): string;
   savePrediction(p: Prediction): void;
   saveBet(b: Bet): void;
-  /** Persiste a pergunta antes dos palpites que a referenciam. */
+  /** Persists a question before predictions that reference it. */
   saveQuestion(q: Question): void;
-  /** Persiste um mercado do domínio. */
+  /** Persists a domain market. */
   saveMarket(m: Market): void;
-  /** Aguarda todas as escritas; para um palpite individual prefira `flushDe`. */
+  /** Waits for all writes; use `flushDe` for one prediction. */
   flush(): Promise<void>;
-  /** Aguarda as escritas e falha somente pelo dono indicado. */
+  /** Waits for writes and fails only for the indicated owner. */
   flushDe(dono: string): Promise<void>;
-  /** Escritas ainda em voo — útil para teste e para o shutdown. */
+  /** Writes still in flight, used by tests and shutdown. */
   pendentes(): number;
 }
 
@@ -48,13 +45,13 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
   const emVoo = new Set<Promise<void>>();
   let primeiroErro: Error | null = null;
 
-  /** Escrita de cada pergunta; mantém a promise concluída para palpites tardios. */
+  /** One write per question; retains its settled promise for late predictions. */
   const perguntaEmVoo = new Map<string, Promise<void>>();
 
-  /** Erros por dono evitam entregar a um fã o erro de outro. */
+  /** Owner-scoped errors prevent exposing one fan's error to another. */
   const erroDoDono = new Map<string, Error>();
 
-  /** Dispara uma escrita e captura a rejeição para `flush`/`flushDe`. */
+  /** Starts a write and captures rejection for `flush`/`flushDe`. */
   function disparar(contexto: string, fn: () => Promise<unknown>, dono?: string): Promise<void> {
     const pr = fn()
       .then(() => undefined)
@@ -75,7 +72,7 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
     uid,
 
     savePrediction(p: Prediction): void {
-      // Abertura grava; liquidação usa CAS. Esperar a pergunta evita violar a FK.
+      // Opening persists first; settlement uses CAS. Await it to preserve the FK.
       disparar(
         `savePrediction(${p.id})`,
         async () => {
@@ -90,7 +87,7 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
     },
 
     saveBet(b: Bet): void {
-      // Registra o débito; a liquidação é creditada pelo mercado sob CAS.
+      // Record the debit; market settlement credits it under CAS.
       disparar(`saveBet(${b.id})`, () => markets.saveBet(b));
     },
 
@@ -108,18 +105,18 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
       while (emVoo.size > 0) await Promise.all([...emVoo]);
       if (primeiroErro) {
         const e = primeiroErro;
-        primeiroErro = null; // O próximo flush julga apenas falhas posteriores.
+        primeiroErro = null; // The next flush considers only later failures.
         throw e;
       }
     },
 
-    /** Aguarda somente a falha relacionada ao dono solicitado. */
+    /** Waits only for a failure related to the requested owner. */
     async flushDe(dono: string): Promise<void> {
       while (emVoo.size > 0) await Promise.all([...emVoo]);
       const erro = erroDoDono.get(dono);
       if (erro) {
         erroDoDono.delete(dono);
-        // Não deixe um `flush` posterior repetir um erro já entregue.
+        // Do not repeat an error already delivered by a prior flush.
         if (primeiroErro === erro) primeiroErro = null;
         throw erro;
       }

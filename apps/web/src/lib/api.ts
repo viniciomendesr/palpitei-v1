@@ -1,34 +1,9 @@
-/**
- * Contratos que o front consome — herdados do v0 (CONTEXT.md §8).
- *
- * Aqui só existem TIPOS e um cliente fino. As telas ainda rodam no mock; quando
- * o backend subir, quem troca é o provedor de dados, não o componente.
- *
- * DUAS REGRAS QUE NÃO SE NEGOCIAM, e por isso estão gravadas no tipo:
- *
- * 1. NUNCA mande `userId` no body. A identidade é o `privy_did` VERIFICADO no
- *    servidor a partir do Bearer. O v0 tinha um resolveUser() que caía pro
- *    body.userId quando não havia header — atrás de link público com ranking
- *    valendo, isso é fraude trivial. Nenhum tipo de request abaixo tem userId,
- *    e é de propósito: se você precisar dele, o desenho está errado.
- *
- * 2. O token vai no header Authorization, sempre. `authTokenProvider` é
- *    plugado pelo PrivyIsland no boot.
- */
+/** Client contracts. The server derives identity from a verified Bearer token; request bodies never carry `userId`. */
 
-/** Como a conta entrou. As duas primeiras cumprem "sign up through Solana". */
+/** Account entry method. */
 export type WalletSource = 'privy_embedded' | 'external' | 'simulated';
 
-/**
- * De onde o replay saiu. `synthetic` é dev-only e nunca vai pra demo (§7 / regra da trilha).
- *
- * Espelha `CacheSource` do @palpitei/db de propósito: o selo tem que poder dizer a
- * VERDADE. O que o cache grava na prática é `txline-updates` (a linha do tempo de
- * /scores/updates — a única fonte que vale cachear); sem esse valor aqui, a única
- * saída era rotular a partida gravada como `txline-cache`, que é rótulo de
- * proveniência mentindo — o G6 literal. O CONTEXT §8 herdou a lista do v0 sem
- * `txline-updates`; quem está certo é o código que grava.
- */
+/** Replay provenance. `synthetic` is development-only and never used by demo mode. */
 export type ReplaySource =
   | 'txline-updates'
   | 'txline-cache'
@@ -38,21 +13,17 @@ export type ReplaySource =
   | 'synthetic';
 
 export interface ApiUser {
-  /** A identidade. Não é a carteira: a carteira muda, o DID não. */
+  /** Stable identity; wallets may change. */
   privyDid: string;
   nickname: string | null;
   level: number;
   xp: number;
   streak: number;
-  /**
-   * `null` = o fã entrou e NÃO ganhou carteira Solana. É a regressão E2 visível,
-   * e o tipo a mantém visível de propósito: colapsar para 'simulated' marcaria um
-   * fã real de Google como conta de teste da §5.1.
-   */
+  /** `null` means the user has no Solana wallet; it must not be represented as simulated. */
   walletSource: WalletSource | null;
 }
 
-/** Aproveitamento dos palpites, contado pela tabela que o MOTOR liquida. */
+/** Prediction outcome totals settled by the engine. */
 export interface ApiStats {
   total: number;
   acertos: number;
@@ -78,10 +49,10 @@ export interface ApiFixture {
   teamB: string;
   scoreA: number | null;
   scoreB: number | null;
-  /** Selo de origem do dado — a trilha exige a TxLINE como fonte primária. */
+  /** Data provenance displayed to the user. */
   source: 'txline' | ReplaySource;
-  /** Sala de TREINO: mesma partida, XP sempre 0, nada persistido. */
-  treino?: boolean;
+  /** Training rooms do not persist state or award XP. */
+  training?: boolean;
 }
 
 export interface LobbyState {
@@ -89,7 +60,7 @@ export interface LobbyState {
   roomId: string;
   partyId: string;
   fixtureId: number;
-  treino: boolean;
+  training: boolean;
   teamA: string;
   teamB: string;
   phase: 'waiting' | 'started' | 'finished';
@@ -107,35 +78,28 @@ export interface LobbyState {
 export interface ApiLobbyPreview {
   inviteCode: string;
   roomId: string;
-  treino: boolean;
+  training: boolean;
   teamA: string;
   teamB: string;
   memberCount: number;
   maxPlayers: number;
 }
 
-/**
- * Uma liga privada, como a home a lista.
- *
- * `memberCount` vem do banco — o "1 membro" da tela era string fixa do
- * dicionário (`myLeagueSub`), e o `ligaSub: '8 amigos · você lidera'` é número
- * inventado que ninguém nunca contou. Este campo existe para que o número seja
- * o que o banco tem, ou nada.
- */
+/** Private league summary backed by persisted membership. */
 export interface ApiLeague {
   id: string;
   name: string;
   memberCount: number;
-  /** Quem lidera sai da tabela, não de comparar ids na tela. */
+  /** Leader status is server-derived. */
   iLead: boolean;
-  /** O convite. Só chega aqui para quem já é membro: a rota só lista as suas. */
+  /** Invite code is returned only to members. */
   inviteCode: string;
 }
 
-/** O que a home precisa para listar as ligas E decidir o gate do free. */
+/** League list and free-tier entitlement data. */
 export interface ApiLeagues {
   leagues: ApiLeague[];
-  /** Ligas CRIADAS. Entrar na de um amigo não gasta a cota — ver /api/leagues/join. */
+  /** Created leagues; joining another league does not consume this quota. */
   ownedCount: number;
   freeLimit: number;
   isPremium: boolean;
@@ -143,15 +107,11 @@ export interface ApiLeagues {
 
 export interface ApiLeagueDetail {
   league: ApiLeague & { iLead: boolean };
-  /** `handle` null = ainda sem apelido. A tela diz "sem apelido" (E12: nunca o e-mail). */
+  /** `null` handle means no nickname yet; email is never exposed. */
   members: { handle: string | null; iLead: boolean; me: boolean }[];
 }
 
-/**
- * Uma linha do ranking global. `pos: null` = a minha linha fora do top — a
- * posição exata de quem está além do corte não é calculada (e a tela diz "—").
- * Sem userId de ninguém: apelido é o único nome que atravessa (E12).
- */
+/** Global ranking row. `pos: null` represents the current user outside the ranked cutoff. */
 export interface ApiRankRow {
   pos: number | null;
   name: string;
@@ -160,31 +120,31 @@ export interface ApiRankRow {
   me: boolean;
 }
 
-/** Um palpite. Sem userId: quem responde é quem o Bearer diz que é. */
+/** Prediction request; the server derives the user from the Bearer token. */
 export interface PredictionRequest {
   questionId: string;
   optionId: string;
 }
 
 // ---------------------------------------------------------------------------
-// Palpite pré-jogo
+// Pre-game prediction
 // ---------------------------------------------------------------------------
 
-/** O corpo do POST: só os mercados que o fã mexeu (o resto fica de fora). */
+/** POST body includes only markets changed by the user. */
 export interface PregamePickRequest {
   result?: 'home' | 'draw' | 'away' | null;
   scoreA?: number;
   scoreB?: number;
   scoreSet?: boolean;
   goals?: 'over' | 'under' | null;
-  /** Linha TxLINE exibida junto do total de gols. */
+  /** TxLINE line displayed for total goals. */
   goalsLine?: number | null;
   corners?: 'over' | 'under' | null;
-  /** Linha TxLINE exibida junto do total de escanteios. */
+  /** TxLINE line displayed for total corners. */
   cornersLine?: number | null;
 }
 
-/** O palpite como o banco o guarda (tempos em epoch ms; correções só após liquidar). */
+/** Persisted pre-game prediction; timestamps use epoch milliseconds. */
 export interface PregamePick {
   id: string;
   userId: string;
@@ -206,7 +166,7 @@ export interface PregamePick {
   awardedXp: number | null;
 }
 
-/** Lista segura de mercados do snapshot TxLINE — sem payload cru licenciado. */
+/** Safe market projection from TxLINE, without licensed raw payloads. */
 export type PregameMarket =
   | {
       id: 'result';
@@ -230,27 +190,22 @@ export interface PregameView {
     state: 'scheduled' | 'live' | 'finished' | 'cancelled';
   };
   pick: PregamePick | null;
-  /** Mercados atuais da TxLINE. Lista vazia significa que a fonte não cotou nada utilizável. */
+  /** Current TxLINE markets; an empty list means no usable quote was available. */
   markets: PregameMarket[];
-  /** false = a leitura da TxLINE falhou; não é o mesmo que mercado inexistente. */
+  /** `false` means the TxLINE read failed, not that no market exists. */
   txlineOddsAvailable: boolean;
-  /** true quando o apito passou (ou a partida saiu de "agendada"): a tela trava. */
+  /** Locks the view after kickoff or when the fixture leaves its scheduled state. */
   locked: boolean;
   finished: boolean;
-  /** Placar e escanteios finais — presentes só quando a partida encerrou. */
+  /** Final score and corners, available only after the fixture ends. */
   final: { goalsA: number; goalsB: number; cornersTotal: number } | null;
 }
 
 // ---------------------------------------------------------------------------
-// Eventos do WS /ws
+// WebSocket events
 // ---------------------------------------------------------------------------
 
-/**
- * Todo evento traz `ts` — o carimbo do evento da TxLINE. É ELE o relógio, não o
- * Date.now() do browser (CONTEXT.md §3). Em replay o `ts` ancora no último
- * evento emitido; um contador derivado do relógio de parede diverge do agendador
- * e fecha a janela sozinho — foi bug real no v0 (B2).
- */
+/** Event time comes from TxLINE; client wall-clock time must not drive game windows. */
 interface WsBase {
   ts: number;
 }
@@ -258,7 +213,7 @@ interface WsBase {
 export interface ScoreEvent extends WsBase {
   type: 'score_event';
   minute: number;
-  /** Bloco Score AUSENTE ≠ zero (A4): quando não vier, mantenha o placar anterior. */
+  /** Missing score is not zero; retain the previous score. */
   scoreA: number | null;
   scoreB: number | null;
   text: string;
@@ -266,26 +221,21 @@ export interface ScoreEvent extends WsBase {
 
 export interface OddsEvent extends WsBase {
   type: 'odds_event';
-  /** Arrays paralelos: confira o tamanho dos três antes de mapear (G8). */
+  /** Parallel arrays must have matching lengths before mapping. */
   priceNames: string[];
   pct: number[];
 }
 
-/**
- * A leitura de chance, broadcast IGUAL para todos (publicarBruto). A frase da
- * tela é redigida no cliente pelos campos estruturados (lib/chances.ts);
- * `text` é a frase pt do core — fallback/log, não a frase do fã.
- */
+/** Shared chance reading. The client renders structured fields; `text` is fallback/logging only. */
 export interface OddsExplainEvent extends WsBase {
   type: 'odds_explain';
-  /** MessageId da TxLINE + opção, estável mesmo quando dois eventos têm o mesmo ts. */
+  /** TxLINE message ID plus option, stable when events share a timestamp. */
   id: string;
   minute: number | null;
   priceName: string;
   fromPct: number;
   toPct: number;
-  /** A causa em FORMA ('goal', 'corner'…): ausente = sem lance na janela de
-   *  3 min do core — e aí a frase sai SEM causa, nunca com uma inventada. */
+  /** Structured cause; omitted when no event occurred in the engine window. */
   contextAction?: string;
   text: string;
 }
@@ -296,7 +246,7 @@ export interface QuestionOpenEvent extends WsBase {
   prompt: string;
   options: { id: string; label: string; pct: number | null }[];
   xp: number;
-  /** Prazo em ts do FEED, não do browser. A janela fecha antes do lance que resolve. */
+  /** Feed-time deadline; the window closes before the resolving event. */
   closesAt: number;
 }
 
@@ -312,7 +262,7 @@ export interface QuestionResolvedEvent extends WsBase {
   gained: number;
 }
 
-/** Anulada: o lance resolvedor chegou com a janela ainda aberta. Sem XP, e é justo. */
+/** Voided when the resolving event arrives before the prediction window closes; awards no XP. */
 export interface QuestionVoidEvent extends WsBase {
   type: 'question_void';
   questionId: string;
@@ -348,14 +298,14 @@ export type WsEvent =
   | ReplayDoneEvent;
 
 // ---------------------------------------------------------------------------
-// Cliente REST
+// REST client
 // ---------------------------------------------------------------------------
 
 type TokenProvider = () => Promise<string | null>;
 
 let authTokenProvider: TokenProvider = async () => null;
 
-/** O PrivyIsland pluga o getAccessToken aqui no boot. */
+/** PrivyIsland registers `getAccessToken` during bootstrap. */
 export function setAuthTokenProvider(fn: TokenProvider): void {
   authTokenProvider = fn;
 }
@@ -374,7 +324,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await authTokenProvider();
   const headers = new Headers(init?.headers);
   headers.set('Content-Type', 'application/json');
-  // Sem token não há identidade — e sem identidade o servidor recusa. É o desenho.
+  // Requests without a token remain anonymous and are rejected by protected endpoints.
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const res = await fetch(path, { ...init, headers });
@@ -391,10 +341,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  /** Bearer da Privy → find-or-create por DID. O corpo é vazio de propósito. */
+  /** Privy Bearer token identifies the account by DID; the body is intentionally empty. */
   login: () => request<{ ok: true; user: ApiUser }>('/api/login', { method: 'POST', body: '{}' }),
 
-  /** O fã escolhe o apelido. Nunca derive do e-mail (E12): o apelido é público. */
+  /** Public nickname selected by the user; never derive it from email. */
   setHandle: (nickname: string) =>
     request<{ ok: true; user: ApiUser }>('/api/account/handle', {
       method: 'POST',
@@ -403,47 +353,40 @@ export const api = {
 
   state: () => request<ApiState>('/api/state'),
 
-  /** O ranking global (top 50 + a minha linha, se eu estiver fora do corte). */
+  /** Global ranking: top 50 plus the current user when outside the cutoff. */
   ranking: () => request<{ rows: ApiRankRow[] }>('/api/ranking'),
 
-  /** As ligas do fã + o que o gate do free precisa saber. */
+  /** User leagues and free-tier entitlement data. */
   leagues: () => request<ApiLeagues>('/api/leagues'),
 
-  /**
-   * Cria a liga. Sem `ownerId` no corpo: o dono é o Bearer.
-   * 402 quando o free já tem a dele — é o paywall, e a tela leva ao /premium.
-   */
+  /** Creates a league for the Bearer-derived owner; 402 signals the free-tier limit. */
   createLeague: (name: string) =>
     request<{ ok: true; league: ApiLeague }>('/api/leagues', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
 
-  /** Entra pelo código do convite. Não gasta a cota do free: a cota é de quem CRIA. */
+  /** Joins by invite code without consuming the creator quota. */
   joinLeague: (code: string) =>
     request<{ ok: true; league: { id: string; name: string; memberCount: number } }>(
       '/api/leagues/join',
       { method: 'POST', body: JSON.stringify({ code }) },
     ),
 
-  /** A liga por dentro. 404 se você não é membro — o mesmo 404 de liga inexistente. */
+  /** Returns 404 for non-members and nonexistent leagues to avoid existence disclosure. */
   league: (id: string) => request<ApiLeagueDetail>(`/api/leagues/${encodeURIComponent(id)}`),
 
-  /**
-   * Apaga a liga — só o líder. Membro que não lidera leva 403; quem não é
-   * membro leva o MESMO 404 de liga inexistente (apagar não vaza existência).
-   * Apagar devolve a cota do free: ela conta ligas CRIADAS, e a linha some.
-   */
+  /** Deletes a leader-owned league; non-members receive the same 404 as nonexistent leagues. */
   deleteLeague: (id: string) =>
     request<{ ok: true }>(`/api/leagues/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   fixtures: () => request<{ fixtures: ApiFixture[] }>('/api/fixtures'),
 
-  /** Palpite pré-jogo: ler o estado (partida + meu palpite + trava) e salvar. */
+  /** Reads and saves the pre-game prediction state. */
   pregame: {
     get: (fixtureId: number) => request<PregameView>(`/api/pregame/${fixtureId}`),
     save: (fixtureId: number, body: PregamePickRequest) =>
-      request<{ ok: true; pick: PregamePick; xpEmJogo: number }>(`/api/pregame/${fixtureId}`, {
+      request<{ ok: true; pick: PregamePick; xpAtStake: number }>(`/api/pregame/${fixtureId}`, {
         method: 'POST',
         body: JSON.stringify(body),
       }),
@@ -488,10 +431,7 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ action: 'finish' }) },
     ),
 
-  /**
-   * O EventSource não aceita Authorization. Esta rota troca o Bearer atual por
-   * um ticket curto, de uso único e limitado à sala/grupo/finalidade do stream.
-   */
+  /** Exchanges the Bearer token for a short-lived, single-use, room-scoped SSE ticket. */
   sseTicket: (roomId: string, partyId: string, purpose: 'lobby' | 'room') =>
     request<{ ticket: string }>(
       `/api/rooms/${encodeURIComponent(roomId)}/sse-ticket?party=${encodeURIComponent(partyId)}`,

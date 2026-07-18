@@ -1,13 +1,5 @@
-// Configuração do pacote, lida de variáveis de ambiente.
-//
-// Tudo aqui é GETTER, não valor congelado no import. O v0 congelava a config no
-// topo do módulo e por isso precisou de um `refreshAuthFromDisk()` para cobrir a
-// ordem de boot ("o estado foi gravado DEPOIS deste módulo carregar"). Getter
-// mata a classe inteira de bug: quem carregar o .env (o app, o --env-file do
-// Node) pode fazer isso a qualquer momento antes do primeiro uso.
-//
-// O pacote NÃO carrega .env sozinho: biblioteca que mexe no ambiente do processo
-// é surpresa. Quem carrega é a aplicação (ou o --env-file-if-exists dos scripts).
+// Environment-backed package configuration. Values are getters so applications
+// may load .env before first use; this library never mutates process environment.
 
 const trim = (v: string | undefined): string => (v ?? "").trim();
 const semBarraFinal = (v: string): string => v.replace(/\/+$/, "");
@@ -20,7 +12,7 @@ function numEnv(nome: string, padrao: number): number {
 }
 
 export const config = {
-  /** Origem da API. Padrão: devnet (a rede do hackathon). */
+  /** API origin. Defaults to the hackathon devnet. */
   get apiOrigin(): string {
     return semBarraFinal(trim(process.env.TXLINE_API_ORIGIN) || "https://txline-dev.txodds.com");
   },
@@ -31,20 +23,19 @@ export const config = {
     return trim(process.env.TXLINE_JWT_URL) || `${this.apiOrigin}/auth/guest/start`;
   },
 
-  /** Guest JWT de partida. Vazio = o cliente abre uma sessão guest sozinho. */
+  /** Initial guest JWT. Empty means the client creates a guest session. */
   get jwt(): string {
     return trim(process.env.TXLINE_JWT);
   },
   /**
-   * Token de assinatura do serviço (X-Api-Token). Vem do credenciamento on-chain
-   * (wallet -> subscribe -> activate), feito fora daqui. SEM ele os endpoints de
-   * dados respondem 401/403 — e o guest JWT sozinho não resolve.
+   * Service subscription token (X-Api-Token). Without it data endpoints return
+   * 401/403; the guest JWT alone is insufficient.
    */
   get apiToken(): string {
     return trim(process.env.TXLINE_API_TOKEN);
   },
 
-  /** 72 = World Cup. Vazio = busca tudo e filtra por "World Cup" (fallback do spike). */
+  /** 72 = World Cup. Empty fetches all fixtures and filters by World Cup. */
   get competitionId(): string {
     return process.env.TXLINE_COMPETITION_ID?.trim() ?? "72";
   },
@@ -53,8 +44,7 @@ export const config = {
     return numEnv("TXLINE_HTTP_TIMEOUT_MS", 20_000);
   },
 
-  // --- varredura de /updates ---
-  /** Requisições simultâneas na varredura de baldes. Conservador de propósito. */
+  /** Conservative concurrent request limit for /updates bucket scans. */
   get sweepConcurrency(): number {
     return Math.max(1, Math.floor(numEnv("TXLINE_SWEEP_CONCURRENCY", 4)));
   },
@@ -65,20 +55,17 @@ export const config = {
     return numEnv("TXLINE_SWEEP_HOURS_AFTER", 4);
   },
 
-  // --- ingestão ---
   get liveIngest(): boolean {
     return trim(process.env.TXLINE_LIVE_INGEST) !== "false";
   },
   /**
-   * Gerador sintético. Só "true" liga, e ele é DEV-ONLY: a regra do hackathon
-   * exige a TxLINE como fonte primária/ao vivo, e "simulado" aceitável é o feed
-   * simulado DA TxLINE (os replays da devnet), não um gerador nosso.
-   * NUNCA em demo/submissão.
+   * Development-only synthetic generator. It requires an explicit "true" and
+   * must never power demo or submission flows.
    */
   get allowSynthetic(): boolean {
     return trim(process.env.TXLINE_ALLOW_SYNTHETIC) === "true";
   },
-  /** 60 = 1 min de jogo por segundo real. */
+  /** 60 = one match minute per wall-clock second. */
   get replaySpeed(): number {
     return numEnv("REPLAY_SPEED", 60);
   },

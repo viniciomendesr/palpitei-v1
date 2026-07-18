@@ -1,17 +1,5 @@
-// Credenciamento do SERVIÇO na TxLINE: guest JWT + apiToken.
-//
-// ATENÇÃO — não confunda com a identidade do FÃ. Isto aqui é o Palpitei se
-// apresentando para a TxLINE; é uma credencial única do processo, igual para
-// todo mundo. A identidade do usuário é o privy_did verificado, mora em outro
-// pacote, e NUNCA vem do corpo da requisição.
-//
-// Diferença para o v0: o estado NÃO é mais o arquivo .txline-state.json (aquilo
-// era da bancada, que importava as credenciais do txline-spike pelo disco). Aqui
-// as credenciais entram por variável de ambiente e vivem em MEMÓRIA; quem quiser
-// injetar/renovar em runtime usa setCredentials().
-//
-// O credenciamento on-chain (wallet -> subscribe -> activate) que EMITE o
-// apiToken continua fora deste pacote: ele é feito uma vez, fora do webapp.
+// TxLINE service credentials: guest JWT plus API token. They identify this
+// process, not a fan; user identity is the separately verified privy_did.
 
 import { config } from "./config.ts";
 import { TxlineAuthError, TxlineHttpError } from "./errors.ts";
@@ -19,8 +7,7 @@ import { info, warn } from "./log.ts";
 
 export type TxlineCredentials = { jwt: string; apiToken: string };
 
-// Semeado do ambiente na PRIMEIRA leitura (não no import): assim o app pode
-// carregar o .env depois de importar este módulo sem perder as credenciais.
+// Seed credentials on first read so applications may load .env after importing.
 let mem: TxlineCredentials | null = null;
 let avisouSemApiToken = false;
 
@@ -29,14 +16,13 @@ function creds(): TxlineCredentials {
   return mem;
 }
 
-/** Credenciais em uso (cópia — não dá para mutar por fora). */
+/** Active credentials as an immutable copy. */
 export function getCredentials(): Readonly<TxlineCredentials> {
   return { ...creds() };
 }
 
 /**
- * Injeta/renova credenciais em memória. É por aqui que um credenciamento feito
- * fora do processo (script, painel, rotação de token) entra sem restart.
+ * Injects or refreshes in-memory credentials without a process restart.
  */
 export function setCredentials(patch: Partial<TxlineCredentials>): Readonly<TxlineCredentials> {
   const atual = creds();
@@ -49,13 +35,13 @@ export function setApiToken(token: string): void {
   setCredentials({ apiToken: token });
 }
 
-/** Zera a memória (testes). A próxima leitura re-semeia do ambiente. */
+/** Clears in-memory credentials for tests; next access reseeds from the environment. */
 export function resetCredentials(): void {
   mem = null;
   avisouSemApiToken = false;
 }
 
-/** Status observável, sem vazar segredo no log. */
+/** Observable status that does not expose secrets. */
 export function authStatus(): {
   temJwt: boolean;
   temApiToken: boolean;
@@ -73,14 +59,11 @@ export function authStatus(): {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Sessão guest
-// ---------------------------------------------------------------------------
 
 let renovacaoEmVoo: Promise<string> | null = null;
 let renovacoes = 0;
 
-/** POST /auth/guest/start -> { token }. Guarda e devolve o guest JWT novo. */
+/** POST /auth/guest/start -> { token }; stores and returns a new guest JWT. */
 export async function startGuestSession(): Promise<string> {
   const res = await fetch(config.jwtUrl, {
     method: "POST",
@@ -106,8 +89,8 @@ export async function startGuestSession(): Promise<string> {
 }
 
 /**
- * Renovação SINGLE-FLIGHT: N requisições que tomam 401 ao mesmo tempo esperam a
- * MESMA sessão guest, em vez de abrirem N sessões (que se invalidariam entre si).
+ * Single-flight refresh prevents concurrent 401 responses from creating
+ * competing guest sessions.
  */
 function renovaJwt(): Promise<string> {
   if (!renovacaoEmVoo) {
@@ -119,7 +102,7 @@ function renovaJwt(): Promise<string> {
   return renovacaoEmVoo;
 }
 
-/** Garante um JWT em memória; abre sessão guest nova se faltar. */
+/** Returns an in-memory JWT, creating a guest session when necessary. */
 export async function ensureJwt(): Promise<string> {
   const c = creds();
   if (c.jwt) return c.jwt;
@@ -127,9 +110,6 @@ export async function ensureJwt(): Promise<string> {
   return renovaJwt();
 }
 
-// ---------------------------------------------------------------------------
-// Cliente HTTP
-// ---------------------------------------------------------------------------
 
 function headers(jwt: string, extra?: RequestInit["headers"]): Headers {
   const h = new Headers(extra);
@@ -147,9 +127,8 @@ function headers(jwt: string, extra?: RequestInit["headers"]): Headers {
 }
 
 /**
- * fetch autenticado com retry single-flight no 401: renova o guest JWT UMA vez e
- * repete a requisição. Devolve a Response crua (quem chama decide o que fazer
- * com o status) — use txlineGet() para JSON.
+ * Authenticated fetch with a single-flight 401 retry. Returns the raw Response;
+ * use txlineGet() for JSON.
  */
 export async function txlineFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const jwt = await ensureJwt();
@@ -163,7 +142,7 @@ export async function txlineFetch(url: string, init: RequestInit = {}): Promise<
 
   let res = await tenta(jwt);
   if (res.status === 401) {
-    // Descarta o corpo antes de repetir: Response não consumida segura o socket.
+    // Drain the body before retrying so the socket can be released.
     await res.body?.cancel().catch(() => {});
     warn(`[auth] 401 em ${url} — renovando guest JWT e repetindo…`);
     const novo = await renovaJwt();
@@ -185,7 +164,7 @@ function comQuery(path: string, params?: Params): string {
   return s ? `${url}${url.includes("?") ? "&" : "?"}${s}` : url;
 }
 
-/** GET autenticado que devolve JSON, ou lança TxlineHttpError com o status. */
+/** Authenticated GET returning JSON or a TxlineHttpError with its status. */
 export async function txlineGet<T = unknown>(path: string, params?: Params): Promise<T> {
   const url = comQuery(path, params);
   const res = await txlineFetch(url, { method: "GET" });

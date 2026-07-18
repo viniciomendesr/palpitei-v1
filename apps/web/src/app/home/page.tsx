@@ -1,12 +1,5 @@
 'use client';
 
-/**
- * HOME — abas Ao Vivo / Próximos / Replays, missão do dia e ligas privadas.
- *
- * A aba Replays é a que precisa de cuidado quando o dado real entrar: replay
- * sintético é dev-only e NUNCA vai pra demo/submissão (regra da trilha). Cada
- * sala mostra selo de origem; a fonte primária é sempre a TxLINE.
- */
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,35 +20,16 @@ import { localizeTeamName } from '@/lib/team-names';
 
 type Tab = 'live' | 'next' | 'replays';
 
-/** Aba onde cada partida real entra. Sem bola rolando, `live` vem false do servidor. */
 function abaDa(f: ApiFixture): Tab {
   if (f.live) return 'live';
   return f.source === 'txline' ? 'next' : 'replays';
 }
 
-/**
- * O dado da home, e é aqui que mora a regra do produto:
- *
- *   demo (§5.1)       → mock, rotulado SIMULADO. Não chama a rota, não precisa
- *                       de rede: é o caminho do jurado e ele não pode depender
- *                       de nada.
- *   Google / carteira → só TxLINE real, via GET /api/fixtures (Bearer verificado).
- *
- * O fã logado NUNCA cai no mock: se a rota falhar, ele vê a lista vazia com o
- * erro, não Argentina × Cabo Verde inventado. Fallback silencioso para o mock é
- * o G6 — o rótulo passa a mentir sobre a origem — e é justamente o que a §2
- * proíbe ao exigir selo de fonte.
- */
 function useFixtures(session: SessionState | null, t: Dict) {
   const [reais, setReais] = useState<ApiFixture[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const privy = usePrivyAuth();
   const ehDemo = !session || session.authMethod === 'demo';
-  // A sessão local revive do sessionStorage NA HORA; a Privy leva um par de
-  // segundos para ficar `ready`. Buscar assim que a sessão aparece é correr
-  // contra a ilha: o authTokenProvider ainda devolve null, o Bearer não vai, e a
-  // rota responde 401 — que a tela mostrava como "sem sessão verificada" para um
-  // fã que está logado. Esperar o `ready` é o que faz o Bearer existir.
   const podeBuscar = !ehDemo && privy.ready && privy.authenticated;
 
   useEffect(() => {
@@ -81,41 +55,22 @@ function useFixtures(session: SessionState | null, t: Dict) {
       group: f.group,
       teamA: f.teamA,
       teamB: f.teamB,
-      // O servidor manda null quando a partida não começou. Ausente NÃO é zero
-      // (A4): renderizar 0 aqui afirma um empate que ninguém jogou.
       scoreA: f.scoreA ?? '–',
       scoreB: f.scoreB ?? '–',
-      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : f.treino ? t.ctaTreino : t.ctaReplay,
-      // O selo diz o que o servidor gravou, não o que seria bonito. TREINO
-      // entra no selo: sala que não paga XP não pode se vestir de sala que paga.
-      source: f.source === 'txline' ? t.srcTxline : f.treino ? t.srcTreino : t.srcReplay,
+      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : f.training ? t.ctaTreino : t.ctaReplay,
+      source: f.source === 'txline' ? t.srcTxline : f.training ? t.srcTreino : t.srcReplay,
     });
   }
   return { abas, carregando: reais === null && !erro, erro };
 }
 
-/** Como uma liga aparece na lista. `id` null = a liga mock do demo, que não abre. */
 type LigaView = { id: string | null; initials: string; name: string; sub: string };
 
-/**
- * As ligas da home — o mesmo desenho do `useFixtures` acima, e pela mesma razão:
- *
- *   demo (§5.1)       → mock LOCAL. Não chama rota, não precisa de rede: é o
- *                       caminho do jurado, e ele não pode depender de nada.
- *   Google / carteira → só o banco, via GET /api/leagues (Bearer verificado).
- *
- * O que este hook aposenta: `session.leaguesCount`, um contador que vivia no
- * browser e sumia no F5 — a liga não existia em lugar nenhum do backend. Para o
- * fã logado, o número de membros e o "você lidera" agora vêm da tabela; se a
- * rota falhar, ele vê o erro, não uma liga inventada.
- */
 function useLeagues(session: SessionState | null, t: Dict) {
   const [dados, setDados] = useState<ApiLeagues | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const privy = usePrivyAuth();
   const ehDemo = !session || session.authMethod === 'demo';
-  // Mesma corrida do useFixtures: a sessão local revive na hora, a Privy leva
-  // uns segundos para ficar `ready`. Buscar antes disso é 401 garantido.
   const podeBuscar = !ehDemo && privy.ready && privy.authenticated;
 
   useEffect(() => {
@@ -133,8 +88,6 @@ function useLeagues(session: SessionState | null, t: Dict) {
   const membros = (n: number) => (n === 1 ? t.ligaMembroUm : fill(t.ligaMembros, { n }));
 
   if (ehDemo) {
-    // A liga do demo é mock local de 1 membro — e é por isso que `myLeagueSub`
-    // ("1 membro · você lidera") pode ser usada aqui: no demo ela é VERDADE.
     const ligas: LigaView[] = Array.from({ length: session?.leaguesCount ?? 0 }, (_, i) => ({
       id: null,
       initials: 'ML',
@@ -155,7 +108,6 @@ function useLeagues(session: SessionState | null, t: Dict) {
     id: l.id,
     initials: initialsOf(l.name, 'existing'),
     name: l.name,
-    // O número é o que o banco contou. Sem "+1", sem string fixa.
     sub: l.iLead ? `${membros(l.memberCount)} · ${t.ligaVoceLidera}` : membros(l.memberCount),
   }));
 
@@ -177,14 +129,10 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('live');
   const ehDemo = session?.authMethod === 'demo';
 
-  // O XP/nível do cabeçalho é do BANCO (o motor liquida lá): voltar da sala tem
-  // que mostrar o que o jogo acabou de pagar. No demo é no-op (§5.1: local).
   useEffect(() => {
     void refreshState();
   }, [refreshState]);
 
-  // Em 17/07 não há partida do Mundial em andamento. Abrir a demo nos próximos
-  // evita uma primeira aba vazia e leva direto aos dois jogos oficiais listados.
   useEffect(() => {
     if (ehDemo) setTab('next');
   }, [ehDemo]);
@@ -196,13 +144,9 @@ export default function HomePage() {
 
   const openSala = (id: string) => router.push(`/sala/${id}`);
 
-  // A missão do dia acompanha a sequência de acertos: 3 seguidos fecham.
   const missionDone = Math.min(session.streak, 3);
   const missionPct = (missionDone / 3) * 100;
 
-  // O contador conta as ligas CRIADAS, que é o que a cota do free mede. Somar as
-  // ligas em que o fã só entrou faria a tela dizer "3 de 1 grátis" para quem não
-  // furou cota nenhuma.
   const leaguesLabel = liga.isPremium
     ? `${liga.ownedCount} · ${t.leaguesUnlimited}`
     : `${liga.ownedCount} ${t.leaguesCountFree}`;
@@ -211,21 +155,16 @@ export default function HomePage() {
   const semLigas = !liga.carregando && !liga.erro && liga.ligas.length === 0;
 
   const tryCreateLeague = () => {
-    // O demo não fala com rota nenhuma (§5.1): a liga dele continua sendo o
-    // contador local do protótipo.
     if (ehDemo) {
       if (podeCriar) update({ leaguesCount: session.leaguesCount + 1 });
       else router.push('/premium');
       return;
     }
-    // O gate aqui é só cortesia — quem manda é o servidor, sob trava. Isto
-    // existe para não levar o fã a um 402 evitável.
     router.push(podeCriar ? '/liga/nova' : '/premium');
   };
 
   return (
     <Screen padding="6px 18px 20px">
-      {/* cabeçalho: marca · sequência · nível+XP */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <Logo size={34} />
@@ -281,17 +220,11 @@ export default function HomePage() {
             teamB={localizeTeamName(f.teamB, lang)}
             scoreA={f.scoreA}
             scoreB={f.scoreB}
-            // Na aba Próximas o card abre o palpite pré-jogo, não a sala: a
-            // partida ainda não rolou, o que existe é cravar o palpite antes do
-            // apito. Ao Vivo/Replays seguem entrando na sala.
             cta={tab === 'next' ? t.ctaPalpitar : f.cta}
             onClick={tab === 'next' ? () => router.push(`/palpite/${f.id}`) : () => openSala(f.id)}
           />
         ))}
 
-        {/* Lista vazia sem explicação é a falha silenciosa que este projeto
-            existe para evitar: o fã logado tem que saber se está carregando, se
-            deu erro, ou se a TxLINE simplesmente não tem partida nesta aba. */}
         {!abas[tab].length && (
           <div
             style={{
@@ -323,7 +256,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* missão do dia + ligas: só na aba Ao Vivo, como no protótipo */}
       {tab === 'live' && (
         <>
           <Card elevated style={{ marginTop: 'var(--sp-5)' }}>
@@ -372,9 +304,6 @@ export default function HomePage() {
               <span style={{ color: 'var(--text-muted)', fontWeight: fw.bold }}>{leaguesLabel}</span>
             </div>
 
-            {/* Carregando/erro ditos em voz alta: lista de liga vazia sem
-                explicação é a mesma falha silenciosa das partidas — o fã não
-                sabe se não tem liga ou se a rota caiu. */}
             {(liga.carregando || liga.erro) && (
               <div
                 style={{
@@ -454,10 +383,6 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Já tem liga e AINDA pode criar (premium, ou entrou na liga de um
-                amigo sem ter criado a própria). Sem este caso, quem só entrou
-                por convite ficava sem nenhum jeito de criar a dele: a lista não
-                estava vazia, e o gate do paywall não se aplicava. */}
             {liga.ligas.length > 0 && podeCriar && (
               <button
                 onClick={tryCreateLeague}
@@ -538,9 +463,6 @@ export default function HomePage() {
               </button>
             )}
 
-            {/* O outro lado do convite. Sem isto, "chame a galera" seria um
-                código que ninguém tem onde digitar. O demo não entra por código:
-                a liga dele é local e não existe no banco (§5.1). */}
             {!ehDemo && (
               <button
                 onClick={() => router.push('/liga/entrar')}

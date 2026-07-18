@@ -1,12 +1,5 @@
-// @palpitei/core — motores puros de domínio.
-//
-// Regras que este pacote sustenta e que não se negociam:
-//   - Nenhum motor lê Date.now(): o tempo vem do ts do evento, via Clock.
-//   - Nenhum motor conhece banco: persistência entra por EnginePorts (injeção).
-//   - Nada de I/O, nada de rede, nada de singleton. É tudo determinístico.
-//
-// O pacote é consumido CRU (exports -> ./src/index.ts, via transpilePackages do
-// Next). Por isso todo import relativo carrega a extensão ".ts" de verdade.
+// Pure domain engines. Time and persistence are injected; this package performs
+// no I/O. Source exports are consumed through Next.js transpilePackages.
 
 export type { Clock, ReplayCursor } from "./clock.ts";
 export { cursorClock, liveClock, manualClock, replayClock } from "./clock.ts";
@@ -24,6 +17,7 @@ export type {
   Prediction,
   Question,
   QuestionOption,
+  QuestionTemplateRef,
   QuestionType,
   RoomMessage,
   ScoreEvent,
@@ -31,7 +25,7 @@ export type {
   WalletSource,
 } from "./types.ts";
 
-export type { ResolvedResult } from "./questions.ts";
+export type { QuestionEngineSnapshot, ResolvedResult } from "./questions.ts";
 export {
   FAIRNESS_VOID_REASON,
   HILO_HORIZON_MS,

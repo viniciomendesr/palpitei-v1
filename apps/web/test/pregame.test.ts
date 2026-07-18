@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePregameBody, travadoNoApito, xpEmJogo } from '../src/server/pregame.ts';
+import { parsePregameBody, isLockedAtKickoff, xpAtStake } from '../src/server/pregame.ts';
 
 test('parse aceita um corpo válido com a linha TxLINE e normaliza ausentes', () => {
   const r = parsePregameBody({ result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', goalsLine: 2.5 });
@@ -12,7 +12,7 @@ test('parse aceita um corpo válido com a linha TxLINE e normaliza ausentes', ()
     scoreSet: true,
     goals: 'over',
     goalsLine: 2.5,
-    corners: null, // ausente = não preenchido
+    corners: null, // Missing means not selected.
     cornersLine: null,
   });
 });
@@ -39,16 +39,16 @@ test('parse exige ao menos um mercado preenchido', () => {
 
 test('trava no apito: agendada e antes do apito libera; depois trava', () => {
   const agora = 1_000_000;
-  assert.equal(travadoNoApito({ state: 'scheduled', startTs: agora + 1 }, agora), false, 'antes do apito edita');
-  assert.equal(travadoNoApito({ state: 'scheduled', startTs: agora }, agora), true, 'no apito trava');
-  assert.equal(travadoNoApito({ state: 'scheduled', startTs: agora - 1 }, agora), true, 'depois do apito trava');
-  assert.equal(travadoNoApito({ state: 'live', startTs: agora + 999 }, agora), true, 'ao vivo trava mesmo se o horário não bateu');
-  assert.equal(travadoNoApito({ state: 'finished', startTs: null }, agora), true, 'encerrada trava');
-  assert.equal(travadoNoApito({ state: 'scheduled', startTs: null }, agora), false, 'sem horário conhecido, agendada ainda edita');
+  assert.equal(isLockedAtKickoff({ state: 'scheduled', startTs: agora + 1 }, agora), false, 'antes do apito edita');
+  assert.equal(isLockedAtKickoff({ state: 'scheduled', startTs: agora }, agora), true, 'no apito trava');
+  assert.equal(isLockedAtKickoff({ state: 'scheduled', startTs: agora - 1 }, agora), true, 'depois do apito trava');
+  assert.equal(isLockedAtKickoff({ state: 'live', startTs: agora + 999 }, agora), true, 'ao vivo trava mesmo se o horário não bateu');
+  assert.equal(isLockedAtKickoff({ state: 'finished', startTs: null }, agora), true, 'encerrada trava');
+  assert.equal(isLockedAtKickoff({ state: 'scheduled', startTs: null }, agora), false, 'sem horário conhecido, agendada ainda edita');
 });
 
 test('xp em jogo soma só os mercados preenchidos', () => {
-  assert.equal(xpEmJogo({ result: 'home', scoreA: 0, scoreB: 0, scoreSet: false, goals: null, goalsLine: null, corners: null, cornersLine: null }), 30);
-  assert.equal(xpEmJogo({ result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', goalsLine: 2.5, corners: 'over', cornersLine: 9.5 }), 140);
-  assert.equal(xpEmJogo({ result: null, scoreA: 0, scoreB: 0, scoreSet: false, goals: null, goalsLine: null, corners: 'under', cornersLine: 9.5 }), 25);
+  assert.equal(xpAtStake({ result: 'home', scoreA: 0, scoreB: 0, scoreSet: false, goals: null, goalsLine: null, corners: null, cornersLine: null }), 30);
+  assert.equal(xpAtStake({ result: 'home', scoreA: 2, scoreB: 1, scoreSet: true, goals: 'over', goalsLine: 2.5, corners: 'over', cornersLine: 9.5 }), 140);
+  assert.equal(xpAtStake({ result: null, scoreA: 0, scoreB: 0, scoreSet: false, goals: null, goalsLine: null, corners: 'under', cornersLine: 9.5 }), 25);
 });

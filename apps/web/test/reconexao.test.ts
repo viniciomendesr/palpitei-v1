@@ -1,8 +1,4 @@
-/**
- * O agendamento da reconexão do SSE — a parte do useSala que dá para provar
- * sem React nem browser. O resto (fechar e recriar o EventSource com token
- * fresco) vive no hook e se prova lendo, não montando.
- */
+/** Tests the pure SSE reconnection schedule independently of React and EventSource. */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +21,7 @@ test('a primeira tentativa é rápida — queda num lance quente não pode custa
 });
 
 test('tentativa absurda não estoura o número nem passa do teto', () => {
-  // 2**1e9 é Infinity; o teto tem que valer por desenho, não por sorte do min().
+  // `2 ** 1e9` is Infinity, so the exponent must be capped before calculation.
   assert.equal(esperaDeReconexao(1_000_000_000), RECONEXAO_TETO_MS);
   assert.equal(esperaDeReconexao(Number.MAX_SAFE_INTEGER), RECONEXAO_TETO_MS);
 });

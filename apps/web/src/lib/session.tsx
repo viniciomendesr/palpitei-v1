@@ -1,6 +1,6 @@
 'use client';
 
-/** Estado de sessão: cache local sincronizado ao servidor, com demo estritamente local. */
+/** Session state with a server-synchronized cache and a strictly local demo mode. */
 
 import {
   createContext,
@@ -15,7 +15,7 @@ import {
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import type { ApiStats, ApiUser } from '@/lib/api';
 
-/** `demo` é uma conta local; os demais métodos usam Privy. */
+/** `demo` is a local account; all other methods use Privy. */
 export type AuthMethod = 'google' | 'wallet' | 'demo';
 export type AccountType = 'new' | 'existing';
 export type PlanId = 'anual' | 'mensal';
@@ -36,7 +36,7 @@ export interface SessionState {
   live: boolean;
 }
 
-/** A conta de teste do modo demo — o mesmo perfil do protótipo. */
+/** Demo account used by the prototype flow. */
 const DEMO_ACCOUNT = { nickname: 'você.craque', level: 7, xp: 1240, streak: 5 } as const;
 
 const BASE: Omit<SessionState, 'authMethod' | 'accountType'> = {
@@ -54,27 +54,27 @@ const BASE: Omit<SessionState, 'authMethod' | 'accountType'> = {
 
 const STORAGE_KEY = 'palpitei.session';
 
-/** Evita bloquear logout caso a Promise da Privy não conclua. */
+/** Prevents logout from blocking if the Privy promise never settles. */
 const LOGOUT_TIMEOUT_MS = 10_000;
 
 interface SessionValue {
   session: SessionState | null;
-  /** false até o primeiro efeito rodar — evita divergência de hidratação. */
+  /** False until the first effect runs, preventing a hydration mismatch. */
   hydrated: boolean;
-  /** Entra no modo demo local, sem carteira. */
+  /** Enters local demo mode without a wallet. */
   enterDemo: () => void;
-  /** Inicia onboarding para conta autenticada nova. */
+  /** Starts onboarding for a new authenticated account. */
   startOnboarding: (method: Exclude<AuthMethod, 'demo'>) => void;
-  /** Hidrata uma conta existente a partir da resposta autoritativa de login. */
+  /** Hydrates an existing account from the authoritative login response. */
   enterExisting: (method: Exclude<AuthMethod, 'demo'>, user: ApiUser) => void;
   update: (patch: Partial<SessionState>) => void;
-  /** Espelha no cache o XP pago pelo motor até a próxima sincronização. */
+  /** Mirrors engine-awarded XP in the cache until the next synchronization. */
   addXp: (amount: number) => void;
-  /** Sincroniza o cache com `/api/state`; demo e sessão sem Bearer são no-op. */
+  /** Synchronizes the cache with `/api/state`; demo and bearerless sessions are no-ops. */
   refreshState: () => Promise<void>;
-  /** Aproveitamento dos palpites (acertos/erros/anuladas), do último refresh. */
+  /** Prediction accuracy from the latest refresh. */
   serverStats: ApiStats | null;
-  /** Encerra a sessão local e a da Privy antes de navegar. */
+  /** Closes local and Privy sessions before navigation. */
   logout: () => Promise<void>;
 }
 
@@ -84,21 +84,21 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
   const [session, setSession] = useState<SessionState | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [serverStats, setServerStats] = useState<ApiStats | null>(null);
-  /** Uma sincronização por vez é suficiente porque refresh é idempotente. */
+  /** One synchronization is sufficient because refresh is idempotent. */
   const sincronizando = useRef(false);
 
-  // Leia sessionStorage somente após montar para preservar hidratação.
+  // Read sessionStorage only after mount to preserve hydration.
   useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
-        // Remove preferência legada que não é mais usada pelo produto.
+        // Remove a legacy preference no longer used by the product.
         const stored = JSON.parse(raw) as SessionState & { favTeam?: unknown };
         const { favTeam: _legacyFavTeam, ...rest } = stored;
         setSession(rest);
       }
     } catch {
-      // Armazenamento indisponível: a autenticação ainda pode prosseguir.
+      // Storage is optional; authentication can still proceed.
     }
     setHydrated(true);
   }, []);
@@ -109,7 +109,7 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       if (session) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
       else window.sessionStorage.removeItem(STORAGE_KEY);
     } catch {
-      // idem: persistir é conveniência, não requisito.
+      // Persistence is a convenience, not a requirement.
     }
   }, [session, hydrated]);
 
@@ -147,25 +147,11 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     setSession((s) => (s ? { ...s, xp: s.xp + amount } : s));
   }, []);
 
-  /**
-   * Limpar só o estado local NÃO desloga ninguém: a Privy continua autenticada,
-   * o login (page.tsx) vê `authenticated` no mount seguinte e devolve o fã
-   * direto pro onboarding — com o apelido zerado. Quem entrou por Google ou
-   * carteira ficava sem conseguir sair, a não ser limpando os dados do site.
-   *
-   * O demo escapava porque nunca autentica na Privy — e é exatamente por isso
-   * que o furo sobreviveu: o caminho ensaiado (§5.1) é o único que não passa por
-   * aqui.
-   *
-   * A ordem importa: a Privy tem que cair ANTES de navegar, senão o efeito do
-   * login ainda lê `authenticated: true` e o loop volta. Por isso é async e por
-   * isso quem chama precisa dar await antes do router.replace('/').
-   */
+  // Privy must sign out before local state is cleared to avoid an auth redirect loop.
   const privy = usePrivyAuth();
 
   const refreshState = useCallback(async () => {
-    // O demo é local por regra (§5.1) e sem a ilha pronta não há Bearer — a
-    // corrida do Bearer já derrubou fã logado duas vezes (CONTEXT §11).
+    // A ready, authenticated Privy session is required to provide a bearer.
     if (!privy.enabled || !privy.ready || !privy.authenticated) return;
     if (sincronizando.current) return;
     sincronizando.current = true;
@@ -186,33 +172,22 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
         };
       });
     } catch {
-      // Servidor fora ou 401: o cache local segue valendo — realinhar é
-      // conveniência de leitura, não pode derrubar a sessão de ninguém.
+      // Keep the local cache on transient network or authorization failures.
     } finally {
       sincronizando.current = false;
     }
   }, [privy.enabled, privy.ready, privy.authenticated]);
 
-  // A primeira sincronização: assim que a ilha fica pronta com um fã REAL
-  // autenticado e uma sessão montada. Sem isto, quem reabria o app via o cache
-  // do storage (nível 1, 0 XP) por cima de um banco que sabia mais.
+  // Reconcile persisted account state after authentication is ready.
   useEffect(() => {
     if (!hydrated || !session || session.authMethod === 'demo') return;
     void refreshState();
-    // session.authMethod (e não session inteiro): realinhar de novo a cada
-    // update local viraria um loop de rede sem informação nova.
+    // Depend on auth method rather than the full session to avoid a refresh loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, session?.authMethod, refreshState]);
 
   const logout = useCallback(async () => {
-    // A Privy cai PRIMEIRO; a sessão local só depois. A ordem inversa parece
-    // inofensiva e não é: `setSession(null)` acorda o guard (useRequireSession)
-    // na hora, que navega pra '/' enquanto a Privy AINDA está autenticada — e o
-    // login, vendo `authenticated`, manda o fã pro onboarding no meio do próprio
-    // logout. A revogação da Privy é uma ida à rede (a SDK só derruba
-    // `authenticated` depois que ela volta), então a janela é real, não teórica.
-    // Enquanto a sessão local existe ninguém navega: o fã espera parado na tela
-    // onde clicou.
+    // Revoke Privy first, then clear local state, to avoid an auth redirect loop.
     try {
       if (privy.enabled && privy.authenticated) {
         await Promise.race([
@@ -223,9 +198,7 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
         ]);
       }
     } catch {
-      // Rede fora, ou promise que não settla: a sessão local cai no finally do
-      // mesmo jeito. Sair pela metade é ruim; prender o fã num botão morto que
-      // espera para sempre é pior — é a lição do E14.
+      // Local state is still cleared when the network or logout promise fails.
     } finally {
       setSession(null);
     }
@@ -267,7 +240,7 @@ export function useSession(): SessionValue {
   return ctx;
 }
 
-/** Iniciais do apelido pro avatar — mesma regra do protótipo. */
+/** Avatar initials, matching the prototype rule. */
 export function initialsOf(nickname: string, accountType: AccountType): string {
   const parts = (nickname || '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
@@ -281,7 +254,7 @@ export function initialsOf(nickname: string, accountType: AccountType): string {
   return parts || (accountType === 'new' ? 'P!' : '?');
 }
 
-/** Progressão de nível do protótipo: base 1000, faixa de 500 XP. */
+/** Prototype level progression: 1,000 base XP and 500-XP bands. */
 export const LEVEL_BASE = 1000;
 export const LEVEL_SPAN = 500;
 

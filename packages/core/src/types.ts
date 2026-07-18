@@ -1,33 +1,26 @@
-// Tipos compartilhados do @palpitei/core. Este arquivo é o CONTRATO entre os
-// módulos (ingestão, motores, salas, servidor, UI). Mudou aqui, mudou em todo lugar.
-
-// ---------------------------------------------------------------------------
-// Eventos normalizados (saída de ./normalize.ts)
-// ---------------------------------------------------------------------------
+// Shared @palpitei/core contracts for ingestion, engines, rooms, server, and UI.
+// Normalized events are produced by ./normalize.ts.
 
 export type ScoreEvent = {
   kind: "score";
   fixtureId: number;
   seq: number;
-  ts: number; // epoch ms do feed (linha do tempo da partida)
+  ts: number; // feed epoch milliseconds on the match timeline
   action: string; // goal, corner, shot, kickoff, halftime_finalised, game_finalised, ...
   statusId?: number;
-  period?: number; // 100 junto com statusId=100 => fim de jogo
+  period?: number; // 100 with statusId=100 marks game end
   gameStateRaw?: string | number;
   clockRunning?: boolean;
   clockSeconds?: number;
-  // Nem todo evento do feed carrega o bloco Score (ex.: kickoff, lineups).
-  // hasScore=false => goals/corners abaixo são placeholder 0 e NÃO valem como placar.
+  // Not every feed event includes Score. When hasScore=false, goals and corners
+  // are placeholders and must not be treated as the score.
   hasScore: boolean;
   goals: { p1: number; p2: number }; // Score.ParticipantN.Total.Goals
   corners: { p1: number; p2: number }; // Score.ParticipantN.Total.Corners
-  // Bloco Score.ParticipantN.Total inteiro (só campos numéricos): Goals,
-  // Corners, YellowCards, RedCards, Shots… O conjunto varia por partida, por
-  // isso é um mapa aberto. Os motores usam goals/corners; a UI mostra o resto.
-  // Opcional: evento sem bloco Score não tem totais (A4), e o replay sintético
-  // não os gera.
+  // Numeric fields from Score.ParticipantN.Total. The available set varies by
+  // fixture; engines use goals/corners and the UI can render the remainder.
   totals?: { p1: Record<string, number>; p2: Record<string, number> };
-  data?: any; // detalhe da ação (Outcome de chute/pênalti, etc.)
+  data?: any; // action detail (shot or penalty outcome, etc.)
   raw: any;
 };
 
@@ -35,25 +28,19 @@ export type OddsEvent = {
   kind: "odds";
   fixtureId: number;
   ts: number;
-  // STRING, não número: o MessageId real é estruturado
-  // ("1837922149:00003:000572-10021-stab") e Number() dele é NaN. Parser
-  // numérico aqui zera a chave de dedupe e colapsa a série inteira num único
-  // registro, sem erro nenhum (v0, G2). Igual a packages/db (OddsEvent.messageId).
+  // String, not number: real message IDs are structured and form the
+  // deduplication key. Keep this consistent with packages/db OddsEvent.messageId.
   messageId?: string;
-  marketType: string; // SuperOddsType, ex.: OVERUNDER_PARTICIPANT_GOALS
+  marketType: string; // SuperOddsType, e.g. OVERUNDER_PARTICIPANT_GOALS
   marketPeriod?: string | number;
-  line?: number; // MarketParameters.line, se houver
+  line?: number; // MarketParameters.line, when available
   inRunning?: boolean;
   bookmaker?: string;
-  prices: { name: string; odds: number; pct: number }[]; // odds já divididas por 1000
+  prices: { name: string; odds: number; pct: number }[]; // odds already divided by 1000
   raw: any;
 };
 
 export type NormEvent = ScoreEvent | OddsEvent;
-
-// ---------------------------------------------------------------------------
-// Domínio
-// ---------------------------------------------------------------------------
 
 export type Fixture = {
   fixtureId: number;
@@ -63,32 +50,28 @@ export type Fixture = {
   p2Id?: number;
   competition?: string;
   competitionId?: number;
-  startTime?: number; // epoch ms
-  gameState?: number; // 1 = agendada, 6 = cancelada
+  startTime?: number; // epoch milliseconds
+  gameState?: number; // 1 = scheduled, 6 = cancelled
   raw?: any;
 };
 
-// De onde veio a carteira do usuário:
-//   simulated      = modo demo (regra §5.1: o jurado testa sem criar carteira)
-//   privy_embedded = Opção A: carteira provisionada pela Privy no login social
-//   external       = Opção B: o usuário entrou COM a carteira dele (Phantom,
-//                    Solflare, Backpack); a chave é dele e o servidor nunca a vê.
-// As duas primeiras cumprem "sign up through Solana".
+// User wallet origin. External wallets remain user-controlled; the server never
+// receives their private key.
 export type WalletSource = "simulated" | "privy_embedded" | "external";
 
 export type User = {
   id: string;
-  // Público (ranking/ligas). NUNCA derivado do e-mail — o onboarding pergunta.
+  // Public ranking/league handle. Never derive it from email.
   handle: string;
-  wallet: string; // pubkey Solana (base58)
+  wallet: string; // Solana public key (base58)
   walletSource: WalletSource;
-  // DID da Privy (did:privy:...) — a identidade de verdade. Ausente no modo demo.
+  // Privy DID is the canonical identity. It is absent in demo mode.
   privyId?: string;
-  // Carteiras externas vinculadas ao MESMO DID. Portabilidade de entrada.
+  // External wallets linked to the same DID.
   linkedWallets?: string[];
   xp: number;
   level: number;
-  balanceCents: number; // USDC simulado em centavos inteiros (prévia da v2)
+  balanceCents: number; // simulated USDC in integer cents (v2 preview)
   createdAt: number;
 };
 
@@ -96,16 +79,24 @@ export type QuestionType = "final_result" | "next_goal" | "hilo_corners";
 
 export type QuestionOption = { id: string; label: string };
 
+/** Versioned template definition pinned for the entire session. */
+export type QuestionTemplateRef = { id: string; version: number };
+
 export type Question = {
   id: string;
   fixtureId: number;
+  /** Social game session that owns this question; absent only for legacy data. */
+  sessionId?: string;
+  template?: QuestionTemplateRef;
+  /** Deterministic trigger key used for idempotent reprocessing. */
+  triggerKey?: string;
   type: QuestionType;
   prompt: string;
   options: QuestionOption[];
-  opensAt: number; // linha do tempo da partida (ts do feed)
+  opensAt: number; // feed timestamp on the match timeline
   closesAt: number;
   state: "open" | "closed" | "resolved" | "void";
-  correct?: string; // option id vencedora
+  correct?: string; // winning option ID
   voidReason?: string;
   resolvedAt?: number;
   resolvedBySeq?: number;
@@ -115,13 +106,13 @@ export type Prediction = {
   id: string;
   userId: string;
   questionId: string;
-  choice: string; // option id
-  placedAt: number; // linha do tempo da partida
+  choice: string; // option ID
+  placedAt: number; // match-timeline timestamp
   result?: "won" | "lost" | "void";
   awardedXp?: number;
 };
 
-// Prévia da v2 — mercado paramutuel com USDC simulado. Não há dinheiro real na v1.
+// v2 preview: simulated-USDC parimutuel market. v1 has no real money.
 export type MarketOutcome = "p1" | "draw" | "p2";
 
 export type Market = {
@@ -129,14 +120,14 @@ export type Market = {
   fixtureId: number;
   kind: "resultado_final";
   labels: Record<MarketOutcome, string>;
-  rakeBps: number; // taxa da casa em basis points (500 = 5%)
-  closesAt: number | null; // definido no kickoff
+  rakeBps: number; // house rake in basis points (500 = 5%)
+  closesAt: number | null; // set at kickoff
   state: "open" | "closed" | "resolved";
-  pools: Record<MarketOutcome, number>; // centavos
+  pools: Record<MarketOutcome, number>; // cents
   winner?: MarketOutcome;
   payouts?: { userId: string; amountCents: number }[];
-  refunded?: boolean; // true quando ninguém acertou e houve reembolso
-  proof?: any; // recibo: prova de Merkle da TxLINE (stat-validation)
+  refunded?: boolean; // true when no one won and bets were refunded
+  proof?: any; // TxLINE Merkle proof receipt (stat-validation)
   proofError?: string;
 };
 
@@ -150,11 +141,8 @@ export type Bet = {
   payoutCents?: number;
 };
 
-// ---------------------------------------------------------------------------
-// Mensagens de sala (servidor -> UI via WebSocket). type discrimina o formato.
-// question_open leva closesInRealMs (ms REAIS até fechar, já convertidos pela
-// velocidade do replay) para a UI animar o cronômetro sem conhecer o clock.
-// ---------------------------------------------------------------------------
+// Room messages (server to UI via WebSocket). question_open includes
+// closesInRealMs so the UI can animate its timer without knowing the clock.
 
 export type RoomMessage = { type: string; [k: string]: any };
 

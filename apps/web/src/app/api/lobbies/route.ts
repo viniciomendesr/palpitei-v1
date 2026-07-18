@@ -24,8 +24,19 @@ export async function POST(req: Request): Promise<NextResponse> {
       createMatchRepo(db).findById(room.fixtureId),
     ]);
     if (!fixture) return NextResponse.json({ error: 'partida não encontrada no cache' }, { status: 404 });
-    const lobby = await createLobbyRepo(db).create(user.id, room.fixtureId, room.treino);
-    return NextResponse.json({ ok: true, lobby: { ...lobby, roomId } }, { status: 201 });
+    const lobby = await createLobbyRepo(db).create(user.id, room.fixtureId, room.training);
+    return NextResponse.json({
+      ok: true,
+      lobby: {
+        inviteCode: lobby.inviteCode,
+        roomId,
+        training: lobby.treino,
+        teamA: fixture.p1,
+        teamB: fixture.p2,
+        memberCount: lobby.memberCount,
+        maxPlayers: lobby.maxPlayers,
+      },
+    }, { status: 201 });
   } catch (error) {
     return erroParaResposta(error, 'POST /api/lobbies');
   } finally {

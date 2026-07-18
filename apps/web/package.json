@@ -25,7 +25,8 @@
     "dotenv": "^16.6.1",
     "next": "^15.5.4",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "redis": "^5.10.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
