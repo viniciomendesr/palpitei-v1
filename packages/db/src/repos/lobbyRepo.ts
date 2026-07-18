@@ -110,7 +110,6 @@ export function createLobbyRepo(db: Db) {
           [normalized],
         );
         if (!lobby) throw new LobbyNotFoundError();
-        if (lobby.phase !== 'waiting') throw new LobbyUnavailableError('a partida desse lobby já começou');
         if (new Date(String(lobby.expires_at)).getTime() <= Date.now()) {
           throw new LobbyUnavailableError('esse convite expirou — pede um novo ao anfitrião');
         }
@@ -118,6 +117,13 @@ export function createLobbyRepo(db: Db) {
           `select left_at from lobby_members where lobby_id = $1 and user_id = $2`,
           [lobby.id, userId],
         );
+        // A live match must not strand anyone: whoever already holds a membership row
+        // comes back in any phase (leaving/refreshing keeps the row, only left_at moves),
+        // and a late friend still joins while the match runs. Only a stranger arriving
+        // after the final whistle has nothing left to join.
+        if (!membership && lobby.phase === 'finished') {
+          throw new LobbyUnavailableError('essa partida já terminou — peça uma sala nova ao anfitrião');
+        }
         if (!membership) {
           const [count] = await tx.query(
             `select count(*)::int as n from lobby_members where lobby_id = $1 and left_at is null`,

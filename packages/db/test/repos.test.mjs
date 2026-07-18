@@ -524,7 +524,7 @@ test('listCached só devolve partida ENCERRADA — a de hoje não pode virar "re
     'partida ao vivo com eventos NÃO é replay',
   );
 
-  // Depois do apito final ela vira um replay legítimo.
+  // After the final whistle it becomes a legitimate replay.
   await p.matches.setState(aoVivo, 'finished');
   assert.equal(
     (await p.matches.listCached()).some((m) => m.fixtureId === aoVivo),
@@ -1023,6 +1023,80 @@ test('sair do lobby revoga a URL antiga e aceitar o convite novamente restaura o
 
   await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
   assert.equal((await p.lobbies.findForMember(lobby.inviteCode, friend.id))?.memberCount, 2);
+});
+
+test('sair no meio da partida e voltar devolve a MESMA sala (o convite não morre no apito inicial)', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-rejoin-host');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-rejoin-friend');
+  await p.matches.upsert({ fixtureId: 910007, p1: 'France', p2: 'England', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910007, false);
+  await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  await p.lobbies.markStarted(lobby.inviteCode, host.id);
+
+  await p.lobbies.markLeft(lobby.inviteCode, friend.id);
+  assert.equal(await p.lobbies.findForMember(lobby.inviteCode, friend.id), null);
+
+  const devolta = await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  assert.equal(devolta.id, lobby.id, 'tem que voltar para a mesma sala');
+  assert.equal((await p.lobbies.findForMember(lobby.inviteCode, friend.id))?.id, lobby.id);
+});
+
+test('amigo que recebe o convite DEPOIS do apito inicial ainda entra', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-late-host');
+  const atrasado = await p.users.findOrCreateByPrivyDid('did:privy:lobby-late-friend');
+  await p.matches.upsert({ fixtureId: 910008, p1: 'Brazil', p2: 'Portugal', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910008, false);
+  await p.lobbies.markStarted(lobby.inviteCode, host.id);
+
+  const entrou = await p.lobbies.joinByCode(atrasado.id, lobby.inviteCode);
+  assert.equal(entrou.memberCount, 2);
+  assert.equal((await p.lobbies.findForMember(lobby.inviteCode, atrasado.id))?.id, lobby.id);
+});
+
+test('partida encerrada: estranho é recusado, mas quem jogou volta para ler o resultado', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-done-host');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-done-friend');
+  const estranho = await p.users.findOrCreateByPrivyDid('did:privy:lobby-done-stranger');
+  await p.matches.upsert({ fixtureId: 910009, p1: 'Spain', p2: 'Argentina', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910009, false);
+  await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  await p.lobbies.markStarted(lobby.inviteCode, host.id);
+  await p.lobbies.markFinished(lobby.inviteCode, host.id);
+  await p.lobbies.markLeft(lobby.inviteCode, friend.id);
+
+  await rejeitaCom(() => p.lobbies.joinByCode(estranho.id, lobby.inviteCode), LobbyUnavailableError);
+  const devolta = await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  assert.equal(devolta.id, lobby.id);
+});
+
+test('lotação: sala em jogo recusa membro NOVO mas nunca quem já tinha vaga', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-cheia-host');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-cheia-friend');
+  const estranho = await p.users.findOrCreateByPrivyDid('did:privy:lobby-cheia-stranger');
+  await p.matches.upsert({ fixtureId: 910010, p1: 'France', p2: 'Spain', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910010, false);
+  await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  await p.db.query('update lobbies set max_players = 2 where id = $1', [lobby.id]);
+  await p.lobbies.markStarted(lobby.inviteCode, host.id);
+
+  await rejeitaCom(() => p.lobbies.joinByCode(estranho.id, lobby.inviteCode), LobbyUnavailableError);
+  // The returning fan already held a slot: refusing them would strand a mere refresh.
+  await p.lobbies.markLeft(lobby.inviteCode, friend.id);
+  await p.lobbies.joinByCode(estranho.id, lobby.inviteCode); // a vaga liberada foi ocupada
+  assert.equal((await p.lobbies.joinByCode(friend.id, lobby.inviteCode)).memberCount, 3);
+});
+
+test('convite expirado recusa até quem já era membro', async () => {
+  const host = await p.users.findOrCreateByPrivyDid('did:privy:lobby-exp-rejoin-host');
+  const friend = await p.users.findOrCreateByPrivyDid('did:privy:lobby-exp-rejoin-friend');
+  await p.matches.upsert({ fixtureId: 910011, p1: 'England', p2: 'Spain', startTime: 1_700_000_000_000 });
+  const lobby = await p.lobbies.create(host.id, 910011, false);
+  await p.lobbies.joinByCode(friend.id, lobby.inviteCode);
+  await p.lobbies.markStarted(lobby.inviteCode, host.id);
+  await p.lobbies.markLeft(lobby.inviteCode, friend.id);
+  await p.db.query(`update lobbies set expires_at = now() - interval '1 minute' where id = $1`, [lobby.id]);
+
+  await rejeitaCom(() => p.lobbies.joinByCode(friend.id, lobby.inviteCode), LobbyUnavailableError);
 });
 
 test('apenas o anfitrião encerra e o encerramento é idempotente', async () => {

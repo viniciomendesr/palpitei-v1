@@ -17,7 +17,10 @@ export async function GET(
   const db = createDb();
   try {
     const lobby = await createLobbyRepo(db).findByCode((await params).code);
-    if (!lobby || lobby.expiresAt <= Date.now() || lobby.phase !== 'waiting') {
+    // A running match still shows its invite: a friend who opens the link after
+    // kick-off joins live, and whoever left and came back reads the same preview.
+    // Only an expired or already finished invite has nothing left to open.
+    if (!lobby || lobby.expiresAt <= Date.now() || lobby.phase === 'finished') {
       return NextResponse.json({ error: 'esse convite não está mais disponível' }, { status: 404 });
     }
     const fixture = await createMatchRepo(db).findById(lobby.fixtureId);
@@ -27,6 +30,7 @@ export async function GET(
         inviteCode: lobby.inviteCode,
         roomId: roomIdOf(lobby.fixtureId, lobby.treino),
         training: lobby.treino,
+        phase: lobby.phase,
         teamA: fixture.p1,
         teamB: fixture.p2,
         memberCount: lobby.memberCount,

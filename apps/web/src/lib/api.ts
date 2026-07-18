@@ -83,6 +83,8 @@ export interface ApiLobbyPreview {
   teamB: string;
   memberCount: number;
   maxPlayers: number;
+  /** Present on the invite preview: a running match still accepts a late friend. */
+  phase?: 'waiting' | 'started' | 'finished';
 }
 
 /** Private league summary backed by persisted membership. */

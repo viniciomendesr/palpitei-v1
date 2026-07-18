@@ -124,12 +124,13 @@ const pt = {
   salaRankEmpty: 'Ninguém pontuou ainda. Assim que o primeiro desafio for resolvido, a lista aparece aqui.',
   // Placeholder for an account that has not selected a public nickname yet.
   salaNoHandle: 'sem apelido',
-  // The leave panel explains that an empty room is eventually disposed.
+  // The leave panel: coming back into the same room is supported, so the copy says so.
   sairSalaTitulo: 'Sair da sala?',
   sairSalaAviso:
-    'Se todos saírem, o servidor conclui esta partida e guarda o resultado. Ela não recomeça do zero quando você voltar.',
+    'Você pode voltar para esta mesma sala pelo link do grupo enquanto a partida rolar. O XP que você já fez fica guardado.',
   sairSalaFica: 'Ficar na sala',
   sairSalaVai: 'Sair mesmo assim',
+  sairSalaVolta: 'Se todos saírem, o servidor conclui a partida e guarda o resultado.',
   voltarAoJogo: 'Voltar ao jogo',
   resMomento: 'NA HORA DO LANCE',
   resSemXp: 'SEM XP',
@@ -651,9 +652,10 @@ const en: Dict = {
   salaNoHandle: 'no nickname',
   sairSalaTitulo: 'Leave the room?',
   sairSalaAviso:
-    'If everyone leaves, the server completes this match and keeps the result. It will not restart from zero when you return.',
+    'You can come back to this same room through the group link while the match is on. The XP you already earned is kept.',
   sairSalaFica: 'Stay in the room',
   sairSalaVai: 'Leave anyway',
+  sairSalaVolta: 'If everyone leaves, the server completes the match and keeps the result.',
   voltarAoJogo: 'Back to the match',
   resMomento: 'WHEN IT SETTLED',
   resSemXp: 'NO XP',

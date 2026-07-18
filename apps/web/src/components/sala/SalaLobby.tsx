@@ -39,7 +39,7 @@ export function SalaComLobby({ roomId }: { roomId: string }) {
   }, [partyId, roomId, router, session, privy.ready, privy.authenticated]);
 
   const active = Boolean(partyId && session && privy.ready && privy.authenticated);
-  const lobby = useLobby(roomId, partyId, active);
+  const lobby = useLobby(roomId, partyId, active, privy.authenticated);
 
   if (lobby.state?.phase === 'started') entrouNaPartida.current = true;
 

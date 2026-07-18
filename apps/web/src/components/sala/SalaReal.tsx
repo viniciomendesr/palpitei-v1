@@ -20,6 +20,7 @@ import {
 import { redigeChance } from '@/lib/chances';
 import { formataRelogio } from '@/lib/relogio';
 import { calcularResumoDaSala } from '@/lib/resumo';
+import { ehAoVivo } from '@/lib/proveniencia';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { localizeTeamName } from '@/lib/team-names';
 import type { LobbyState } from '@/lib/api';
@@ -731,7 +732,9 @@ export function SalaReal({
   const teamA = localizeTeamName(state.teamA, lang);
   const teamB = localizeTeamName(state.teamB, lang);
 
-  const selo = state.source === 'txline-live' ? t.srcTxline : t.srcReplay;
+  // One discriminator for both provenance labels: duplicating it is how they diverge.
+  const aoVivo = ehAoVivo(state.source);
+  const selo = aoVivo ? t.srcTxline : t.srcReplay;
   const abertos = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).length;
   const noOverlay = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).at(-1) ?? null;
 
@@ -782,7 +785,7 @@ export function SalaReal({
           <Badge tone={state.finished ? 'neutral' : 'live'} dot={!state.finished}>
             {state.finished
               ? t.lanceEnd
-              : `${t.replayShort} · ${formataRelogio(
+              : `${aoVivo ? t.liveShort : t.replayShort} · ${formataRelogio(
                   Math.max(segundosVivos ?? 0, (state.minute ?? 0) * 60),
                 )}`}
           </Badge>
@@ -1130,6 +1133,9 @@ export function SalaReal({
             </div>
             <p style={{ fontSize: 13, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-2)', marginTop: 8, textWrap: 'pretty' }}>
               {t.sairSalaAviso}
+            </p>
+            <p style={{ fontSize: 11.5, fontWeight: fw.medium, lineHeight: 'var(--leading-body)', color: 'var(--text-muted)', marginTop: 6, textWrap: 'pretty' }}>
+              {t.sairSalaVolta}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
               <Button full onClick={() => setConfirmandoSaida(false)}>
