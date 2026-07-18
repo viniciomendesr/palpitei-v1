@@ -198,10 +198,10 @@ with a deterministic clock.
 
 ## Run locally
 
-Requirements: Node.js 22.6 or newer and a PostgreSQL connection string.
+Requirements: Node.js 22.6 or newer (the tested version is pinned in `.nvmrc`) and a PostgreSQL connection string.
 
 ```bash
-npm install
+npm ci
 cp .env.example .env
 # Fill in Privy, TxLINE, and DATABASE_URL values
 npm run db:migrate
@@ -229,7 +229,7 @@ npm test
 npm run build
 ```
 
-The current suite contains **159 tests** across the pure domain engine, TxLINE
+The current suite contains **217 tests** across the pure domain engine, TxLINE
 normalization and ingestion, database behavior, replay timing, room routing,
 lobby synchronization, and the web application.
 
@@ -243,6 +243,9 @@ npm run cache:match -- ID  # persist an eligible TxLINE match timeline
 
 ## Deployment
 
-Production runs on Railway with one Node.js replica and a health check on `/`:
+Production runs on Railway with one Node.js replica. Its startup runs the
+idempotent migrations before serving traffic, and the health check at
+`/api/health` verifies database access, schema migrations, and the expected
+database role:
 
 [https://palpitei-v1-production.up.railway.app](https://palpitei-v1-production.up.railway.app)
