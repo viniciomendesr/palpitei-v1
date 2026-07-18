@@ -19,6 +19,10 @@ jobs:
           node-version: 22.22.3
           cache: npm
       - run: npm ci
+      # @palpitei/web typechecks against the built ds/db declarations, so a clean
+      # clone must build the workspaces first. Locally this passes only because a
+      # previous build left dist/ behind.
+      - run: npm run dev:prepare
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
