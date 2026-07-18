@@ -229,7 +229,7 @@ npm test
 npm run build
 ```
 
-The current suite contains **217 tests** across the pure domain engine, TxLINE
+The current suite contains **226 tests** across the pure domain engine, TxLINE
 normalization and ingestion, database behavior, replay timing, room routing,
 lobby synchronization, and the web application.
 
