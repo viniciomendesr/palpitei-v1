@@ -38,6 +38,7 @@ fan to understand an odds feed.
 
 - Sign in with Google or a Solana wallet through Privy.
 - Browse World Cup fixtures supplied by TxLINE.
+- Make pre-match picks on an upcoming fixture, editable until kickoff.
 - Play a completed match from its real event timeline.
 - Enter training mode to replay without affecting XP.
 - Create a lobby, copy the invite link, wait for friends, and start together.
@@ -45,6 +46,8 @@ fan to understand an odds feed.
 - Follow match events, statistics, chance movements, and the room ranking.
 - Open the final match summary after the replay ends.
 - Create or join a private league.
+- Earn a trophy balance and browse the marketplace, then open a minted seal and
+  its proof screen.
 
 The instant demo login is a zero-friction product tour for evaluation. The
 authenticated fixture and replay paths use TxLINE data and server-side game
@@ -64,7 +67,7 @@ contract consumed by the rest of Palpitei.
 | `/scores/updates` | Ordered match timeline, score changes, clock, and match events |
 | `/odds/updates` | Time series of full-match 1X2 prices and implied percentages |
 | `/scores/snapshot` | Current-state lookup and participant-name recovery |
-| `/scores/stat-validation` | Verifiable statistic receipt support |
+| `/scores/stat-validation` | Merkle proof for a settled statistic, verified against the on-chain anchor when a seal is minted |
 | `/scores/stream` and `/odds/stream` | Live SSE adapter with JWT renewal, reconnection, and `Last-Event-ID` recovery |
 
 The completed England vs Argentina fixture currently used by the replay was
@@ -85,6 +88,14 @@ score/odds message before routing it to groups playing that fixture, while the
 demo can continue to use a persisted TxLINE timeline when no match is live.
 Active fixtures and the question catalog are persisted; they are not a list of
 hardcoded cards in the browser.
+
+The live path ran end-to-end on France vs England on 18 July 2026: real fan
+picks, room routing, and a seal minted from the final-whistle sequence with its
+proof verified against the devnet anchor. Once a live fixture reads `finished`,
+it becomes playable from the Replays tab over the same persisted timeline, so a
+live capture turns into a replay without a second ingestion path. The reverse is
+blocked by a regression test — a recorded replay can never be promoted to a live
+fixture.
 
 ### From TxLINE to the fan
 
@@ -152,6 +163,39 @@ Those decisions are made by the server-side domain engine using the match clock.
 - Authentication comes from the verified Privy DID. Client-provided user IDs are
   never trusted.
 
+## Pre-match picks
+
+Before kickoff, a fan can pick on an upcoming fixture from the Upcoming tab and
+keep editing until the whistle, after which the picks lock for everyone. Four
+markets carry their own weights — result 30 XP, exact score 60, goals 25,
+corners 25 — and settle at full time from the real score and corner totals.
+
+The market list comes from the TxLINE snapshot, not from a fixed set of cards.
+Only fully quoted markets Palpitei can settle are offered; when the feed cannot
+back them, the screen says the markets are unavailable instead of showing an
+invented line. The goals and corners lines are persisted with each pick and
+revalidated against the feed on submission, so a stale client cannot settle
+against a line that was never quoted. Settlement is idempotent through a
+`settled_at` compare-and-set, and it runs whether or not a room is open.
+
+These picks are graded outside the live question engine, which knows only
+`final_result`, `next_goal`, and `hilo_corners`. They have their own table and
+their own weights in `packages/core/src/pregame.ts`.
+
+## Seals and trophies
+
+Correct picks earn a trophy balance, tracked in a ledger and shown next to each
+fan in the ranking. The marketplace lets a fan browse perks and open a seal — a
+minted record of one prediction, with a proof screen describing where the
+statistic came from.
+
+Minting runs offline through `npm run selo:mint`, never inside a fan request. The
+script reads the real `game_finalised` sequence for the fixture, requests the
+Merkle proof from TxLINE, derives the epoch day from the proof timestamp rather
+than the wall clock, and verifies the root against the on-chain anchor account on
+devnet before writing it into the seal metadata. If any of those steps cannot be
+verified, the root is omitted rather than guessed.
+
 ## Synchronized rooms
 
 Every invite receives a `partyId`. The key `fixture + mode + partyId` isolates
@@ -185,6 +229,7 @@ data, domain rules, persistence, and presentation.
 | `packages/txline` | TxLINE authentication, API client, update sweeps, live SSE, cache adapter, and replay runner |
 | `packages/db` | PostgreSQL schema, migrations, repositories, idempotency, persisted timelines, sessions, and templates |
 | `packages/ds` | Shared design tokens and UI components |
+| `packages/selo` | Seal metadata, badge art, and the devnet mint script that anchors a TxLINE proof |
 | `supabase/migrations` | Versioned database migrations |
 
 The core package has no database, network, browser, or framework dependency.
@@ -235,9 +280,10 @@ npm test
 npm run build
 ```
 
-The current suite contains **226 tests** across the pure domain engine, TxLINE
+The current suite contains **363 tests** across the pure domain engine, TxLINE
 normalization and ingestion, database behavior, replay timing, room routing,
-lobby synchronization, and the web application.
+lobby synchronization, pre-match pick settlement, trophy rules, and the web
+application.
 
 ## Useful operational commands
 
