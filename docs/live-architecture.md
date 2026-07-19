@@ -1,157 +1,174 @@
-# Arquitetura de jogo ao vivo
+# Live game architecture
 
-Este documento descreve o contrato atual para transformar eventos da TxLINE em
-partidas sincronizadas. Ele vale para replay e ao vivo; a diferença é a origem
-da linha do tempo e a velocidade do relógio. Para presença, transporte SSE e o
-limite de escala da entrega atual, consulte [realtime-stack.md](realtime-stack.md).
+This document describes the current contract for turning TxLINE events into
+synchronized matches. It applies to both replay and live; the difference is
+where the timeline comes from and how fast the clock runs. For presence, SSE
+transport, and the scale limit of the current delivery, see
+[realtime-stack.md](realtime-stack.md).
 
-## Objetivos e fronteiras
+## Goals and boundaries
 
-- A TxLINE é a fonte de fixtures, eventos de placar e cotações; o navegador não
-  recebe payload cru nem credenciais do provedor.
-- Um evento TxLINE é persistido e deduplicado antes de ser publicado para fãs.
-- Uma mesma fixture pode atender vários grupos. Cada grupo tem sua sessão de
-  jogo, perguntas e palpites isolados.
-- Perguntas são determinadas pelo motor versionado do produto. O banco pode
-  selecionar parâmetros e apresentação, mas nunca executa SQL ou JavaScript
-  fornecido por template.
-- Com `REDIS_URL`, Redis coordena a ingestão e o fan-out entre réplicas; sem a
-  variável, o modo compatível continua sendo uma única réplica Railway.
+- TxLINE is the source of fixtures, score events, and odds; the browser never
+  receives raw payloads or provider credentials.
+- A TxLINE event is persisted and deduplicated before being published to fans.
+- One fixture can serve several groups. Each group has its own game session,
+  questions, and picks, kept isolated.
+- Questions are determined by the product's versioned engine. The database can
+  select parameters and presentation, but it never executes SQL or JavaScript
+  supplied by a template.
+- With `REDIS_URL`, Redis coordinates ingestion and fan-out across replicas;
+  without the variable, the compatible mode remains a single Railway replica.
 
-## Fluxo de dados
+## Data flow
 
 ```mermaid
 flowchart LR
-  A["TxLINE scores e odds SSE"] --> B["Réplica líder via lease Redis"]
-  B --> C["Normalização e validação"]
-  C --> D["Postgres: eventos e odds idempotentes"]
-  D --> P["Redis Pub/Sub: evento normalizado"]
-  P --> E["Canais locais por fixture"]
-  E --> F["Sessão de jogo por fixture + party + modo"]
-  F --> G["QuestionEngine e instâncias auditáveis"]
-  G --> H["SSE autenticado da sala"]
+  A["TxLINE scores and odds SSE"] --> B["Leader replica via Redis lease"]
+  B --> C["Normalization and validation"]
+  C --> D["Postgres: idempotent events and odds"]
+  D --> P["Redis Pub/Sub: normalized event"]
+  P --> E["Local per-fixture channels"]
+  E --> F["Game session per fixture + party + mode"]
+  F --> G["QuestionEngine and auditable instances"]
+  G --> H["Authenticated room SSE"]
 ```
 
-1. Com Redis configurado, apenas a réplica que mantém o lease de 15 segundos
-   abre `startLiveIngest`; sem Redis, a aplicação conserva o modo de uma única
-   réplica. O token do lease impede que uma réplica atrasada renove ou apague o
-   lock de outra.
-2. `live_fixtures` determina as fixtures ativas dinamicamente. A lista de
-   ambiente (`LIVE_FIXTURE_IDS`, e o legado `LIVE_FIXTURE_ID`) é somente o
-   bootstrap/fallback operacional; não deve ser a única forma de adicionar ou
-   remover uma partida.
-3. O canal da fixture serializa persistência e publicação. Scores são
-   idempotentes por `(fixture_id, seq)` e odds por `message_id`.
-4. Antes de a sala receber o evento, ela recupera a timeline persistida e drena
-   o buffer de eventos recebidos durante o catch-up. O watermark deve avançar
-   enquanto o buffer é drenado, para que a mesma mensagem não seja processada
-   duas vezes.
-5. `fixture + partyId + treino` identifica uma execução. O grupo recebe uma
-   sessão ativa, e não uma sala efêmera sem identidade persistida.
-6. Depois do commit, a líder publica somente o evento normalizado (sem `raw` ou
-   `data` da TxLINE) em `palpitei:txline:fixture:<id>`. Cada réplica encaminha
-   o evento às suas salas locais.
-7. A sala aplica o mesmo `processarEvento` usado pelo replay, grava um
-   checkpoint e envia o estado personalizado ao usuário por SSE.
+1. With Redis configured, only the replica holding the 15-second lease opens
+   `startLiveIngest`; without Redis, the application keeps the single-replica
+   mode. The lease token prevents a lagging replica from renewing or deleting
+   another replica's lock.
+2. `live_fixtures` determines active fixtures dynamically. The environment list
+   (`LIVE_FIXTURE_IDS`, and the legacy `LIVE_FIXTURE_ID`) is only the
+   operational bootstrap/fallback; it must not be the only way to add or remove
+   a match.
+3. The fixture channel serializes persistence and publication. Scores are
+   idempotent by `(fixture_id, seq)` and odds by `message_id`.
+4. Before the room receives the event, it recovers the persisted timeline and
+   drains the buffer of events received during catch-up. The watermark must
+   advance while the buffer drains, so the same message is not processed twice.
+5. `fixture + partyId + treino` identifies one run. The group gets an active
+   session, not an ephemeral room without persisted identity.
+6. After the commit, the leader publishes only the normalized event (without
+   TxLINE `raw` or `data`) on `palpitei:txline:fixture:<id>`. Each replica
+   forwards the event to its local rooms.
+7. The room applies the same `processarEvento` used by replay, writes a
+   checkpoint, and sends the personalized state to the user over SSE.
 
-## Fixtures e ingestão
+## Fixtures and ingestion
 
-O ingestor pode observar várias fixtures simultaneamente com uma única conexão
-de scores e uma de odds. Cada fixture ativa ganha fila e métricas separadas,
-mas não uma conexão TxLINE exclusiva. Assim, uma partida nova não exige
-redeploy para entrar no roteamento quando estiver registrada em
+The ingester can watch several fixtures simultaneously over a single scores
+connection and a single odds connection. Each active fixture gets its own queue
+and metrics, but not a dedicated TxLINE connection. This way, a new match does
+not require a redeploy to enter routing once it is registered in
 `live_fixtures`.
 
-O bootstrap deve semear `matches` a partir do snapshot da TxLINE antes de abrir
-uma sessão. A ausência de `start_ts` é erro operacional: impede ancorar o
-relógio de uma partida ainda sem evento. Se a fonte falhar, a interface deve
-mostrar indisponibilidade, nunca uma partida inventada.
+Bootstrap must seed `matches` from the TxLINE snapshot before a session opens. A
+missing `start_ts` is an operational error: it makes it impossible to anchor the
+clock of a match that has no event yet. If the source fails, the interface must
+show unavailability, never an invented match.
 
-Para odds exibidas na sala, somente o 1X2 de jogo inteiro é projetado hoje. Os
-demais mercados podem ser preservados no banco quando suportados, mas não devem
-alimentar `atualizarPct1x2` nem gerar explicações de chances até terem contrato
-de UI e liquidação próprios. Pré-palpites consultam o snapshot atual e expõem
-apenas mercados que o produto consegue validar e liquidar.
+For odds displayed in the room, only full-match 1X2 is projected today. Other
+markets may be preserved in the database where supported, but they must not feed
+`atualizarPct1x2` or generate chance explanations until they have their own UI
+and settlement contract.
 
-## Sessões recuperáveis
+Pre-match picks read the current snapshot and expose only the markets the
+product can validate and settle. The market list is **derived from the TxLINE
+snapshot, not a fixed set of cards**: `pregameOdds.ts` includes only fully
+quoted markets, the API answers `txlineAvailable: false` with an empty market
+list when the feed cannot back them, and the persisted `goals_line` /
+`corners_line` are validated against the feed on submission. An empty market
+list is a correct answer, not a failure.
 
-`game_sessions` separa a execução de um grupo da fixture em si. A sessão fixa:
+## Recoverable sessions
 
-- `fixture_id`, `party_id` e modo de treino;
-- versão do motor e o conjunto de templates escolhido no início;
-- snapshot serializável do estado do motor/sala;
-- cursores `last_score_seq`, `last_odds_ts` e `last_odds_message_id`;
-- ciclo de vida (`active`, `finished` ou `cancelled`).
+`game_sessions` separates a group's run from the fixture itself. The session
+pins:
 
-Há no máximo uma sessão ativa para a mesma combinação de fixture, grupo e modo.
-Após restart ou deploy, o servidor abre a sessão existente, restaura o snapshot
-e processa somente os eventos posteriores aos cursores. O checkpoint é uma
-otimização de recuperação; eventos e odds no Postgres continuam sendo a fonte
-auditável para reconstrução e reconciliação.
+- `fixture_id`, `party_id`, and the training mode;
+- the engine version and the template set chosen at the start;
+- a serializable snapshot of the engine/room state;
+- the `last_score_seq`, `last_odds_ts`, and `last_odds_message_id` cursors;
+- the lifecycle (`active`, `finished`, or `cancelled`).
 
-Ao receber o evento terminal, a sessão é finalizada, a fixture é marcada como
-encerrada e a liquidação de pré-palpites é executada de forma idempotente. A
-liquidação não depende de haver uma sala aberta: uma partida pode terminar sem
-usuários conectados.
+There is at most one active session for the same combination of fixture, group,
+and mode, enforced by a partial unique index. After a restart or deploy, the
+server opens the existing session, restores the snapshot, and processes only
+events after the cursors. The checkpoint is a recovery optimization; events and
+odds in Postgres remain the auditable source for reconstruction and
+reconciliation.
 
-## Banco de templates e instâncias
+On the terminal event, the session is finished, the fixture is marked as closed,
+and pre-match pick settlement runs idempotently. Settlement does not depend on
+an open room: a match can end with no users connected.
 
-`question_templates` é o catálogo versionado. Cada registro contém:
+## Template and instance database
 
-- identidade e versão registrada; uma alteração de conteúdo cria nova versão
-  em vez de reinterpretar uma sessão em andamento;
-- tipo de pergunta permitido (`final_result`, `next_goal` ou `hilo_corners`);
-- elegibilidade, gatilho, resolução, apresentação e política de pontuação em
-  JSON estruturado;
-- estado ativo/aposentado.
+`question_templates` is the versioned catalog. Each record holds:
 
-`questions` continua sendo a instância auditável que o fã viu. Ela referencia
-`session_id`, `template_id`, `template_version` e `trigger_key`, além de guardar
-prompt, opções, janela e resultado renderizados. A unicidade por sessão,
-template e gatilho torna reentregas ou reinícios idempotentes.
+- registered identity and version; a content change creates a new version
+  instead of reinterpreting a session already in progress;
+- the allowed question type (`final_result`, `next_goal`, or `hilo_corners`);
+- eligibility, trigger, resolution, presentation, and scoring policy as
+  structured JSON;
+- active/retired state.
 
-O core mantém a interpretação: cada tipo aponta para um handler previamente
-testado. Templates não são uma linguagem de programação. Ao abrir uma sessão,
-as versões ativas são fixadas no `template_set`; uma mudança administrativa não
-altera perguntas já abertas nem muda a regra de liquidação no meio da partida.
+`questions` remains the auditable instance the fan saw. It references
+`session_id`, `template_id`, `template_version`, and `trigger_key`, and stores
+the rendered prompt, options, window, and result. Uniqueness per session,
+template, and trigger makes redeliveries and restarts idempotent.
 
-## Consistência e justiça
+The core owns interpretation: each type points to a previously tested handler.
+Templates are not a programming language. When a session opens, the active
+versions are pinned into the `template_set`; an administrative change does not
+alter questions already open, nor change the settlement rule mid-match.
 
-- O relógio do motor usa timestamps do feed; entre eventos ele apenas interpola.
-  Replay acelera a apresentação, enquanto live opera a 1x.
-- Janela aberta no evento que a resolveria significa anulação, não acerto.
-- `Score` ausente não é 0–0. Totais parciais são mesclados por chave.
-- `MessageId` de odds é texto e nunca deve ser convertido em número.
-- Eventos terminal e reentregas não podem pagar XP duas vezes; o banco aplica
-  CAS na liquidação e as chaves idempotentes impedem duplicação.
+Pre-match picks are graded **outside** this engine. They have their own four
+markets and weights in `packages/core/src/pregame.ts` (`PREGAME_XP`: result 30,
+exact score 60, goals 25, corners 25) and their own `pregame_picks` table,
+precisely because the live engine only knows the three question types above.
 
-## Escala horizontal e limites remanescentes
+## Consistency and fairness
 
-Com `REDIS_URL`, o ingest não é mais duplicado entre réplicas: Redis elege uma
-líder, e Pub/Sub faz o fan-out para os canais locais. Se uma réplica perder a
-assinatura, ela reconcilia o histórico pelo Postgres ao voltar; Pub/Sub é rápido
-mas efêmero, portanto nunca é a fonte de verdade. Scores e odds são
-idempotentes no banco e a sala descarta cursores já processados.
+- The engine clock uses feed timestamps; between events it only interpolates.
+  Replay accelerates presentation, while live runs at 1x.
+- A window still open at the event that would resolve it means voiding, not a
+  correct answer.
+- A missing `Score` is not 0–0. Partial totals are merged by key.
+- The odds `MessageId` is text and must never be converted to a number.
+- Terminal events and redeliveries must not pay XP twice; the database applies
+  CAS on settlement and idempotency keys prevent duplication. Pre-match picks
+  use the same guarantee through a `settled_at` CAS.
 
-A presença/pronto do lobby ainda é process-local. Antes de escalar o serviço
-web com segurança completa, essa store também deve migrar para Redis ou banco
-com broadcast, e deve ser adicionada telemetria por sessão (lag, gaps,
-checkpoint e conexões SSE). Para a operação de jogo, mantenha `numReplicas: 1`
-até a presença compartilhada ser concluída; o broker já elimina o risco de
-duplicar a conexão TxLINE e prepara o fan-out das salas.
+## Horizontal scale and remaining limits
 
-### Configuração Railway
+With `REDIS_URL`, ingest is no longer duplicated across replicas: Redis elects a
+leader, and Pub/Sub fans out to local channels. If a replica loses its
+subscription, it reconciles history from Postgres when it returns; Pub/Sub is
+fast but ephemeral, so it is never the source of truth. Scores and odds are
+idempotent in the database, and the room discards cursors it has already
+processed.
 
-Adicione Redis ao mesmo ambiente e configure no serviço web:
+Lobby presence/ready is still process-local. Before scaling the web service with
+full safety, that store must also move to Redis or a database with broadcast,
+and per-session telemetry (lag, gaps, checkpoint, and SSE connections) must be
+added. For match operations, keep `numReplicas: 1` until shared presence is
+finished; the broker already removes the risk of duplicating the TxLINE
+connection and prepares room fan-out.
+
+### Railway configuration
+
+Add Redis to the same environment and set this on the web service:
 
 ```env
 REDIS_URL=${{Redis.REDIS_URL}}
 ```
 
-O broker é opt-in. Falha de Redis com a variável presente fecha a ingestão em
-vez de abrir um SSE por réplica; a rota de status expõe o estado do broker.
+The broker is opt-in. A Redis failure while the variable is present shuts
+ingestion down instead of opening one SSE connection per replica; the status
+route exposes the broker state.
 
-## Verificação operacional
+## Operational verification
 
 ```bash
 npm run db:migrate
@@ -160,17 +177,57 @@ npm test
 npm run build
 ```
 
-Antes de uma partida, confirme que a fixture foi semeada, está ativa e tem
-`start_ts`; durante ela, acompanhe contadores de scores/odds normalizados,
-persistidos e publicados; após o apito, confirme a sessão finalizada, a fixture
-encerrada, a liquidação de pré-palpites e a ausência de gaps de sequência.
+Before a match, confirm the fixture has been seeded, is active, and has a
+`start_ts`; during the match, follow the counters for normalized, persisted, and
+published scores/odds; after the final whistle, confirm the session is finished,
+the fixture is closed, pre-match picks are settled, and there are no sequence
+gaps.
 
-## Registro histórico: janela do hackathon de 17–19/07/2026
+## After full time: a live capture becomes a replay
 
-O primeiro desenho live foi feito para France × England (`18257865`) e depois
-ampliado para Spain × Argentina (`18257739`) via `LIVE_FIXTURE_IDS`. Naquele
-momento o objetivo era provar o caminho TxLINE antes do prazo do hackathon, em
-uma única réplica. Os streams e o fluxo de persistência foram exercitados contra
-a devnet; a configuração por ambiente era uma solução de operação rápida, não o
-modelo definitivo de roteamento. As medições de fixtures, volumes e horários
-daquela janela são históricas e não devem ser usadas como estado atual do feed.
+A fixture ingested live does not stop being useful at the final whistle. Once it
+reads `state = 'finished'`, it is playable from the Replays tab over the same
+persisted timeline, through the same `processarEvento`. Two rules keep the two
+directions from blurring:
+
+- A recorded replay must **never** become a live fixture. `cacheSource`
+  separates a timeline swept from `/updates` (`txline-updates`) from one
+  captured live (`txline-live`), and there is a dedicated regression test for
+  it.
+- A replay run gets no `game_session`. Giving it one would make `roomMode()`
+  return `finished` — a dead room with no runner — instead of `replay`.
+
+Chronology matters when reading picks across both paths: `predictions.placed_at`
+is **match** time, which a replay simulates, while `predictions.created_at` is
+wall-clock time. "First" always means `created_at`; using `placed_at` makes a
+replay pick look live.
+
+Live captures also carry far more pre-kickoff data than swept ones, because odds
+tick for hours before the whistle. Replay therefore advances at a dedicated
+pre-game speed until the clock starts, regardless of the requested speed, and
+only then honors `REPLAY_SPEED`.
+
+## Historical record: hackathon window of 17–19 July 2026
+
+The first live design targeted France × England (`18257865`) and was later
+extended to Spain × Argentina (`18257739`) through `LIVE_FIXTURE_IDS`. The goal
+was to prove the TxLINE path before the hackathon deadline, on a single replica.
+Per-environment configuration was a quick operational solution, not the
+definitive routing model.
+
+France × England ran live on 18 July 2026 and exercised the whole path
+end-to-end: streams, persistence, rooms, real fan picks, and a seal minted from
+the `game_finalised` sequence with its proof verified against the devnet anchor.
+Three measurements from that run are recorded in code because they shaped the
+design — the pre-kickoff volume of a live capture (1,248 items, five times the
+recorded England × Argentina), the `created_at` versus `placed_at` distinction
+above, and the fact that a live fixture reads `finished` the next day and must
+be judged by state rather than by "has events".
+
+One thing tried during that window did not survive: reconciling the timeline at
+the final whistle was implemented and then reverted, so no backfill runs at full
+time. The fixture is closed and rooms are reconciled, but the timeline is not
+rewritten.
+
+The fixture, volume, and timing measurements from that window are historical and
+must not be read as the current state of the feed.
