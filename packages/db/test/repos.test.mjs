@@ -781,6 +781,33 @@ test('desativar carimba deactivated_at e a segunda chamada não mexe na linha', 
   assert.equal(String(segunda.updated_at), String(primeira.updated_at));
 });
 
+test('varredura desativa fixture de partida ENCERRADA e não toca em quem ainda joga', async () => {
+  // Deactivation happens at the terminal event, so a match that ended before this
+  // code existed keeps its row active forever and the 15s poll rebuilds its channel.
+  // The boot sweep is the only leg that can reach those.
+  const encerrada = 991_020;
+  const rolando = 991_021;
+  await p.matches.upsert({ fixtureId: encerrada, p1: 'França', p2: 'Inglaterra', startTime: 2_000_000, state: 'finished' });
+  await p.matches.upsert({ fixtureId: rolando, p1: 'Espanha', p2: 'Argentina', startTime: 2_000_000, state: 'live' });
+  await p.liveFixtures.activate(encerrada);
+  await p.liveFixtures.activate(rolando);
+
+  const alvos = await p.liveFixtures.deactivateFinishedMatches();
+  assert.deepEqual(alvos, [encerrada], 'só a encerrada sai do registro ao vivo');
+  assert.equal((await p.liveFixtures.listActive()).some((f) => f.fixtureId === encerrada), false);
+  assert.equal(
+    (await p.liveFixtures.listActive()).some((f) => f.fixtureId === rolando),
+    true,
+    'desativar a errada mataria o canal de uma partida em andamento',
+  );
+
+  const [linha] = await p.db.query('select deactivated_at from live_fixtures where fixture_id = $1', [encerrada]);
+  assert.ok(linha.deactivated_at, 'a varredura também precisa carimbar deactivated_at');
+
+  // Idempotent: another boot finds nothing left to retire.
+  assert.deepEqual(await p.liveFixtures.deactivateFinishedMatches(), []);
+});
+
 test('reativar uma fixture desativada limpa o carimbo (o registro é reutilizável)', async () => {
   const fixture = 991_012;
   await p.matches.upsert({ fixtureId: fixture, p1: 'Espanha', p2: 'Argentina', startTime: 2_000_000 });

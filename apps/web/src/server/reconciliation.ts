@@ -21,9 +21,34 @@
  * `markStarted` still refuses a `finished` lobby, so restarting needs a new party.
  */
 
-import { createGameSessionRepo, createLobbyRepo } from '@palpitei/db';
+import { createGameSessionRepo, createLiveFixtureRepo, createLobbyRepo } from '@palpitei/db';
 import { info, warn } from '@palpitei/txline';
 import { createDb } from './db';
+
+/**
+ * Retires fixtures whose match already ended, and reports what it retired.
+ *
+ * `deactivate` only fires on the terminal event, so a match that ended while no
+ * process was holding it keeps `live_fixtures.active = true` forever and the 15s
+ * `sincronizarFixturesDoBanco` poll rebuilds its channel on every boot — a
+ * finished match showing up as a live channel in `/api/live/status`. Closing the
+ * local channel needs no extra work: once the row is inactive, that same poll
+ * drops it through `channelsToClose`.
+ */
+export async function retireFinishedLiveFixtures(): Promise<number[]> {
+  const db = createDb();
+  try {
+    const retired = await createLiveFixtureRepo(db).deactivateFinishedMatches();
+    if (retired.length) info(`[reconciliação] fixture(s) encerrada(s) retirada(s) do ao vivo: ${retired.join(', ')}`);
+    return retired;
+  } catch (e) {
+    // A failed sweep must never take the boot down with it.
+    warn(`[reconciliação] retirada de fixtures encerradas falhou: ${e instanceof Error ? e.message : String(e)}`);
+    return [];
+  } finally {
+    await db.close?.();
+  }
+}
 
 /** Returns how many stranded rooms were closed. `null` sweeps every fixture. */
 export async function reconcileOrphanedRooms(fixtureId: number | null = null): Promise<number> {

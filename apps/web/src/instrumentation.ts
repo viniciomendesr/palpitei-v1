@@ -7,6 +7,10 @@ export async function register(): Promise<void> {
   // process held the room leaves `game_sessions` active and the lobby started
   // forever. This sweep is the only thing that can revisit those rows; it is
   // idempotent and only touches parties whose match is already `finished`.
-  const { reconcileOrphanedRooms } = await import('./server/reconciliation');
+  const { reconcileOrphanedRooms, retireFinishedLiveFixtures } = await import('./server/reconciliation');
   void reconcileOrphanedRooms();
+  // Same reasoning one level up: the fixture itself is only retired at the
+  // terminal event, so a match that ended unattended keeps rebuilding its
+  // channel on every boot. Retiring it here is what finally stops that.
+  void retireFinishedLiveFixtures();
 }

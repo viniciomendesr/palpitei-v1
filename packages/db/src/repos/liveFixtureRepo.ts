@@ -59,6 +59,29 @@ export function createLiveFixtureRepo(db: Db) {
         [fixtureId],
       );
     },
+
+    /**
+     * Retires every fixture whose match already ended. Returns what it retired.
+     *
+     * `deactivate` only fires on the terminal event, so a match that ended while
+     * no process was watching — or before this code existed — keeps its row
+     * active forever, and the 15s `sincronizarFixturesDoBanco` poll rebuilds its
+     * channel on every boot. This sweep is the only leg that reaches those.
+     *
+     * The join to `matches.state = 'finished'` is the safety rail: it can never
+     * retire a fixture that is still being played. `and lf.active` is the CAS —
+     * a rerun returns zero rows and leaves `deactivated_at` untouched.
+     */
+    async deactivateFinishedMatches(): Promise<number[]> {
+      const rows = await db.query(
+        `update live_fixtures lf
+            set active = false, deactivated_at = now(), updated_at = now()
+           from matches m
+          where m.fixture_id = lf.fixture_id and m.state = 'finished' and lf.active
+        returning lf.fixture_id`,
+      );
+      return rows.map((row) => Number(row.fixture_id));
+    },
   };
   return repo;
 }
