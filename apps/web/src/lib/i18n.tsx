@@ -16,6 +16,7 @@ import {
 } from 'react';
 
 import type { PerkId } from '@/lib/marketplace';
+import { preferredLang } from './preferred-lang';
 
 export type Lang = 'pt' | 'en';
 
@@ -1441,7 +1442,18 @@ interface I18nValue {
 const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }): React.JSX.Element {
+  // Starts at pt to match what the server rendered (see `<html lang>` in the
+  // layout). Detection runs after hydration instead of in the initial state,
+  // because `navigator` does not exist on the server and reading it here would
+  // make the first client render disagree with the server's.
   const [lang, setLang] = useState<Lang>('pt');
+
+  useEffect(() => {
+    const tags = navigator.languages?.length ? navigator.languages : [navigator.language];
+    const preferred = preferredLang(tags.filter(Boolean));
+    if (preferred) setLang(preferred);
+    // Runs once: after this, the language belongs to whoever picked it in the UI.
+  }, []);
 
   // Keep the document language aligned with the selected locale for screen readers.
   useEffect(() => {
