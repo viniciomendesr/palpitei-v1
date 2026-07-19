@@ -70,9 +70,12 @@ export function MarketplaceProvider({ children }: { children: ReactNode }) {
   const balances = useMemo<Balances>(
     () => ({
       xp: Math.max(0, (session?.xp ?? 0) - spentXp),
-      trophies: Math.max(0, (isDemo ? DEMO_TROPHIES : 0) - spentTrophies),
+      // A real fan's balance is the ledger, carried on the session next to XP.
+      // Hardcoding 0 here is what made the store contradict the ranking, which
+      // credited the same fan a trophy the store said they did not have.
+      trophies: Math.max(0, (session?.trophies ?? 0) - spentTrophies),
     }),
-    [session?.xp, spentXp, spentTrophies, isDemo],
+    [session?.xp, session?.trophies, spentXp, spentTrophies],
   );
 
   const showToast = useCallback((content: ToastContent) => {

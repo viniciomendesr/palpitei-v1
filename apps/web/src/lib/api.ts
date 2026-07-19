@@ -19,6 +19,8 @@ export interface ApiUser {
   level: number;
   xp: number;
   streak: number;
+  /** Trophy balance: `sum(delta)` over the ledger, and 0 means zero earned. */
+  trophies: number;
   /** `null` means the user has no Solana wallet; it must not be represented as simulated. */
   walletSource: WalletSource | null;
 }

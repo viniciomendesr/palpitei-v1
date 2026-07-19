@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import type { ApiStats, ApiUser } from '@/lib/api';
+import { DEMO_TROPHIES } from '@/lib/marketplace';
 
 /** `demo` is a local account; all other methods use Privy. */
 export type AuthMethod = 'google' | 'wallet' | 'demo';
@@ -27,6 +28,8 @@ export interface SessionState {
   nickname: string;
   level: number;
   xp: number;
+  /** Trophy balance from the ledger; the store spends it like XP. */
+  trophies: number;
   streak: number;
   leaguesCount: number;
   isPremium: boolean;
@@ -37,12 +40,13 @@ export interface SessionState {
 }
 
 /** Demo account used by the prototype flow. */
-const DEMO_ACCOUNT = { nickname: 'você.craque', level: 7, xp: 1240, streak: 5 } as const;
+const DEMO_ACCOUNT = { nickname: 'você.craque', level: 7, xp: 1240, streak: 5, trophies: DEMO_TROPHIES } as const;
 
 const BASE: Omit<SessionState, 'authMethod' | 'accountType'> = {
   nickname: '',
   level: 1,
   xp: 0,
+  trophies: 0,
   streak: 0,
   leaguesCount: 0,
   isPremium: false,
@@ -147,6 +151,7 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       nickname: user.nickname ?? '',
       level: user.level,
       xp: user.xp,
+      trophies: user.trophies,
       streak: user.streak,
     });
   }, []);
@@ -178,6 +183,7 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
           nickname: estado.user.nickname ?? '',
           level: estado.user.level,
           xp: estado.user.xp,
+          trophies: estado.user.trophies,
           streak: estado.user.streak,
           leaguesCount: estado.leaguesCount,
           isPremium: estado.isPremium,
