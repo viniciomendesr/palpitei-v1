@@ -2,7 +2,7 @@
   "name": "palpitei",
   "version": "1.0.0",
   "private": true,
-  "description": "Palpitei v1 — jogo social de inteligência esportiva sobre a TxLINE. Trilha Consumer and Fan Experiences, Superteam World Cup Hackathon (TxODDS).",
+  "description": "Palpitei v1 — a social sports-intelligence game built on TxLINE. Consumer and Fan Experiences track, Superteam World Cup Hackathon (TxODDS).",
   "engines": {
     "node": ">=22.6.0"
   },

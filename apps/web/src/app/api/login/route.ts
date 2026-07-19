@@ -53,7 +53,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       },
     });
   } catch (e) {
-    console.error('[palpitei] /api/login falhou:', e instanceof Error ? e.message : e);
+    console.error('[palpitei] /api/login failed:', e instanceof Error ? e.message : e);
     return NextResponse.json({ error: 'não deu para entrar agora' }, { status: 500 });
   } finally {
     await db.close?.();

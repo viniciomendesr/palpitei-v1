@@ -22,7 +22,7 @@ const meta = (key: string) => ({
   teamB: 'Argentina',
 });
 
-test('primeiro participante vira anfitrião e todos recebem presença/pronto', () => {
+test('the first participant becomes host and everyone receives presence/ready', () => {
   const lobby = openLobby(meta('lobby-presence'));
   const a: LobbyState[] = [];
   const b: LobbyState[] = [];
@@ -39,7 +39,7 @@ test('primeiro participante vira anfitrião e todos recebem presença/pronto', (
   resetLobby(lobby.key);
 });
 
-test('depois do início distingue aba fechada, retorno e saída intencional', () => {
+test('after the start it distinguishes a closed tab, a return and an intentional exit', () => {
   const lobby = openLobby(meta('lobby-status'));
   const leaveA = connectLobby(lobby, { id: 'a', name: 'Ana' }, () => {});
   const disconnectB = connectLobby(lobby, { id: 'b', name: 'Beto' }, () => {});
@@ -62,7 +62,7 @@ test('depois do início distingue aba fechada, retorno e saída intencional', ()
   resetLobby(lobby.key);
 });
 
-test('runner só pode iniciar pelo host quando todos estão prontos', () => {
+test('the runner can only be started by the host once everyone is ready', () => {
   const lobby = openLobby(meta('lobby-start'));
   const leaveA = connectLobby(lobby, { id: 'a', name: 'Ana' }, () => {});
   const leaveB = connectLobby(lobby, { id: 'b', name: 'Beto' }, () => {});

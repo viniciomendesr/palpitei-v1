@@ -13,7 +13,7 @@ function makeMarket() {
   return { me, emitted, createUser: fake.createUser, fake };
 }
 
-test("aposta debita o saldo e alimenta o pool; validações de entrada", () => {
+test("a stake debits the balance and feeds the pool; input validation", () => {
   const { me, createUser } = makeMarket();
   const ana = createUser("ana_m");
 
@@ -32,7 +32,7 @@ test("aposta debita o saldo e alimenta o pool; validações de entrada", () => {
   assert.deepEqual(badOutcome, { ok: false, error: "resultado inválido" });
 });
 
-test("mercado fecha no prazo: aposta com ts >= closesAt é recusada", () => {
+test("the market closes on time: a stake with ts >= closesAt is refused", () => {
   const { me, createUser } = makeMarket();
   const bob = createUser("bob_m");
 
@@ -44,7 +44,7 @@ test("mercado fecha no prazo: aposta com ts >= closesAt é recusada", () => {
   assert.equal(me.market.state, "closed");
 });
 
-test("resolve paga os vencedores em centavos inteiros (rake 5%, dust p/ casa)", () => {
+test("resolve pays the winners in whole cents (5% rake, dust to the house)", () => {
   const { me, emitted, createUser } = makeMarket();
   const ana = createUser("ana_m2");
   const bob = createUser("bob_m2");
@@ -66,8 +66,8 @@ test("resolve paga os vencedores em centavos inteiros (rake 5%, dust p/ casa)", 
   const payoutAna = Math.floor((999 * distributable) / winnersPool); // 1661
   const payoutBob = Math.floor((1000 * distributable) / winnersPool); // 1662
   const sum = payoutAna + payoutBob;
-  assert.ok(sum <= distributable, "soma dos payouts não excede o distribuível");
-  assert.ok(distributable - sum >= 0, "dust nunca é negativo");
+  assert.ok(sum <= distributable, "the sum of payouts does not exceed the distributable amount");
+  assert.ok(distributable - sum >= 0, "dust is never negative");
 
   assert.equal(ana.balanceCents, START_BALANCE_CENTS - 999 + payoutAna);
   assert.equal(bob.balanceCents, START_BALANCE_CENTS - 1000 + payoutBob);
@@ -80,7 +80,7 @@ test("resolve paga os vencedores em centavos inteiros (rake 5%, dust p/ casa)", 
   assert.equal(pAna.handle, "ana_m2");
 });
 
-test("ninguém acertou => reembolso integral sem rake", () => {
+test("nobody got it right => full refund with no rake", () => {
   const { me, createUser } = makeMarket();
   const ana = createUser("ana_m3");
   const bob = createUser("bob_m3");
@@ -95,7 +95,7 @@ test("ninguém acertou => reembolso integral sem rake", () => {
   assert.equal(bob.balanceCents, START_BALANCE_CENTS);
 });
 
-test("resolver duas vezes é no-op: não paga em dobro", () => {
+test("resolving twice is a no-op: it does not pay out twice", () => {
   const { me, emitted, createUser } = makeMarket();
   const ana = createUser("ana_m4");
   const bob = createUser("bob_m4");
@@ -107,10 +107,10 @@ test("resolver duas vezes é no-op: não paga em dobro", () => {
   const balanceAfterFirst = ana.balanceCents;
 
   me.resolve("p1");
-  assert.equal(ana.balanceCents, balanceAfterFirst, "segundo resolve não credita de novo");
+  assert.equal(ana.balanceCents, balanceAfterFirst, "a second resolve does not credit again");
   assert.ok(
     emitted.some((m) => m.type === "log" && m.level === "warn"),
-    "segundo resolve gera log de aviso"
+    "a second resolve produces a warning log"
   );
   assert.equal(emitted.filter((m) => m.type === "market_resolved").length, 1);
 });

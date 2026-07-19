@@ -13,7 +13,7 @@ const TEXTOS = [
   { type: 'PRÓXIMO GOL', prompt: 'Quem marca o próximo gol?', opts: { arg: 'Argentina', cab: 'Cabo Verde', none: 'Ninguém até o fim' } },
 ] as unknown as Parameters<typeof resultadosDoDemo>[2];
 
-test('o resumo do demo reconstrói o que o fã escolheu, com rótulo do dicionário', () => {
+test('the demo resumo rebuilds what the fan chose, with the dictionary label', () => {
   const resultados = resultadosDoDemo(
     { answers: [{ index: 0, choice: 'arg', gained: 40 }], scoreA: 2, scoreB: 1 },
     DESAFIOS,
@@ -25,7 +25,7 @@ test('o resumo do demo reconstrói o que o fã escolheu, com rótulo do dicioná
   assert.deepEqual(resultados[0]?.options?.[0], { id: 'arg', label: 'Argentina' });
 });
 
-test('acerto e erro do demo entram na mesma contagem do resumo da sala', () => {
+test('a demo hit and a miss both feed the same sala resumo tally', () => {
   const resultados = resultadosDoDemo(
     {
       answers: [
@@ -40,11 +40,11 @@ test('acerto e erro do demo entram na mesma contagem do resumo da sala', () => {
   );
   const resumo = calcularResumoDaSala(resultados, 1, 0);
   assert.equal(resumo.picks, 2);
-  assert.equal(resumo.hits, 1, 'só o primeiro bate com o gabarito');
+  assert.equal(resumo.hits, 1, 'only the first one matches the answer key');
   assert.equal(resumo.xp, 40);
 });
 
-test('janela perdida no demo NÃO conta como acerto', () => {
+test('a missed window in the demo does NOT count as a hit', () => {
   const resultados = resultadosDoDemo(
     { answers: [{ index: 0, choice: null, gained: 0 }], scoreA: 2, scoreB: 1 },
     DESAFIOS,
@@ -54,7 +54,7 @@ test('janela perdida no demo NÃO conta como acerto', () => {
   assert.equal(calcularResumoDaSala(resultados, 1, 0).hits, 0);
 });
 
-test('índice fora do dicionário é descartado, nunca renderizado pela metade', () => {
+test('an index outside the dictionary is dropped, never half-rendered', () => {
   const resultados = resultadosDoDemo(
     {
       answers: [

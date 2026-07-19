@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { enfileirarPersistenciaAntesDePublicar, type FilaDeEventos } from '../src/server/eventPipeline.ts';
 
-test('só publica um evento depois que a persistência lenta termina', async () => {
+test('an event is only published after the slow persistence finishes', async () => {
   const fila: FilaDeEventos = { fila: Promise.resolve() };
   const ordem: string[] = [];
   let liberarPersistencia!: () => void;
@@ -22,14 +22,14 @@ test('só publica um evento depois que a persistência lenta termina', async () 
   );
 
   await Promise.resolve();
-  assert.deepEqual(ordem, ['persistir:início'], 'a sala não vê evento pendente de commit');
+  assert.deepEqual(ordem, ['persistir:início'], 'the sala never sees an event pending commit');
 
   liberarPersistencia();
   await fila.fila;
   assert.deepEqual(ordem, ['persistir:início', 'persistir:fim', 'publicar']);
 });
 
-test('falha de persistência suprime a publicação e não mata a fila do stream', async () => {
+test('a persistence failure suppresses publishing without killing the stream queue', async () => {
   const fila: FilaDeEventos = { fila: Promise.resolve() };
   const publicados: string[] = [];
   const falhas: string[] = [];
@@ -54,7 +54,7 @@ test('falha de persistência suprime a publicação e não mata a fila do stream
   assert.deepEqual(falhas, ['Postgres indisponível']);
 });
 
-test('a fila aguarda o fan-out assíncrono antes do próximo evento', async () => {
+test('the queue awaits the async fan-out before the next event', async () => {
   const fila: FilaDeEventos = { fila: Promise.resolve() };
   const ordem: string[] = [];
   let liberarBroker!: () => void;

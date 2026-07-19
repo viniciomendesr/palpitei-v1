@@ -74,7 +74,7 @@ export async function POST(
     const r = await placePrediction(sala, toCoreUser(user), questionId, optionId);
     return NextResponse.json(r, { status: r.ok ? 200 : 409 });
   } catch (e) {
-    console.error('[palpitei] palpite falhou:', e instanceof Error ? e.message : e);
+    console.error('[palpitei] palpite failed:', e instanceof Error ? e.message : e);
     return NextResponse.json({ error: 'não deu para registrar o palpite' }, { status: 500 });
   } finally {
     await db.close?.();

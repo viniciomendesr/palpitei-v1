@@ -56,6 +56,6 @@ if (process.env.NODE_ENV !== 'production') {
   const problems = checkChallengeShape();
   if (problems.length > 0) {
     // Report shape errors without preventing the rest of the app from loading.
-    console.error('[palpitei] forma dos desafios inconsistente:\n' + problems.join('\n'));
+    console.error('[palpitei] inconsistent challenge shape:\n' + problems.join('\n'));
   }
 }

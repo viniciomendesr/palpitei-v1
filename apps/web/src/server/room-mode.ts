@@ -18,9 +18,9 @@ export type RoomModeContext = {
  * watched the match restart at 0-0, on XP-bearing ports, creating new questions
  * for a match that was already over.
  *
- * A finished match with NO session for this party stays `replay` on purpose —
- * that is exactly how the recorded 18241006 is played, and breaking it would
- * take the whole replay path down with the fix.
+ * A finished match with NO session for this party stays `replay` on purpose:
+ * that is exactly how a recorded match is played, and narrowing it would take
+ * the whole replay path down.
  */
 export function roomMode(ctx: RoomModeContext): RoomMode {
   // While the channel is up it is the authority: `matches.state` flips to

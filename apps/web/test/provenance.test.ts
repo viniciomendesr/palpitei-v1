@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isLive } from '../src/lib/provenance.ts';
 
-test('só a fonte ao vivo declarada conta como ao vivo', () => {
+test('only the declared live source counts as live', () => {
   assert.equal(isLive('txline-live'), true);
 });
 
-test('toda fonte gravada é replay — rótulo que mente é o G6', () => {
+test('every recorded source is a replay — a lying label is G6', () => {
   // rooms.ts writes the DB `cacheSource` whenever the room is not live.
   for (const fonte of [
     'txline-updates',
@@ -15,11 +15,11 @@ test('toda fonte gravada é replay — rótulo que mente é o G6', () => {
     'txline-snapshot',
     'synthetic',
   ]) {
-    assert.equal(isLive(fonte), false, `${fonte} não é ao vivo`);
+    assert.equal(isLive(fonte), false, `${fonte} is not live`);
   }
 });
 
-test('fonte desconhecida ou ausente cai em replay, nunca em ao vivo', () => {
+test('an unknown or absent source falls back to replay, never to live', () => {
   // `source` is a free-form DB string: "not a replay" must NEVER become "is live".
   assert.equal(isLive('txline'), false);
   assert.equal(isLive('fonte-que-ainda-nao-existe'), false);

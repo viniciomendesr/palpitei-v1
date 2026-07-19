@@ -2,7 +2,7 @@
   "name": "@palpitei/db",
   "version": "1.0.0",
   "private": true,
-  "description": "Palpitei v1 — schema Postgres (Supabase) e camada de repositório. Supabase é usado só como Postgres: a identidade é o privy_did.",
+  "description": "Palpitei v1 — Postgres (Supabase) schema and repository layer. Supabase is used only as Postgres: identity is the privy_did.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

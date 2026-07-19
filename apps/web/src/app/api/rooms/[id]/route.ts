@@ -96,7 +96,7 @@ export async function GET(
       timeline,
     });
   } catch (e) {
-    console.error('[palpitei] /api/rooms falhou:', e instanceof Error ? e.message : e);
+    console.error('[palpitei] /api/rooms failed:', e instanceof Error ? e.message : e);
     return NextResponse.json({ error: 'não deu para ler a partida' }, { status: 500 });
   } finally {
     await db.close?.();

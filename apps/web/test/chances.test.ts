@@ -37,14 +37,14 @@ const enDic = {
 
 const base = { id: 'odds-1:part1', ts: 1_000, minute: 34, text: 'frase do core (fallback)' };
 
-test('idDaOpcaoChance usa o mesmo contrato 1X2 das opções da pergunta final', () => {
+test('idDaOpcaoChance uses the same 1X2 contract as the final question options', () => {
   assert.equal(idDaOpcaoChance('part1'), 'p1');
   assert.equal(idDaOpcaoChance('X'), 'draw');
   assert.equal(idDaOpcaoChance('away'), 'p2');
   assert.equal(idDaOpcaoChance('over'), null);
 });
 
-test('pt: subida com causa — nome do time no lugar do priceName do feed', () => {
+test('pt: rise with a cause — team name replaces the feed priceName', () => {
   assert.equal(
     redigeChance(
       { ...base, priceName: 'part1', fromPct: 58, toPct: 74.5, contextAction: 'goal' },
@@ -56,7 +56,7 @@ test('pt: subida com causa — nome do time no lugar do priceName do feed', () =
   );
 });
 
-test('pt: queda SEM contextAction não ganha causa nenhuma (nunca inventar)', () => {
+test('pt: a fall with NO contextAction gets no cause at all (never invent one)', () => {
   assert.equal(
     redigeChance(
       { ...base, priceName: 'draw', fromPct: 33.3, toPct: 28.1 },
@@ -68,7 +68,7 @@ test('pt: queda SEM contextAction não ganha causa nenhuma (nunca inventar)', ()
   );
 });
 
-test('mapa de nomes do feed: part2|2|away → teamB, 1|home → teamA, x → empate', () => {
+test('feed name map: part2|2|away -> teamB, 1|home -> teamA, x -> draw', () => {
   const b = { ...base, fromPct: 20, toPct: 25 };
   const frase = (priceName: string) =>
     redigeChance({ ...b, priceName }, ptDic, 'França', 'Inglaterra');
@@ -82,7 +82,7 @@ test('mapa de nomes do feed: part2|2|away → teamB, 1|home → teamA, x → emp
   assert.match(frase('Part1'), /^A chance de França subiu/);
 });
 
-test('priceName sem correspondência sai CRU — nunca um nome inventado', () => {
+test('an unmatched priceName is emitted RAW — never an invented name', () => {
   assert.equal(
     redigeChance(
       { ...base, priceName: 'Over', fromPct: 40, toPct: 46, contextAction: 'corner' },
@@ -94,7 +94,7 @@ test('priceName sem correspondência sai CRU — nunca um nome inventado', () =>
   );
 });
 
-test('contextAction desconhecido = sem causa (causa só sai do mapa, G6)', () => {
+test('unknown contextAction = no cause (a cause only comes from the map, G6)', () => {
   assert.equal(
     redigeChance(
       { ...base, priceName: 'part1', fromPct: 50, toPct: 56, contextAction: 'substitution' },
@@ -106,14 +106,14 @@ test('contextAction desconhecido = sem causa (causa só sai do mapa, G6)', () =>
   );
 });
 
-test('percentuais SEMPRE com 1 casa (toFixed), mesmo em número redondo', () => {
+test('percentages ALWAYS use 1 decimal (toFixed), even for round numbers', () => {
   assert.equal(
     redigeChance({ ...base, priceName: 'part1', fromPct: 60, toPct: 55 }, ptDic, 'A', 'B'),
     'A chance de A caiu de 60.0% para 55.0%.',
   );
 });
 
-test('en: subida com causa', () => {
+test('en: rise with a cause', () => {
   assert.equal(
     redigeChance(
       { ...base, priceName: 'part1', fromPct: 58, toPct: 74.5, contextAction: 'goal' },
@@ -125,7 +125,7 @@ test('en: subida com causa', () => {
   );
 });
 
-test('en: queda do empate, sem causa', () => {
+test('en: draw falling, no cause', () => {
   assert.equal(
     redigeChance({ ...base, priceName: 'x', fromPct: 33.3, toPct: 28.1 }, enDic, 'France', 'England'),
     "The draw's chance fell from 33.3% to 28.1%.",

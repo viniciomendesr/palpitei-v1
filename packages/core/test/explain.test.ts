@@ -43,10 +43,10 @@ function makeExplainer() {
   return { ex, emitted };
 }
 
-test("a mensagem carrega o CONTEXTO estruturado (contextAction) para a tela redigir bilíngue", () => {
+test("the message carries the structured CONTEXT (contextAction) so the screen can write bilingually", () => {
   const { ex, emitted } = makeExplainer();
 
-  // Com gol na janela de contexto: contextAction = 'goal'
+  // With a goal inside the context window: contextAction = 'goal'
   ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
   ex.onScoreEvent(goal(T0 + 30_000));
   ex.onOddsEvent(odds(T0 + 60_000, [{ name: "over", odds: 1.88, pct: 53.2 }]));
@@ -61,7 +61,7 @@ test("a mensagem carrega o CONTEXTO estruturado (contextAction) para a tela redi
   assert.equal(em2[0].contextAction, undefined);
 });
 
-test("pequenas variações acumulam desde a última leitura publicada", () => {
+test("small variations accumulate since the last published reading", () => {
   const { ex, emitted } = makeExplainer();
 
   ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
@@ -76,12 +76,12 @@ test("pequenas variações acumulam desde a última leitura publicada", () => {
   assert.equal(emitted[0].toPct, 53.2);
 });
 
-test("replay não precisa de uma oscilação isolada de 3 p.p. para mostrar o primeiro tempo", () => {
+test("a replay does not need a single 3 p.p. swing to show the first half", () => {
   const { ex, emitted } = makeExplainer();
 
   // Reduced reproduction of the production series: each first-half tick is
-  // below 3 p.p., while the total movement is material. Previously, Chances only
-  // acordava no primeiro gol do segundo tempo, quando veio um salto enorme.
+  // below 3 p.p., while the total movement is material. Previously, Chances only woke
+  // up at the first second-half goal, when a huge jump finally arrived.
   ex.onOddsEvent(odds(T0, [{ name: "1", odds: 2.78, pct: 35.945 }]));
   ex.onOddsEvent(odds(T0 + 1_000, [{ name: "1", odds: 2.88, pct: 34.722 }]));
   ex.onOddsEvent(odds(T0 + 2_000, [{ name: "1", odds: 2.95, pct: 33.898 }]));
@@ -93,7 +93,7 @@ test("replay não precisa de uma oscilação isolada de 3 p.p. para mostrar o pr
   assert.equal(emitted[0].toPct, 32.916);
 });
 
-test("delta >= 3 p.p. emite explicação com linha do mercado e contexto do gol", () => {
+test("a delta >= 3 p.p. emits an explanation with the market line and the goal context", () => {
   const { ex, emitted } = makeExplainer();
 
   ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
@@ -104,12 +104,12 @@ test("delta >= 3 p.p. emite explicação com linha do mercado e contexto do gol"
   const m = emitted[0];
   assert.equal(m.type, "odds_explain");
   assert.equal(m.messageId, "odds-2");
-  assert.ok(m.text.includes("mais de 1.5 gols"), `texto: ${m.text}`);
-  assert.ok(m.text.includes("subiu de 48.0% para 53.2%"), `texto: ${m.text}`);
-  assert.ok(m.text.includes("depois do gol"), `texto: ${m.text}`);
+  assert.ok(m.text.includes("mais de 1.5 gols"), `text: ${m.text}`);
+  assert.ok(m.text.includes("subiu de 48.0% para 53.2%"), `text: ${m.text}`);
+  assert.ok(m.text.includes("depois do gol"), `text: ${m.text}`);
 });
 
-test("um lance com ts posterior à cotação nunca vira contexto do passado", () => {
+test("a play with a ts later than the price never becomes context for the past", () => {
   const { ex, emitted } = makeExplainer();
   ex.onOddsEvent(odds(T0, [{ name: "over", odds: 2.08, pct: 48.0 }]));
   ex.onScoreEvent(goal(T0 + 60_000));
@@ -118,10 +118,10 @@ test("um lance com ts posterior à cotação nunca vira contexto do passado", ()
   assert.equal(emitted[0].contextAction, undefined);
 });
 
-test("sem lance recente (>180s) não anexa contexto; queda usa 'caiu'", () => {
+test("with no recent play (>180s) no context is attached; a fall uses 'caiu'", () => {
   const { ex, emitted } = makeExplainer();
 
-  ex.onScoreEvent(goal(T0 - 300_000)); // gol velho demais
+  ex.onScoreEvent(goal(T0 - 300_000)); // a goal that is far too old
   ex.onOddsEvent(odds(T0, [{ name: "under", odds: 1.92, pct: 52.0 }]));
   ex.onOddsEvent(odds(T0 + 1000, [{ name: "under", odds: 2.1, pct: 47.5 }])); // -4.5
 
@@ -129,11 +129,11 @@ test("sem lance recente (>180s) não anexa contexto; queda usa 'caiu'", () => {
   assert.ok(emitted[0].text.includes("caiu de 52.0% para 47.5%"));
   // Context is now contracted ("after the goal"), so the assertion must not
   // rely on the longer phrase that preceded the regression.
-  assert.ok(!emitted[0].text.includes("depois"), `texto: ${emitted[0].text}`);
+  assert.ok(!emitted[0].text.includes("depois"), `text: ${emitted[0].text}`);
   assert.ok(emitted[0].text.includes("menos de 1.5 gols"));
 });
 
-test("mercado 1X2 traduz price names para nomes dos times e 'empate'", () => {
+test("the 1X2 market translates price names into team names and 'empate'", () => {
   const { ex, emitted } = makeExplainer();
   const mk = { marketType: "MATCH_RESULT", line: undefined };
 

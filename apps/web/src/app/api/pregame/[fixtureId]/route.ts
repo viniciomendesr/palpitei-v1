@@ -81,7 +81,7 @@ export async function GET(
       final,
     });
   } catch (e) {
-    return erroParaResposta(e, 'ler o palpite pré-jogo');
+    return erroParaResposta(e, 'reading the pre-game palpite');
   } finally {
     await db.close?.();
   }
@@ -135,7 +135,7 @@ export async function POST(
     const pick = await createPregamePickRepo(db).upsert(user.id, fixtureId, parsed.fields);
     return NextResponse.json({ ok: true, pick, xpAtStake: xpAtStake(parsed.fields) });
   } catch (e) {
-    return erroParaResposta(e, 'salvar o palpite pré-jogo');
+    return erroParaResposta(e, 'saving the pre-game palpite');
   } finally {
     await db.close?.();
   }

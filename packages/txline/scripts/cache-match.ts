@@ -1,8 +1,8 @@
 // Stores the complete match timeline so replay does not depend on the devnet.
 //
-// Uso:
-//   npm run cache:match -w @palpitei/txline -- <fixtureId>          (cache do @palpitei/db)
-//   npm run cache:match -w @palpitei/txline -- <fixtureId> --file   (arquivo, dev offline)
+// Usage:
+//   npm run cache:match -w @palpitei/txline -- <fixtureId>          (@palpitei/db cache)
+//   npm run cache:match -w @palpitei/txline -- <fixtureId> --file   (file, offline dev)
 //
 // TxLINE data is licensed for the hackathon only. Production persistence uses
 // Postgres; `--file` writes only to the ignored local cache.
@@ -28,14 +28,14 @@ type StoreResolvido = { store: MatchCacheStore; onde: string; close?: () => Prom
 async function resolveStore(forcaArquivo: boolean): Promise<StoreResolvido> {
   if (!forcaArquivo) {
     if (!process.env.DATABASE_URL?.trim()) {
-      console.warn("DATABASE_URL vazia — caindo para arquivo (dev offline). Use --file para calar este aviso.");
+      console.warn("DATABASE_URL is empty — falling back to file (offline dev). Use --file to silence this warning.");
     } else {
       try {
         // Keep the module specifier dynamic so file mode does not require db.
         const especificador = "@palpitei/db";
         const db: any = await import(especificador);
         if (typeof db.createPalpitei !== "function") {
-          throw new TypeError("@palpitei/db não expõe createPalpitei()");
+          throw new TypeError("@palpitei/db does not expose createPalpitei()");
         }
         const palpitei = db.createPalpitei();
         return {
@@ -44,14 +44,14 @@ async function resolveStore(forcaArquivo: boolean): Promise<StoreResolvido> {
           close: () => palpitei.close(),
         };
       } catch (e: any) {
-        console.warn(`@palpitei/db indisponível (${e?.message ?? e}) — caindo para arquivo (dev offline).`);
+        console.warn(`@palpitei/db unavailable (${e?.message ?? e}) — falling back to file (offline dev).`);
       }
     }
   }
   const path = await import("node:path");
   const url = await import("node:url");
   const dir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../.cache/fixtures");
-  return { store: createFileMatchCacheStore(dir), onde: `arquivo em ${dir}` };
+  return { store: createFileMatchCacheStore(dir), onde: `file at ${dir}` };
 }
 
 async function main(): Promise<void> {
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
   const fixtureId = Number(idArg ?? PADRAO);
 
   if (!Number.isInteger(fixtureId) || fixtureId <= 0) {
-    console.error(`fixtureId inválido: ${idArg}`);
+    console.error(`invalid fixtureId: ${idArg}`);
     process.exit(1);
   }
 
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
   const amostra = await fetchScoresSnapshot(fixtureId);
   const startTime = Number(amostra.find((l: any) => l?.StartTime)?.StartTime);
   if (!Number.isFinite(startTime)) {
-    console.error(`não achei StartTime para ${fixtureId} — a devnet ainda serve essa fixture?`);
+    console.error(`no StartTime found for ${fixtureId} — does devnet still serve this fixture?`);
     process.exit(1);
   }
   const nomes = (await fetchFixtureNames(fixtureId)) ?? { p1: "Time 1", p2: "Time 2" };
@@ -79,8 +79,8 @@ async function main(): Promise<void> {
 
   console.log(`fixture ${fixtureId} — ${nomes.p1} vs ${nomes.p2}`);
   console.log(`kickoff: ${new Date(startTime).toISOString()}`);
-  console.log(`destino: ${onde}`);
-  console.log(`varrendo /updates (~144 requisições)…\n`);
+  console.log(`destination: ${onde}`);
+  console.log(`sweeping /updates (~144 requests)…\n`);
 
   const [scores, odds] = await Promise.all([
     fetchScoresUpdates(fixtureId, startTime),
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
   ]);
 
   if (!scores.length) {
-    console.error("nenhum evento de placar — nada a gravar.");
+    console.error("no score events — nothing to store.");
     process.exit(1);
   }
 
@@ -107,19 +107,19 @@ async function main(): Promise<void> {
   const fim = scores.find((s: any) => s?.Action === "game_finalised");
   const gols = scores.filter((s: any) => s?.Action === "goal").length;
 
-  console.log(`\n=== gravado em ${onde} ===`);
+  console.log(`\n=== stored in ${onde} ===`);
   console.log(`  scores: ${scores.length} (seq ${scores[0].Seq} -> ${scores[scores.length - 1].Seq})`);
   console.log(`  odds 1X2: ${odds.length}`);
-  console.log(`  apito inicial: ${apito ? `seq ${apito.Seq} (clock 0)` : "NÃO ENCONTRADO"}`);
-  console.log(`  game_finalised: ${fim ? `seq ${fim.Seq} — use este seq na prova de Merkle` : "ausente"}`);
-  console.log(`  registros de gol: ${gols}`);
-  console.log(`\nO replay usa o cache automaticamente. Não versione payload da TxLINE (T&C §7).`);
+  console.log(`  kickoff whistle: ${apito ? `seq ${apito.Seq} (clock 0)` : "NOT FOUND"}`);
+  console.log(`  game_finalised: ${fim ? `seq ${fim.Seq} — use this seq in the Merkle proof` : "missing"}`);
+  console.log(`  goal records: ${gols}`);
+  console.log(`\nReplay uses the cache automatically. Do not commit TxLINE payloads (T&C §7).`);
 
-  // Sem isto o pool do pg segura o processo aberto depois de gravar.
+  // Without this the pg pool keeps the process alive after the write.
   await close?.();
 }
 
 main().catch((e) => {
-  console.error("ERRO:", e?.message ?? e);
+  console.error("ERROR:", e?.message ?? e);
   process.exit(1);
 });

@@ -1,4 +1,4 @@
-# O upload do `railway up` não leva segredo nem artefato local.
+# The `railway up` upload carries no secrets and no local artifacts.
 .env
 .env.*
 !.env.example

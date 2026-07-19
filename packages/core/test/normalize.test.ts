@@ -30,7 +30,7 @@ const goalRaw = {
   Data: { Scorer: "Kane" },
 };
 
-test("normalizeScore: evento de gol com Score aninhado", () => {
+test("normalizeScore: goal event with a nested Score", () => {
   const ev = normalizeScore(goalRaw);
   assert.ok(ev);
   assert.equal(ev.kind, "score");
@@ -47,7 +47,7 @@ test("normalizeScore: evento de gol com Score aninhado", () => {
   assert.equal(ev.raw, goalRaw);
 });
 
-test("normalizeScore: game_finalised (statusId=100, period=100) sem Score", () => {
+test("normalizeScore: game_finalised (statusId=100, period=100) with no Score", () => {
   const ev = normalizeScore({
     FixtureId: 18241006,
     Seq: 999,
@@ -65,13 +65,13 @@ test("normalizeScore: game_finalised (statusId=100, period=100) sem Score", () =
   assert.deepEqual(ev.corners, { p1: 0, p2: 0 });
 });
 
-test("normalizeScore: Action vira lowercase", () => {
+test("normalizeScore: Action is lowercased", () => {
   const ev = normalizeScore({ FixtureId: 1, Seq: 1, Ts: 1, Action: "CORNER" });
   assert.ok(ev);
   assert.equal(ev.action, "corner");
 });
 
-test("normalizeScore: sem FixtureId numérico => null", () => {
+test("normalizeScore: no numeric FixtureId => null", () => {
   assert.equal(normalizeScore({}), null);
   assert.equal(normalizeScore({ Seq: 1, Ts: 1, Action: "goal" }), null);
   assert.equal(normalizeScore({ FixtureId: "abc" }), null);
@@ -98,7 +98,7 @@ const oddsRaw = {
   Pct: ["48.170", "55.430"],
 };
 
-test("normalizeOdds: Prices x1000 viram odds decimais, Pct string vira number", () => {
+test("normalizeOdds: Prices x1000 become decimal odds, a Pct string becomes a number", () => {
   const ev = normalizeOdds(oddsRaw);
   assert.ok(ev);
   assert.equal(ev.kind, "odds");
@@ -113,7 +113,7 @@ test("normalizeOdds: Prices x1000 viram odds decimais, Pct string vira number", 
   assert.deepEqual(ev.prices[1], { name: "under", odds: 1.804, pct: 55.43 });
 });
 
-test("normalizeOdds: sem Pct deriva probabilidade implícita da odd", () => {
+test("normalizeOdds: with no Pct it derives the implied probability from the price", () => {
   const ev = normalizeOdds({
     FixtureId: 1,
     Ts: 1,
@@ -126,15 +126,15 @@ test("normalizeOdds: sem Pct deriva probabilidade implícita da odd", () => {
   assert.equal(ev.prices[0].pct, 50);
 });
 
-test("normalizeOdds: MessageId estruturado sobrevive inteiro (chave de dedupe, G2)", () => {
+test("normalizeOdds: a structured MessageId survives whole (dedupe key, G2)", () => {
   // Regression: structured IDs must remain distinct deduplication keys.
   const a = normalizeOdds({ ...oddsRaw, MessageId: "1837922149:00003:000572-10021-stab" })!;
   const b = normalizeOdds({ ...oddsRaw, MessageId: "1837922149:00003:000573-10021-stab" })!;
   assert.equal(a.messageId, "1837922149:00003:000572-10021-stab");
-  assert.notEqual(a.messageId, b.messageId, "ids distintos não podem colidir");
+  assert.notEqual(a.messageId, b.messageId, "distinct ids must not collide");
 
   const dedupe = new Map([a, b].map((e) => [e.messageId, e]));
-  assert.equal(dedupe.size, 2, "dois eventos distintos => duas entradas");
+  assert.equal(dedupe.size, 2, "two distinct events => two entries");
 
   // A numeric synthetic-source ID becomes a string without losing identity.
   assert.equal(normalizeOdds({ ...oddsRaw, MessageId: 555 })!.messageId, "555");
@@ -144,7 +144,7 @@ test("normalizeOdds: MessageId estruturado sobrevive inteiro (chave de dedupe, G
   assert.equal(normalizeOdds(semId)!.messageId, undefined);
 });
 
-test("normalizeOdds: arrays paralelos desalinhados => null (sem preço fantasma, G8)", () => {
+test("normalizeOdds: misaligned parallel arrays => null (no phantom price, G8)", () => {
   // Mismatched parallel arrays must not invent a zero-priced third outcome.
   assert.equal(
     normalizeOdds({
@@ -184,7 +184,7 @@ test("normalizeOdds: arrays paralelos desalinhados => null (sem preço fantasma,
   assert.equal(ok.prices.length, 3);
 });
 
-test("normalizeOdds: preço ilegível some da lista, não vira 0% (ausente ≠ zero)", () => {
+test("normalizeOdds: an unreadable price drops from the list, it never becomes 0% (absent != zero)", () => {
   const ev = normalizeOdds({
     FixtureId: 1, Ts: 1, SuperOddsType: "1X2_PARTICIPANT_RESULT",
     PriceNames: ["part1", "draw", "part2"],
@@ -194,9 +194,9 @@ test("normalizeOdds: preço ilegível some da lista, não vira 0% (ausente ≠ z
   assert.deepEqual(
     ev.prices.map((p) => p.name),
     ["part1", "part2"],
-    "a linha sem preço sai; as outras continuam"
+    "the row with no price leaves; the others remain"
   );
-  assert.ok(!ev.prices.some((p) => p.odds === 0 || p.pct === 0), "nenhum zero fantasma");
+  assert.ok(!ev.prices.some((p) => p.odds === 0 || p.pct === 0), "no phantom zero");
 
   // No readable price means the full event is discarded.
   assert.equal(
@@ -208,7 +208,7 @@ test("normalizeOdds: preço ilegível some da lista, não vira 0% (ausente ≠ z
   );
 });
 
-test("normalizeOdds: payload inválido => null", () => {
+test("normalizeOdds: invalid payload => null", () => {
   assert.equal(normalizeOdds({ Ts: 1, PriceNames: ["over"], Prices: [2000] }), null); // Missing FixtureId.
   assert.equal(normalizeOdds({ FixtureId: 1, PriceNames: "over", Prices: [2000] }), null); // PriceNames is not an array.
   assert.equal(normalizeOdds({ FixtureId: 1, PriceNames: ["over"], Prices: 2000 }), null); // Prices is not an array.

@@ -293,9 +293,8 @@ export async function fetchStatValidation(
   seq: number,
   // NUMERIC only, and this is not pedantry: `statKey='Goals'` answers HTTP 500,
   // not 400, so a string looks like their bug instead of ours. `statKey=1` and
-  // `statKey=4` work. The old `number | string` allowed exactly the call that
-  // fails, which is the CONTEXT §3 family of trap: the type says yes, the feed
-  // says no, and nobody finds out until the bad hour.
+  // `statKey=4` work. Widening this to `number | string` would let the failing
+  // call typecheck.
   statKey: number
 ): Promise<unknown> {
   return txlineGet(`/scores/stat-validation`, { fixtureId, seq, statKey });

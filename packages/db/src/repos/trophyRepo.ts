@@ -145,18 +145,15 @@ export function createTrophyRepo(db: Db) {
     /**
      * One row per fan: their EARLIEST live palpite on this fixture.
      *
-     * The Selo marks a DEBUT, not a correct call, so there is deliberately no
-     * filter on `result` here. Two of the three debut palpites on 18257865 were
-     * wrong, and that is fine: the badge attests that the fan was there.
+     * The Selo marks a DEBUT, not a correct palpite, so there is deliberately no
+     * filter on `result` here: the badge attests that the fan was there.
      *
      * Every filter that remains is load-bearing:
      *   · `q.session_id is not null` — only a live room persists a
      *     `game_sessions` row, so this is the same authority `roomMode === 'live'`
      *     uses. A finished fixture keeps producing palpites forever, because
-     *     anyone can open it as a replay. Measured on 18257865 on 19/07: the
-     *     three debut palpites all carry a session and were placed 18/07 between
-     *     21:19 and 21:35 UTC, during the match; the replay palpites placed
-     *     19/07 after 01:13 carry none. CONTEXT §11 #2, on a permanent artifact;
+     *     anyone can open it as a replay, and those replay palpites carry no
+     *     session;
      *   · `order by pr.created_at` — WALL CLOCK, never `placed_at`. `placed_at`
      *     is match time from the feed clock, and a replay reproduces it exactly,
      *     so ordering by it lets a replay counterfeit a debut;
@@ -231,7 +228,7 @@ export function createTrophyRepo(db: Db) {
      * The fans whose live debut on one fixture is being backfilled by hand.
      *
      * The operator names the fixture. Do NOT try to reconstruct this from the
-     * current state: 18257865 was live on 18/07 and reads `state = 'finished'`
+     * current state: a fixture that was live yesterday reads `state = 'finished'`
      * today, so any rule that asks the database "was this live?" after the fact
      * answers wrong. Whoever placed a palpite in a live session on a match the
      * operator KNOWS was live is the whole rule.

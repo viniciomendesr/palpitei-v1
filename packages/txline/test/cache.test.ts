@@ -28,7 +28,7 @@ function registro(fixtureId: number, scores: unknown[] = [{ Seq: 2 }]): MatchCac
   };
 }
 
-test("store em memória: guarda, lê e lista", async () => {
+test("in-memory store: it puts, gets and lists", async () => {
   const store = createInMemoryMatchCacheStore();
   assert.equal(await store.get(1), null);
 
@@ -40,7 +40,7 @@ test("store em memória: guarda, lê e lista", async () => {
 
 test("hasUsableMatchCache rejects records without score events", () => {
   assert.equal(hasUsableMatchCache(null), false);
-  assert.equal(hasUsableMatchCache(registro(1, [])), false, "sem scores não há linha do tempo");
+  assert.equal(hasUsableMatchCache(registro(1, [])), false, "with no scores there is no timeline");
   assert.equal(hasUsableMatchCache(registro(1)), true);
 });
 
@@ -77,24 +77,24 @@ function fakeDbStore(inicial: MatchCacheRecord[] = []) {
   });
 }
 
-test("o store do db NÃO satisfaz a porta cru — é preciso adaptar", () => {
+test("the db store does NOT satisfy the port raw — it must be adapted", () => {
   const cru = fakeDbStore() as any;
-  assert.equal(typeof cru.get, "undefined", "db não tem get — loadReplayEvents chamaria undefined");
-  assert.equal(typeof cru.put, "undefined", "db não tem put — cache-match morreria após 144 requisições");
+  assert.equal(typeof cru.get, "undefined", "db has no get — loadReplayEvents would call undefined");
+  assert.equal(typeof cru.put, "undefined", "db has no put — cache-match would die after 144 requests");
 });
 
-test("adaptDbCacheStore traduz load/save/list para get/put/list", async () => {
+test("adaptDbCacheStore translates load/save/list into get/put/list", async () => {
   const store = adaptDbCacheStore(fakeDbStore([registro(7)]));
   const lido = await store.get(7);
   assert.equal(lido?.p1, "França");
-  assert.equal(await store.get(999), null, "ausente vira null, não explode");
+  assert.equal(await store.get(999), null, "absent becomes null, it does not blow up");
 
   await store.put(registro(8));
   assert.equal((await store.get(8))?.fixtureId, 8);
   assert.deepEqual((await store.list?.())?.sort(), [7, 8]);
 });
 
-test("adaptDbCacheStore aceita o vocabulário do v0 (lerCache/salvarCache)", async () => {
+test("adaptDbCacheStore accepts the v0 vocabulary (lerCache/salvarCache)", async () => {
   const so_v0 = {
     lerCache: async (id: number) => (id === 1 ? registro(1) : null),
     salvarCache: async () => ({}),
@@ -105,14 +105,14 @@ test("adaptDbCacheStore aceita o vocabulário do v0 (lerCache/salvarCache)", asy
   assert.deepEqual(await store.list?.(), [1]);
 });
 
-test("adaptDbCacheStore explode alto no objeto errado, em vez de falhar mudo depois", () => {
+test("adaptDbCacheStore blows up loud on the wrong object instead of failing mute later", () => {
   assert.throws(() => adaptDbCacheStore(null), /não é um store do @palpitei\/db/);
   assert.throws(() => adaptDbCacheStore({}), /não é um store do @palpitei\/db/);
   // A disconnected createMatchCacheStore() is truthy; reject it before a later put fails.
   assert.throws(() => adaptDbCacheStore({ has: () => true, stats: () => ({}) }), /esperava load\/save/);
 });
 
-test("com o adaptador, o replay usa o cache do db e o badge diz txline-cache", async () => {
+test("with the adapter, the replay uses the db cache and the badge says txline-cache", async () => {
   const partida = registro(18241006, [
     { FixtureId: 18241006, Seq: 2, Ts: 1000, Action: "kickoff" },
     { FixtureId: 18241006, Seq: 3, Ts: 2000, Action: "possession" },
@@ -132,11 +132,11 @@ test("com o adaptador, o replay usa o cache do db e o badge diz txline-cache", a
   assert.equal(load.events.length, 5);
 });
 
-test("store em arquivo: ida e volta, e ENOENT vira null", async () => {
+test("file store: round-trip, and ENOENT becomes null", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "palpitei-cache-"));
   try {
     const store = createFileMatchCacheStore(dir);
-    assert.equal(await store.get(42), null, "fixture ausente não explode");
+    assert.equal(await store.get(42), null, "an absent fixture does not blow up");
 
     await store.put(registro(42, [{ Seq: 2 }, { Seq: 3 }]));
     const lido = await store.get(42);

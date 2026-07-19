@@ -19,10 +19,10 @@ const pt = {
   ctaReplay: 'Rever partida →',
 } as never;
 
-test('demo usa a agenda atual e o replay factual da Copa de 2026', () => {
+test('demo uses the current schedule and the factual 2026 World Cup replay', () => {
   const cards = fixtures(pt);
 
-  assert.deepEqual(cards.live, [], 'em 17/07 não há partida do Mundial marcada como ao vivo no demo');
+  assert.deepEqual(cards.live, [], 'on 17/07 no World Cup match is marked as live in the demo');
   assert.deepEqual(
     cards.next.map(({ id, teamA, teamB, startTs }) => ({ id, teamA, teamB, startTs })),
     [
@@ -36,7 +36,7 @@ test('demo usa a agenda atual e o replay factual da Copa de 2026', () => {
   );
 });
 
-test('roteiro do replay respeita os gols oficiais de Argentina 3-2 Cabo Verde', () => {
+test('the replay script respects the official goals of Argentina 3-2 Cabo Verde', () => {
   assert.deepEqual(MATCH_START, { minute: 64, scoreA: 1, scoreB: 1 });
   assert.deepEqual(feedInit().map((event) => event.t), ["59'", "29'"]);
   assert.deepEqual(
@@ -48,10 +48,10 @@ test('roteiro do replay respeita os gols oficiais de Argentina 3-2 Cabo Verde', 
       { correct: 'arg', resolve: { minute: 120, scoreA: 3, scoreB: 2, final: true } },
     ],
   );
-  assert.equal(ROOM_SIZE, 1, 'o demo não inventa outros fãs no ranking da sala');
+  assert.equal(ROOM_SIZE, 1, 'the demo does not invent other fans in the sala ranking');
 });
 
-test('chances do replay são plausíveis, normalizadas e explicitamente locais ao demo', () => {
+test('replay chances are plausible, normalized and explicitly local to the demo', () => {
   for (const challenge of CHALLENGES) {
     assert.equal(Object.values(challenge.pct).every((pct) => pct !== null), true);
     assert.equal(Object.values(challenge.pct).reduce<number>((sum, pct) => sum + (pct ?? 0), 0), 100);

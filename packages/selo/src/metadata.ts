@@ -2,9 +2,9 @@
  * Metadata for the Selo TxLINE, and the guard that keeps licensed data out of it.
  *
  * WHAT THE BADGE CLAIMS: this fan placed their FIRST palpite in a live match,
- * on this match, at this moment. It attests PRESENCE, not performance. Two of
- * the three debut palpites on 18257865 were wrong, so any wording that frames
- * the Selo as a correct call is a lie on most of the badges minted.
+ * on this match, at this moment. It attests PRESENCE, not performance. Most
+ * debut palpites are wrong, so any wording that frames the Selo as a correct
+ * palpite is a lie on most of the badges minted.
  *
  * THE LINE: the badge describes THE FAN'S PALPITE, never THE MATCH. If an
  * attribute only makes sense once you know what happened on the pitch, it does
@@ -120,12 +120,10 @@ export function matchSlug(p1: string, p2: string, startTime: number): string {
 /**
  * File name for one asset's metadata document, keyed by FAN.
  *
- * Not by question id, which is what it used to be: with one Selo per fan, two
- * fans who debut on the SAME question produce the same file name, and the second
- * write silently overwrites the first. Caught in the dry run, where Rafy and
- * Kauã both debuted on "Sai outro escanteio em até 10 minutos?" and would have
- * shipped two assets pointing at one document naming only one of them. On chain
- * that is permanent.
+ * Never by question id: with one Selo per fan, two fans who debut on the SAME
+ * question would produce the same file name and the second write would silently
+ * overwrite the first, shipping two assets pointing at one document that names
+ * only one of them. On chain that is permanent.
  *
  * The fan key is the handle when there is one. It is already published in the
  * `Fan` trait, so this discloses nothing new, and one Selo per fan makes it
@@ -157,7 +155,8 @@ export function isoDate(timestampMs: number): string {
  * On the description: it ties the seal to the ANCHORED DATA, not to an
  * endorsement of this item. TxODDS did not attest this NFT and does not know it
  * exists, so "Verificado pela TxLINE" would be false. "sobre dados de partida
- * ancorados pela TxLINE" is true, and a true claim is the best defence there is.
+ * ancorados pela TxLINE" is true, and a true claim is the best defence there
+ * is. The Portuguese wording is quoted because it is the shipped copy.
  *
  * It also does NOT say the fan minted it: for the backfill an operator mints on
  * their behalf, and a permanent artifact must not narrate a gesture that did not

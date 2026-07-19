@@ -192,8 +192,7 @@ export function createUserRepo(db: Db) {
     /**
      * Returns the global ranking; room rankings come from the game engine.
      *
-     * Still ordered by XP — a trophy never reorders the table — but a row is no
-     * longer XP alone, hence `topRanking` rather than the old `topByXp`.
+     * Ordered by XP, always: a trophy never reorders the table.
      *
      * The trophy balance is aggregated in the SAME statement, by a lateral over the
      * already-limited page: 50 fans cost one query, never one query per fan. The

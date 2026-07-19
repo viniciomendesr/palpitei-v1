@@ -10,7 +10,7 @@ export async function GET(): Promise<NextResponse> {
     const readiness = await assertDbReady(createDb());
     return NextResponse.json({ ok: true, migrations: readiness.migrations });
   } catch (error) {
-    console.error('[health] banco indisponível ou schema incompatível:', error instanceof Error ? error.message : error);
+    console.error('[health] database unavailable or schema mismatch:', error instanceof Error ? error.message : error);
     return NextResponse.json({ ok: false }, { status: 503 });
   }
 }

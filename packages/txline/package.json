@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Palpitei txline — cliente da TxLINE (auth, REST, /updates) e camada de ingestão (SSE ao vivo, replay, gerador sintético dev-only). Fonte primária do jogo.",
+  "description": "Palpitei txline — TxLINE client (auth, REST, /updates) and ingest layer (live SSE, replay, dev-only synthetic generator). The game's primary source.",
   "engines": {
     "node": ">=22.6.0"
   },

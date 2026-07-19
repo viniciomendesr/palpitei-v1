@@ -69,7 +69,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (e instanceof UserNotFoundError) {
       return NextResponse.json({ error: e.message }, { status: e.status });
     }
-    console.error('[palpitei] /api/account/handle falhou:', e instanceof Error ? e.message : e);
+    console.error('[palpitei] /api/account/handle failed:', e instanceof Error ? e.message : e);
     return NextResponse.json({ error: 'não deu para salvar o apelido agora' }, { status: 500 });
   } finally {
     await db.close?.();

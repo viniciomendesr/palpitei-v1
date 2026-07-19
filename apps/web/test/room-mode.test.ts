@@ -4,13 +4,13 @@ import { roomMode } from '../src/server/room-mode.ts';
 
 const live = { matchState: 'live', liveChannel: true, hasPartySession: true };
 
-test('canal ao vivo ativo manda na sala, independente do estado gravado', () => {
+test('an active live channel rules the sala, regardless of the recorded state', () => {
   assert.equal(roomMode(live), 'live');
-  // Corrida real: o game_finalised grava 'finished' antes de o canal cair.
+  // Real race: game_finalised writes 'finished' before the channel drops.
   assert.equal(roomMode({ ...live, matchState: 'finished' }), 'live');
 });
 
-test('partida encerrada com sessão da party vira tela de resultado, nunca replay novo', () => {
+test('a finished match with a party session becomes a result screen, never a fresh replay', () => {
   // Without this, a restart-orphaned room reopened as a ReplayRunner and the fan watched
   // the match restart 0-0 at 12x, on persisting ports, creating fresh questions.
   assert.equal(
@@ -19,7 +19,7 @@ test('partida encerrada com sessão da party vira tela de resultado, nunca repla
   );
 });
 
-test('partida encerrada sem sessão continua sendo replay — é assim que o cache é jogado', () => {
+test('a finished match with no session stays a replay — that is how the cache is played', () => {
   // 18241006 is a recorded, finished match: opening a room on it is the legitimate replay.
   assert.equal(
     roomMode({ matchState: 'finished', liveChannel: false, hasPartySession: false }),
@@ -27,7 +27,7 @@ test('partida encerrada sem sessão continua sendo replay — é assim que o cac
   );
 });
 
-test('partida não encerrada sem canal é replay, mesmo com sessão da party', () => {
+test('an unfinished match with no channel is a replay, even with a party session', () => {
   // An unknown state is not permission to declare full time (absent != finished).
   assert.equal(
     roomMode({ matchState: 'live', liveChannel: false, hasPartySession: true }),

@@ -86,26 +86,26 @@ beforeEach(() => {
   resetCredentials();
 });
 
-test("startGuestSession pega o token e guarda em memória", async () => {
+test("startGuestSession fetches the token and keeps it in memory", async () => {
   const jwt = await startGuestSession();
   assert.equal(jwt, "jwt-1");
   assert.equal(getCredentials().jwt, "jwt-1");
 });
 
-test("startGuestSession falha alto quando a resposta não traz token", async () => {
+test("startGuestSession fails loud when the response carries no token", async () => {
   process.env.TXLINE_JWT_URL = `${base}/auth/guest/sem-token`;
   await assert.rejects(() => startGuestSession(), /sem token na resposta/);
   process.env.TXLINE_JWT_URL = `${base}/auth/guest/start`;
 });
 
-test("ensureJwt abre sessão só quando não há JWT em memória", async () => {
+test("ensureJwt only opens a session when there is no JWT in memory", async () => {
   await ensureJwt();
   await ensureJwt();
   await ensureJwt();
   assert.equal(sessoesGuest, 1);
 });
 
-test("as credenciais vêm do ambiente e podem ser injetadas em memória", async () => {
+test("credentials come from the environment and can be injected in memory", async () => {
   process.env.TXLINE_JWT = "do-ambiente";
   process.env.TXLINE_API_TOKEN = "token-do-ambiente";
   resetCredentials();
@@ -119,28 +119,28 @@ test("as credenciais vêm do ambiente e podem ser injetadas em memória", async 
   assert.equal(getCredentials().jwt, "do-ambiente");
 });
 
-test("txlineGet manda Authorization e X-Api-Token, e resolve o path contra o baseUrl", async () => {
+test("txlineGet sends Authorization and X-Api-Token, and resolves the path against baseUrl", async () => {
   setCredentials({ apiToken: "tok-abc" });
   await ensureJwt();
   await txlineGet("/dados");
 
   assert.equal(recebidos.length, 1);
-  assert.equal(recebidos[0]!.url, "/api/dados", "o path entra relativo ao baseUrl, sem duplicar /api");
+  assert.equal(recebidos[0]!.url, "/api/dados", "the path goes in relative to baseUrl, without duplicating /api");
   assert.equal(recebidos[0]!.auth, "Bearer jwt-1");
   assert.equal(recebidos[0]!.apiToken, "tok-abc");
 });
 
-test("401 renova o JWT e repete a requisição", async () => {
+test("a 401 renews the JWT and repeats the request", async () => {
   await startGuestSession(); // tokenValido = jwt-1
   setCredentials({ jwt: "expirado" }); // the server rejects it
 
   const r = await txlineGet<{ ok: boolean }>("/dados");
   assert.equal(r.ok, true);
-  assert.equal(sessoesGuest, 2, "abriu exatamente uma sessão nova");
+  assert.equal(sessoesGuest, 2, "it opened exactly one new session");
   assert.equal(getCredentials().jwt, "jwt-2");
 });
 
-test("N requisições que tomam 401 juntas renovam o JWT UMA vez (single-flight)", async () => {
+test("N requests that hit 401 together renew the JWT ONCE (single-flight)", async () => {
   await startGuestSession();
   setCredentials({ jwt: "expirado" });
   // Delay guest-session creation so requests overlap in the refresh window.
@@ -151,10 +151,10 @@ test("N requisições que tomam 401 juntas renovam o JWT UMA vez (single-flight)
   );
 
   assert.ok(rs.every((r) => r.ok));
-  assert.equal(sessoesGuest, 2, "1 sessão inicial + 1 única renovação para as 8");
+  assert.equal(sessoesGuest, 2, "1 initial session + a single renewal for all 8");
 });
 
-test("erro que não é 401 vira TxlineHttpError com o status", async () => {
+test("a non-401 error becomes a TxlineHttpError carrying the status", async () => {
   await ensureJwt();
   await assert.rejects(
     () => txlineGet("/explode"),
@@ -162,7 +162,7 @@ test("erro que não é 401 vira TxlineHttpError com o status", async () => {
   );
 });
 
-test("401 que persiste depois da renovação não vira loop", async () => {
+test("a 401 that persists after renewal does not become a loop", async () => {
   await ensureJwt(); // one session
   recusaTudo = true; // even a fresh JWT is rejected
 
@@ -170,5 +170,5 @@ test("401 que persiste depois da renovação não vira loop", async () => {
     () => txlineGet("/dados"),
     (e: unknown) => e instanceof TxlineHttpError && e.status === 401
   );
-  assert.equal(sessoesGuest, 2, "renovou UMA vez e desistiu — sem repetir para sempre");
+  assert.equal(sessoesGuest, 2, "it renewed ONCE and gave up — no retrying forever");
 });

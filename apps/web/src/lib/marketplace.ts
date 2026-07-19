@@ -134,7 +134,7 @@ export interface WalletChip {
  *
  * A demo fan has no wallet and cannot reach the network, so the chip says so instead of
  * printing an address-shaped string. Showing `7xKq…9fPz` there would be a provenance
- * label that lies (G6), the same bug this task fixes in `/perfil`.
+ * label that lies (G6).
  */
 export function walletChip({
   isDemo,

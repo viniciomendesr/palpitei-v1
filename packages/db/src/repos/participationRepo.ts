@@ -2,12 +2,11 @@
  * The fan's participation in a fixture, read back from persisted data.
  *
  * A participation is one execution ("run") that the fan placed predictions in.
- * Two facts decide how a run is identified, and both were measured on fixture
- * 18257865 in 18/07:
+ * Two facts decide how a run is identified:
  *
  *  - live play creates a `game_sessions` row, so `questions.session_id is not
- *    null` is the live marker (23 predictions carried a session there, 18 did
- *    not — those 18 were a replay run hours after the final whistle);
+ *    null` is the live marker; a replay run, even on the same fixture, carries
+ *    no session;
  *  - `predictions.placed_at` is MATCH time (a replay simulates it) while
  *    `predictions.created_at` is the real wall clock. Anything about real
  *    chronology reads `created_at`. Reading `placed_at` makes a replay

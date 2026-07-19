@@ -12,26 +12,26 @@ import {
   walletChip,
 } from '../src/lib/marketplace.ts';
 
-test('a loja completa só existe no modo demo', () => {
+test('the full store only exists in demo mode', () => {
   assert.equal(storeMode(true), 'full');
   assert.equal(storeMode(false), 'soon');
 });
 
-test('as telas de detalhe são inertes para o fã real', () => {
+test('detail screens are inert for the real fan', () => {
   assert.equal(canOpenDetail(true), true);
   assert.equal(canOpenDetail(false), false);
 });
 
-test('a vitrine mostra o card de destaque e nenhum perk aparece duas vezes', () => {
+test('the showcase shows the featured card and no perk appears twice', () => {
   assert.equal(showsFeaturedCard('featured'), true);
   assert.equal(showsFeaturedCard('identity'), false);
 
   const vitrine = perksInCategory('featured');
-  assert.ok(!vitrine.some((p) => p.featured), 'o perk em destaque não repete na grade');
+  assert.ok(!vitrine.some((p) => p.featured), 'the featured perk is not repeated in the grid');
   assert.equal(vitrine.length, PERKS.length - 1);
 });
 
-test('cada categoria devolve só os seus perks', () => {
+test('each category returns only its own perks', () => {
   assert.deepEqual(
     perksInCategory('partners').map((p) => p.id),
     ['ticket', 'discount', 'product'],
@@ -39,7 +39,7 @@ test('cada categoria devolve só os seus perks', () => {
   assert.deepEqual(perksInCategory('game').map((p) => p.id), ['markets']);
 });
 
-test('o catálogo tem ids únicos e um único destaque', () => {
+test('the catalogue has unique ids and a single featured perk', () => {
   const ids = PERKS.map((p) => p.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(PERKS.filter((p) => p.featured).length, 1);
@@ -47,7 +47,7 @@ test('o catálogo tem ids únicos e um único destaque', () => {
   assert.equal(perkById('inexistente'), null);
 });
 
-test('preço em Troféu não pode ser pago com XP', () => {
+test('a Trophy price cannot be paid with XP', () => {
   const poc = perkById('poc')!;
   const markets = perkById('markets')!;
 
@@ -57,14 +57,14 @@ test('preço em Troféu não pode ser pago com XP', () => {
   assert.equal(canAfford(markets, { xp: 799, trophies: 99 }), false);
 });
 
-test('o endereço encurta pelas pontas e endereço curto fica inteiro', () => {
+test('an address is shortened at both ends and a short address stays whole', () => {
   assert.equal(shortAddress('7xKqAAAAAAAAAAAA9fPz'), '7xKq…9fPz');
   assert.equal(shortAddress('abc'), 'abc');
 });
 
-test('o chip da carteira nunca inventa endereço', () => {
+test('the wallet chip never invents an address', () => {
   assert.deepEqual(walletChip({ isDemo: true, address: null }), { kind: 'demo', address: null });
-  // Mesmo com carteira, o demo não exibe endereço: a conta é local e simulada.
+  // Even with a wallet, the demo shows no address: the account is local and simulated.
   assert.deepEqual(walletChip({ isDemo: true, address: '7xKqAAAAAAAAAAAA9fPz' }), {
     kind: 'demo',
     address: null,

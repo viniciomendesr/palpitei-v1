@@ -79,7 +79,7 @@ export function createDb(opts: CreateDbOptions = {}): Db {
 
   // Pool emits idle-connection errors; handle them to keep the process alive.
   pool.on('error', (err: Error) => {
-    console.error('[db] erro em conexão ociosa do pool:', err.message);
+    console.error('[db] idle pool connection error:', err.message);
   });
 
   const db: Db = {

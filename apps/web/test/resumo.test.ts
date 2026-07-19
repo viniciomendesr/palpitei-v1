@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { calcularResumoDaSala } from '../src/lib/resumo.ts';
 import type { SalaResultado } from '../src/lib/useSala.ts';
 
-test('resumo conta acertos pelo gabarito, inclusive treino sem XP', () => {
+test('resumo counts hits against the answer key, including treino with no XP', () => {
   const resultados = [
     { questionId: '1', prompt: '', correctOptionId: 'p1', minhaEscolha: 'p1', gained: 0 },
     { questionId: '2', prompt: '', correctOptionId: 'yes', minhaEscolha: 'no', gained: 0 },

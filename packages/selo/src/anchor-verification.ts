@@ -5,20 +5,20 @@
  * not checked. Embedding a value fetched from an API and labelling it "TxLINE
  * anchor" would be a provenance claim we did not earn, on a permanent artifact.
  *
- * WHAT WAS MEASURED, on 19/07 against devnet and the production TxLINE API
- * (fixture 18257865, seq 1195, statKey 1):
+ * THE WIRE FORMAT IS UNDOCUMENTED. What follows was established empirically
+ * against devnet and the production TxLINE API, and nothing here is a guess:
  *
  *   1. `eventStatRoot` is NOT a string. It is 32 bytes serialized as an object
  *      with numeric keys "0".."31". A guard expecting a string discards it every
- *      single time, which is the bug this module replaces.
+ *      single time.
  *   2. The hash scheme is sha256, folded as
- *      `isRightSibling ? H(acc || sibling) : H(sibling || acc)`. This is not a
- *      guess: folding `eventStatRoot` with `subTreeProof` reproduces
- *      `summary.eventStatsSubTreeRoot` byte for byte. Any other combination
- *      tried (keccak256, and both orderings) does not.
+ *      `isRightSibling ? H(acc || sibling) : H(sibling || acc)`. Folding
+ *      `eventStatRoot` with `subTreeProof` this way reproduces
+ *      `summary.eventStatsSubTreeRoot` byte for byte; keccak256 and the
+ *      opposite ordering do not.
  *   3. The anchor account derived from the PROOF's `ts` really is the day's
  *      account: it exists, its owner is the TxLINE validation program, and its
- *      own `u64` at offset 8 equals the epoch day we derived (20652).
+ *      own `u64` at offset 8 equals the epoch day derived from that `ts`.
  *   4. Its layout is an 8-byte discriminator, that `u64` day, then 288 slots of
  *      32 bytes (the 5-minute buckets of a day), of which 36 were non-zero.
  *
