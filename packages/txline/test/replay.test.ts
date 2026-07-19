@@ -35,10 +35,17 @@ function score(ts: number, extra: Partial<NormEvent> = {}): any {
 // ---------------------------------------------------------------------------
 
 test("maxReplayGapMs caps accelerated and real-time replay gaps (G3)", () => {
-  assert.equal(maxReplayGapMs(60, false), 2_000);
   assert.equal(maxReplayGapMs(60, true), 2_000);
-  assert.equal(maxReplayGapMs(1, false), 2_000, "pré-jogo no 1x continua comprimido");
   assert.equal(maxReplayGapMs(1, true), 60_000);
+});
+
+test("antes do apito o teto é o do pré-jogo, em qualquer velocidade", () => {
+  // A live capture holds thousands of pre-kick-off odds ticks. Sharing the 2s
+  // cap meant France x England spent 143s before the ball moved; the fan gave up
+  // before the match started. Pre-game is metadata, so it is capped on its own.
+  assert.equal(maxReplayGapMs(60, false), 150);
+  assert.equal(maxReplayGapMs(12, false), 150);
+  assert.equal(maxReplayGapMs(1, false), 150, "pré-jogo no 1x também é metadado");
 });
 
 test("isMatchInProgress is true only while the match clock runs", () => {
@@ -139,7 +146,10 @@ test("estimativa usa exatamente os mesmos tetos do runner", () => {
     score(6_000, { clockRunning: true }),
     score(606_000, { clockRunning: true }),
   ];
-  assert.equal(replayDurationMs(events, 60), 2_010);
+  // score(0) has no clock, so the first gap runs at the pre-game speed:
+  // 6_000/5_000 = 1.2ms, far under the 150ms pre-game cap.
+  // The second is in-play at 60x: 600_000/60 = 10_000, capped at 2_000.
+  assert.equal(replayDurationMs(events, 60), 2_001.2);
 });
 
 // ---------------------------------------------------------------------------

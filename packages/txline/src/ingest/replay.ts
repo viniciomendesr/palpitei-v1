@@ -216,14 +216,21 @@ export async function loadReplayEvents(fixture: Fixture, opts: LoadReplayOpts = 
   return { events, source, fromTxline: true };
 }
 
-// Wall-clock cap for gaps between events. Pre-game gaps are capped more tightly
-// so replay does not spend minutes on metadata.
+// Wall-clock cap for gaps between events. Pre-game gaps are capped far more
+// tightly so replay does not spend minutes on metadata before kick-off.
 const GAP_TETO_ACELERADO_MS = 2_000;
 const GAP_TETO_TEMPO_REAL_MS = 60_000;
+const GAP_TETO_PRE_JOGO_MS = 150;
 
 // Before the match clock runs, replay advances at high speed regardless of the
 // requested speed to compress dense pre-game updates.
-const VELOCIDADE_PRE_JOGO = 600;
+//
+// Measured 18/07 on France x England (18257865): the live capture holds 1248
+// pre-kick-off items because odds ticked for hours before the whistle, five
+// times the recorded England x Argentina. At 600x with the shared 2s cap that
+// was 143s of staring at a scoreboard before the ball moved. At 5000x with the
+// dedicated cap it is 16s, and the match itself still plays at REPLAY_SPEED.
+const VELOCIDADE_PRE_JOGO = 5_000;
 
 /** Whether an event indicates match play; clockRunning avoids pre-game metadata. */
 export function isMatchInProgress(ev: NormEvent): boolean {
@@ -231,8 +238,9 @@ export function isMatchInProgress(ev: NormEvent): boolean {
 }
 
 export function maxReplayGapMs(speed: number, matchStarted: boolean): number {
-  if (speed > 1) return GAP_TETO_ACELERADO_MS;
-  return matchStarted ? GAP_TETO_TEMPO_REAL_MS : GAP_TETO_ACELERADO_MS;
+  // Pre-game first: before the whistle every gap is metadata, whatever the speed.
+  if (!matchStarted) return GAP_TETO_PRE_JOGO_MS;
+  return speed > 1 ? GAP_TETO_ACELERADO_MS : GAP_TETO_TEMPO_REAL_MS;
 }
 
 /**
