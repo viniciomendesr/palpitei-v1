@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createSignerFromKeypair, generateSigner, publicKey, signerIdentity } from '@metaplex-foundation/umi';
 import { base58 } from '@metaplex-foundation/umi/serializers';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { create, createCollection, mplCore } from '@metaplex-foundation/mpl-core';
+import { create, createCollection, fetchCollection, mplCore } from '@metaplex-foundation/mpl-core';
 import { createPalpitei, type SeloCandidate, type SeloMintCluster } from '@palpitei/db';
 import { ensureJwt, fetchStatValidation } from '@palpitei/txline';
 
@@ -279,6 +279,30 @@ async function backfillDebutTrophies(
   console.log(`  granted: ${granted} (nenhum XP foi escrito)`);
 }
 
+/**
+ * Blocks until a freshly created collection is actually readable.
+ *
+ * `sendAndConfirm` resolving means the transaction confirmed, not that the next
+ * transaction will find the account. Referencing it too early makes mpl-core
+ * panic while loading it, which surfaces as "Program failed to complete" at a
+ * couple of thousand compute units and looks nothing like a race.
+ */
+async function waitForCollection(
+  umi: ReturnType<typeof createUmi>,
+  address: string,
+  tentativas = 20,
+): Promise<void> {
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      await fetchCollection(umi, publicKey(address));
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+  }
+  throw new Error(`a coleção ${address} não ficou legível a tempo — nada foi cunhado`);
+}
+
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
 
@@ -487,6 +511,12 @@ async function main(): Promise<void> {
       }).sendAndConfirm(umi);
       collection = String(collectionSigner.publicKey);
       console.log(`coleção criada: ${collection}`);
+      // `sendAndConfirm` returning is not the same as the account being readable by
+      // the next transaction. On 19/07 all three assets died with an mpl-core panic
+      // in utils/mod.rs at ~3.7k CU, right after the collection was created in the
+      // same run; hours later the identical instruction simulated clean. Wait until
+      // the collection actually loads before referencing it, or the race repeats.
+      await waitForCollection(umi, collection);
     } else {
       console.log(`\nreusando a coleção existente: ${collection}`);
     }
