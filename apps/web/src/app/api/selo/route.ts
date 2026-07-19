@@ -37,9 +37,8 @@ async function seloDoFa(db: Db, mint: SeloMint | null): Promise<ApiSelo> {
   const question = await createQuestionRepo(db).findById(mint.questionId);
   const match = question ? await createMatchRepo(db).findById(question.fixtureId) : null;
   // The label is the fan's OWN choice, never the correct option: the Seal marks
-  // that they were there, and two of the three debut palpites measured on
-  // 18257865 were wrong. Showing the right answer here would read as a boast the
-  // badge does not make.
+  // that they were there, and a debut palpite is often wrong. Showing the right
+  // answer here would read as a boast the badge does not make.
   const palpites = await createPredictionRepo(db).listByQuestion(mint.questionId);
   const meu = palpites.find((p) => p.userId === mint.userId);
   const escolha = question?.options.find((o) => o.id === meu?.choice);

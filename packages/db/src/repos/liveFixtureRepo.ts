@@ -64,9 +64,9 @@ export function createLiveFixtureRepo(db: Db) {
      * Retires every fixture whose match already ended. Returns what it retired.
      *
      * `deactivate` only fires on the terminal event, so a match that ended while
-     * no process was watching — or before this code existed — keeps its row
-     * active forever, and the 15s `sincronizarFixturesDoBanco` poll rebuilds its
-     * channel on every boot. This sweep is the only leg that reaches those.
+     * no process was watching keeps its row active forever, and the 15s
+     * `sincronizarFixturesDoBanco` poll rebuilds its channel on every boot.
+     * This sweep is the only leg that reaches those.
      *
      * The join to `matches.state = 'finished'` is the safety rail: it can never
      * retire a fixture that is still being played. `and lf.active` is the CAS —

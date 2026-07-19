@@ -49,7 +49,7 @@ function makeEngine() {
   return { engine, clock, emitted, createUser: fake.createUser, fake };
 }
 
-test("abre final_result no primeiro evento em jogo; kickoff fecha e abre next_goal", () => {
+test("opens final_result on the first in-play event; kickoff closes it and opens next_goal", () => {
   const { engine, clock, emitted } = makeEngine();
 
   engine.onScoreEvent(ev(1, T0));
@@ -71,11 +71,11 @@ test("abre final_result no primeiro evento em jogo; kickoff fecha e abre next_go
   assert.equal(engine.kickoffTs, T0 + 5000);
 
   const ng = engine.openQuestions().find((q) => q.type === "next_goal");
-  assert.ok(ng, "next_goal deveria abrir no kickoff");
+  assert.ok(ng, "next_goal should open at kickoff");
   assert.equal(ng!.closesAt, T0 + 5000 + 60_000);
 });
 
-test("replay ignora pré-jogo e abre a primeira pergunta no kickoff com prazo real curto", () => {
+test("a replay ignores pre-match and opens the first question at kickoff with a short real deadline", () => {
   const emitted: RoomMessage[] = [];
   const speed = 60;
   const kickoffTs = T0 + 15_300_000;
@@ -90,27 +90,27 @@ test("replay ignora pré-jogo e abre a primeira pergunta no kickoff com prazo re
 
   // Regression case: (kickoff + 10 minutes - first event) / 60.
   engine.onScoreEvent(ev(1, T0, { clockRunning: false }));
-  assert.equal(engine.openQuestions().length, 0, "metadado pré-jogo não abre desafio");
+  assert.equal(engine.openQuestions().length, 0, "pre-match metadata does not open a challenge");
 
   clock.set(kickoffTs);
   engine.onScoreEvent(ev(2, kickoffTs, { action: "kickoff", clockRunning: true }));
 
   const opens = emitted.filter((m) => m.type === "question_open");
-  assert.equal(opens.length, 1, "o primeiro frame não empilha final e próximo gol");
+  assert.equal(opens.length, 1, "the first frame does not stack final result and next goal");
   assert.equal(opens[0].question.type, "final_result");
   assert.equal(opens[0].question.opensAt, kickoffTs);
   assert.equal(opens[0].closesInRealMs, 10_000);
   assert.ok(opens[0].closesInRealMs >= 8_000);
-  assert.ok(opens[0].closesInRealMs < 30_000, "não carrega o hiato pré-jogo");
+  assert.ok(opens[0].closesInRealMs < 30_000, "it does not carry the pre-match gap");
 
   clock.set(kickoffTs + 600_001);
   engine.onScoreEvent(ev(3, kickoffTs + 600_001));
   const final = engine.allQuestions().find((q) => q.type === "final_result")!;
-  assert.equal(final.state, "closed", "fecha antes do evento que resolverá no fim");
+  assert.equal(final.state, "closed", "it closes before the event that will resolve it at the end");
   assert.ok(engine.openQuestions().some((q) => q.type === "next_goal"));
 });
 
-test("place: ok, opção inválida, duplicado, janela fechada, pergunta inexistente", () => {
+test("place: ok, invalid option, duplicate, closed window, nonexistent question", () => {
   const { engine, clock, createUser } = makeEngine();
   const userA = createUser("ana_q");
   const userB = createUser("bob_q");
@@ -139,7 +139,7 @@ test("place: ok, opção inválida, duplicado, janela fechada, pergunta inexiste
   assert.deepEqual(missing, { ok: false, error: "pergunta não existe" });
 });
 
-test("gol com a janela ABERTA anula a pergunta (regra de justiça) e reabre outra", () => {
+test("a goal with the window OPEN voids the question (fairness rule) and reopens another", () => {
   const { engine, clock, emitted, createUser } = makeEngine();
   const user = createUser("carla_q");
 
@@ -160,14 +160,14 @@ test("gol com a janela ABERTA anula a pergunta (regra de justiça) e reabre outr
   const voidMsg = emitted.find((m) => m.type === "question_void");
   assert.ok(voidMsg);
   assert.equal(voidMsg!.reason, FAIRNESS_VOID_REASON);
-  assert.equal(user.xp, xpBefore, "void não dá XP");
+  assert.equal(user.xp, xpBefore, "a void grants no XP");
 
   const ng2 = engine.openQuestions().find((q) => q.type === "next_goal");
-  assert.ok(ng2, "nova next_goal deve abrir após o gol");
+  assert.ok(ng2, "a new next_goal must open after the goal");
   assert.equal(ng2!.opensAt, T0 + 30_000);
 });
 
-test("gol com a janela fechada resolve e paga XP com bônus de velocidade", () => {
+test("a goal with the window closed resolves and pays XP with the speed bonus", () => {
   const { engine, clock, emitted, createUser } = makeEngine();
   const fast = createUser("dani_q");
   const slow = createUser("edu_q");
@@ -207,7 +207,7 @@ test("gol com a janela fechada resolve e paga XP com bônus de velocidade", () =
   assert.equal(fast.level, 2); // floor(sqrt(150/100)) + 1
 });
 
-test("hilo_corners: 'yes' dentro do horizonte; 'no' via sweep após o deadline", () => {
+test("hilo_corners: 'yes' within the horizon; 'no' via sweep after the deadline", () => {
   const { engine, clock, createUser } = makeEngine();
   const user = createUser("fabi_q");
 
@@ -231,7 +231,7 @@ test("hilo_corners: 'yes' dentro do horizonte; 'no' via sweep após o deadline",
   const q1 = engine.questionById(hilo1.id)!;
   assert.equal(q1.state, "resolved");
   assert.equal(q1.correct, "yes");
-  assert.equal(user.xp, 75); // floor(50 * 1.5), palpite na primeira metade
+  assert.equal(user.xp, 75); // floor(50 * 1.5), palpite in the first half
 
   const hilo2 = engine.openQuestions().find((q) => q.type === "hilo_corners")!;
   assert.equal(hilo2.opensAt, T0 + 300_000);
@@ -243,7 +243,7 @@ test("hilo_corners: 'yes' dentro do horizonte; 'no' via sweep após o deadline",
   assert.equal(q2.correct, "no");
 });
 
-test("next_goal atravessa o intervalo e acerta p1 quando p1 faz o próximo gol", () => {
+test("next_goal survives half-time and lands on p1 when p1 scores the next goal", () => {
   const { engine, clock, emitted, createUser } = makeEngine();
   const user = createUser("intervalo_q");
 
@@ -261,14 +261,14 @@ test("next_goal atravessa o intervalo e acerta p1 quando p1 faz o próximo gol",
   assert.equal(
     engine.questionById(ng.id)!.state,
     "closed",
-    "o intervalo não significa 'ninguém até o fim'",
+    "half-time does not mean 'nobody until the end'",
   );
 
   engine.onScoreEvent(ev(5, T0 + 100_000, { action: "kickoff", period: 2 }));
   assert.equal(
     engine.allQuestions().filter((q) => q.type === "next_goal").length,
     1,
-    "o segundo tempo continua a mesma pergunta em vez de abrir outra",
+    "the second half continues the same question instead of opening another",
   );
 
   engine.onScoreEvent(
@@ -292,7 +292,7 @@ test("next_goal atravessa o intervalo e acerta p1 quando p1 faz o próximo gol",
   assert.equal(resolved.results[0].result, "won");
 });
 
-test("game_finalised com a final_result ABERTA anula (regra de justiça), não paga", () => {
+test("game_finalised with final_result OPEN voids it (fairness rule) and pays nothing", () => {
   // A final result that remains open at game end must be voided for fairness.
   const { engine, clock, emitted, createUser } = makeEngine();
   const user = createUser("ivo_q");
@@ -317,7 +317,7 @@ test("game_finalised com a final_result ABERTA anula (regra de justiça), não p
   const q = engine.questionById(final.id)!;
   assert.equal(q.state, "void");
   assert.equal(q.voidReason, FAIRNESS_VOID_REASON);
-  assert.equal(user.xp, 0, "anulada não paga XP nem quando o palpite acertou");
+  assert.equal(user.xp, 0, "a voided question pays no XP even when the palpite was right");
   assert.ok(
     emitted.some((m) => m.type === "question_void" && m.question.id === final.id)
   );
@@ -326,7 +326,7 @@ test("game_finalised com a final_result ABERTA anula (regra de justiça), não p
   assert.equal(emitted[emitted.length - 1].type, "game_end");
 });
 
-test("game_finalised resolve tudo pelo placar e emite game_end por último", () => {
+test("game_finalised resolves everything by the score and emits game_end last", () => {
   const { engine, clock, emitted, createUser } = makeEngine();
   const userA = createUser("gil_q");
   const userB = createUser("hugo_q");
@@ -374,7 +374,7 @@ test("game_finalised resolve tudo pelo placar e emite game_end por último", () 
   assert.deepEqual(emitted[emitted.length - 1].goals, { p1: 1, p2: 0 });
 });
 
-test("duas execuções valendo pagam o mesmo fã; treino explícito dá veredito com XP zero", () => {
+test("two scoring runs pay the same fan; explicit treino gives a verdict with zero XP", () => {
   const fake = makeFakeStore();
   const fa = fake.createUser("rejogando");
 
@@ -412,18 +412,18 @@ test("duas execuções valendo pagam o mesmo fã; treino explícito dá veredito
 
   const primeira = executar(false, 0);
   const segunda = executar(false, 1_000_000);
-  assert.notEqual(primeira.questionId, segunda.questionId, "cada runner cria questionIds novos");
+  assert.notEqual(primeira.questionId, segunda.questionId, "each runner creates fresh questionIds");
   assert.equal(primeira.result.awardedXp, 150);
   assert.equal(segunda.result.awardedXp, 150);
-  assert.equal(fa.xp, 300, "repetir a fixture valendo continua elegível a XP");
+  assert.equal(fa.xp, 300, "replaying the fixture for real stays XP-eligible");
 
   const pratica = executar(true, 2_000_000);
-  assert.equal(pratica.result.result, "won", "treino mantém o veredito correto");
-  assert.equal(pratica.result.awardedXp, 0, "somente treino explícito força XP zero");
+  assert.equal(pratica.result.result, "won", "treino keeps the verdict correct");
+  assert.equal(pratica.result.awardedXp, 0, "only explicit treino forces zero XP");
   assert.equal(fa.xp, 300);
 });
 
-test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca as dos outros", () => {
+test("respostasDe returns THIS fan's questions — open and settled, never other fans'", () => {
   const { engine, clock, createUser } = makeEngine();
   const ana = createUser("ana_r");
   const bob = createUser("bob_r");
@@ -440,7 +440,7 @@ test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca
   clock.set(T0 + 10_000);
   assert.ok(engine.place(ana, ng1.id, "p1").ok);
 
-  engine.onScoreEvent(ev(3, T0 + 70_000)); // sweep fecha a janela da ng1
+  engine.onScoreEvent(ev(3, T0 + 70_000)); // the sweep closes ng1's window
   engine.onScoreEvent(ev(4, T0 + 120_000, { action: "goal", goals: { p1: 1, p2: 0 } }));
 
   // Ana sees final (closed, unresolved) and ng1 (resolved); Bob's data never leaks.
@@ -449,7 +449,7 @@ test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca
   // Prediction order is preserved.
   assert.equal(daAna[0].question.id, final.id);
   assert.equal(daAna[0].prediction.choice, "p1");
-  assert.equal(daAna[0].prediction.result, undefined, "final ainda não liquidou");
+  assert.equal(daAna[0].prediction.result, undefined, "the final result has not settled yet");
   assert.equal(daAna[1].question.id, ng1.id);
   assert.equal(daAna[1].prediction.result, "won");
   assert.ok((daAna[1].prediction.awardedXp ?? 0) > 0);
@@ -462,7 +462,7 @@ test("respostasDe devolve as perguntas DESTE fã — abertas e liquidadas, nunca
   assert.deepEqual(engine.respostasDe("ninguem"), []);
 });
 
-test("snapshot restaura a mesma pergunta da sessão, sem trocar id nem esquecer palpite", () => {
+test("a snapshot restores the same session question, without swapping ids or forgetting the palpite", () => {
   const first = makeEngine();
   const user = first.createUser("restaura");
   const ids = (type: string, trigger: string) => `q_session1_${type}_${trigger}`;

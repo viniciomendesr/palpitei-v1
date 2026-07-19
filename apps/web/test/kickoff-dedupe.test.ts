@@ -19,25 +19,25 @@ const score = (over: Partial<ScoreEvent> = {}): ScoreEvent => ({
   ...over,
 });
 
-test('o segundo kickoff do par (mesmo clock) é duplicata; o primeiro não', () => {
+test('the second kickoff of the pair (same clock) is a duplicate; the first is not', () => {
   const ehDuplicata = createKickoffDeduper();
   assert.equal(ehDuplicata(score({ seq: 15, clockSeconds: 0 })), false);
   assert.equal(ehDuplicata(score({ seq: 17, ts: 3_834, clockSeconds: 0 })), true);
 });
 
-test('o kickoff do 2º tempo (clock diferente) passa', () => {
+test('the second-half kickoff (different clock) passes through', () => {
   const ehDuplicata = createKickoffDeduper();
   assert.equal(ehDuplicata(score({ seq: 15, clockSeconds: 0 })), false);
   assert.equal(ehDuplicata(score({ seq: 428, clockSeconds: 2_700 })), false);
 });
 
-test('quem não é kickoff nunca é marcado, nem repetido no mesmo clock', () => {
+test('non-kickoff events are never marked, not even repeated on the same clock', () => {
   const ehDuplicata = createKickoffDeduper();
   assert.equal(ehDuplicata(score({ action: 'corner', clockSeconds: 60 })), false);
   assert.equal(ehDuplicata(score({ action: 'corner', clockSeconds: 60 })), false);
 });
 
-test('kickoff sem clockSeconds cai para o ts como régua', () => {
+test('a kickoff with no clockSeconds falls back to ts as the ruler', () => {
   const ehDuplicata = createKickoffDeduper();
   assert.equal(ehDuplicata(score({ ts: 5_000 })), false);
   assert.equal(ehDuplicata(score({ ts: 5_000 })), true);

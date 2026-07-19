@@ -39,34 +39,34 @@ test("maxReplayGapMs caps accelerated and real-time replay gaps (G3)", () => {
   assert.equal(maxReplayGapMs(1, true), 60_000);
 });
 
-test("antes do apito o teto é o do pré-jogo, em qualquer velocidade", () => {
+test("before kickoff the cap is the pre-game one, at any speed", () => {
   // A live capture holds thousands of pre-kick-off odds ticks. Sharing the 2s
   // cap meant France x England spent 143s before the ball moved; the fan gave up
   // before the match started. Pre-game is metadata, so it is capped on its own.
   assert.equal(maxReplayGapMs(60, false), 150);
   assert.equal(maxReplayGapMs(12, false), 150);
-  assert.equal(maxReplayGapMs(1, false), 150, "pré-jogo no 1x também é metadado");
+  assert.equal(maxReplayGapMs(1, false), 150, "pre-game at 1x is metadata too");
 });
 
 test("isMatchInProgress is true only while the match clock runs", () => {
   assert.equal(isMatchInProgress(score(1, { clockRunning: true })), true);
   assert.equal(isMatchInProgress(score(1, { clockRunning: false })), false);
-  assert.equal(isMatchInProgress(score(1)), false, "metadado de pré-jogo não tem clock");
+  assert.equal(isMatchInProgress(score(1)), false, "pre-game metadata has no clock");
   assert.equal(isMatchInProgress({ kind: "odds", fixtureId: 1, ts: 1, marketType: "x", prices: [], raw: {} }), false);
 });
 
-test("ReplayRunner emite tudo, em ordem, e ancora o ts da partida", async () => {
+test("ReplayRunner emits everything, in order, and anchors the match ts", async () => {
   const events = [score(1000), score(2000), score(3000)];
   const vistos: number[] = [];
   const runner = new ReplayRunner(events, 1000, (e) => vistos.push(e.ts), () => {});
   runner.start();
-  assert.equal(runner.startedAtMatchTs, 1000, "âncora do cursorClock é o 1º evento");
+  assert.equal(runner.startedAtMatchTs, 1000, "the cursorClock anchor is the 1st event");
 
   await new Promise((r) => setTimeout(r, 60));
   assert.deepEqual(vistos, [1000, 2000, 3000]);
 });
 
-test("ReplayRunner comprime o buraco gigante do feed", (t) => {
+test("ReplayRunner compresses the giant gap in the feed", (t) => {
   // There are 3.6 days between pre-match metadata and kickoff. Without a cap,
   // replay would wait 5,184,000 ms (86 minutes wall-clock) even at 60x.
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -80,27 +80,27 @@ test("ReplayRunner comprime o buraco gigante do feed", (t) => {
   runner.start();
 
   t.mock.timers.tick(0);
-  assert.deepEqual(vistos, [0], "1º evento sai imediatamente");
+  assert.deepEqual(vistos, [0], "the 1st event goes out immediately");
 
   t.mock.timers.tick(1_999);
-  assert.equal(fim, false, "ainda dentro do teto");
+  assert.equal(fim, false, "still within the cap");
 
   t.mock.timers.tick(1);
-  assert.deepEqual(vistos, [0, 311_040_000], "o buraco foi comprimido a exatamente 2s");
+  assert.deepEqual(vistos, [0, 311_040_000], "the gap was compressed to exactly 2s");
   assert.equal(fim, true);
 });
 
-test("ReplayRunner: ts fora de ordem não vira delay negativo (A3)", async () => {
+test("ReplayRunner: an out-of-order ts never becomes a negative delay (A3)", async () => {
   // The snapshot is sampled and can include a `goal` timestamped before kickoff.
   const events = [score(5000), score(1000)];
   const vistos: number[] = [];
   const runner = new ReplayRunner(events, 1, (e) => vistos.push(e.ts), () => {});
   runner.start();
   await new Promise((r) => setTimeout(r, 40));
-  assert.deepEqual(vistos, [5000, 1000], "emitiu na ordem da lista, sem travar");
+  assert.deepEqual(vistos, [5000, 1000], "it emitted in list order, without stalling");
 });
 
-test("stop() cala o runner", async () => {
+test("stop() silences the runner", async () => {
   const events = [score(0, { clockRunning: true }), score(60_000, { clockRunning: true })];
   const vistos: number[] = [];
   const runner = new ReplayRunner(events, 1, (e) => vistos.push(e.ts), () => {});
@@ -108,10 +108,10 @@ test("stop() cala o runner", async () => {
   await new Promise((r) => setTimeout(r, 10));
   runner.stop();
   await new Promise((r) => setTimeout(r, 80));
-  assert.equal(vistos.length, 1, "o 2º evento não saiu depois do stop");
+  assert.equal(vistos.length, 1, "the 2nd event did not go out after the stop");
 });
 
-test("ReplayRunner com lista vazia chama onDone e não trava", async () => {
+test("ReplayRunner with an empty list calls onDone and does not stall", async () => {
   let pronto = false;
   new ReplayRunner([], 60, () => {}, () => {
     pronto = true;
@@ -120,7 +120,7 @@ test("ReplayRunner com lista vazia chama onDone e não trava", async () => {
   assert.equal(pronto, true);
 });
 
-test("finishNow drena eventos reais restantes e conclui uma única vez", (t) => {
+test("finishNow drains the remaining real events and completes exactly once", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const events = [
     score(0, { clockRunning: true }),
@@ -140,7 +140,7 @@ test("finishNow drena eventos reais restantes e conclui uma única vez", (t) => 
   assert.equal(runner.isRunning, false);
 });
 
-test("estimativa usa exatamente os mesmos tetos do runner", () => {
+test("the estimate uses exactly the same caps as the runner", () => {
   const events = [
     score(0),
     score(6_000, { clockRunning: true }),
@@ -156,12 +156,12 @@ test("estimativa usa exatamente os mesmos tetos do runner", () => {
 // real match content
 // ---------------------------------------------------------------------------
 
-test("hasRealMatchContent exige apito, finalização e volume", () => {
+test("hasRealMatchContent requires a kickoff, a finalisation and volume", () => {
   assert.equal(hasRealMatchContent([]), false);
   assert.equal(
     hasRealMatchContent([score(1, { action: "kickoff" }), score(2, { action: "game_finalised" })]),
     false,
-    "2 eventos não são uma partida"
+    "2 events are not a match"
   );
   const partida = [
     score(1, { action: "kickoff" }),
@@ -174,7 +174,7 @@ test("hasRealMatchContent exige apito, finalização e volume", () => {
   assert.equal(
     hasRealMatchContent(partida.map((e) => ({ ...e, action: "possession" }))),
     false,
-    "sem apito não é partida"
+    "with no kickoff it is not a match"
   );
 });
 
@@ -182,7 +182,7 @@ test("hasRealMatchContent exige apito, finalização e volume", () => {
 // source chain
 // ---------------------------------------------------------------------------
 
-test("cache primeiro: nem toca na API, e o badge diz txline-cache", async () => {
+test("cache first: it never touches the API, and the badge says txline-cache", async () => {
   const store = createInMemoryMatchCacheStore([
     {
       fixtureId: FIXTURE.fixtureId,
@@ -205,12 +205,12 @@ test("cache primeiro: nem toca na API, e o badge diz txline-cache", async () => 
   // An unreachable TXLINE_API_BASE_URL makes an accidental network request fail.
   const load = await loadReplayEvents(FIXTURE, { cache: store });
   assert.equal(load.source, "txline-cache");
-  assert.equal(load.fromTxline, true, "cache é dado real da TxLINE, só gravado");
+  assert.equal(load.fromTxline, true, "the cache is real TxLINE data, merely recorded");
   assert.equal(load.events.length, 5);
   assert.equal(load.events[0]!.ts, 1000);
 });
 
-test("o sintético é opt-in: sem allowSynthetic, erra em vez de inventar partida", async () => {
+test("synthetic is opt-in: without allowSynthetic it errors instead of inventing a match", async () => {
   const store = createInMemoryMatchCacheStore(); // empty
   process.env.TXLINE_API_BASE_URL = "http://127.0.0.1:1/api"; // unreachable port
   process.env.TXLINE_JWT = "x";
@@ -225,26 +225,26 @@ test("o sintético é opt-in: sem allowSynthetic, erra em vez de inventar partid
 // synthetic (development only)
 // ---------------------------------------------------------------------------
 
-test("gerador sintético é determinístico por fixtureId", () => {
+test("the synthetic generator is deterministic per fixtureId", () => {
   const agora = Date.UTC(2026, 6, 16, 12, 0, 0);
   const a = generateDemoEvents(FIXTURE, agora);
   const b = generateDemoEvents(FIXTURE, agora);
   assert.deepEqual(
     a.map((e) => `${e.kind}:${e.ts}`),
     b.map((e) => `${e.kind}:${e.ts}`),
-    "mesmo id + mesmo relógio => mesma partida (bug em replay sintético é reproduzível)"
+    "same id + same clock => same match (a synthetic replay bug is reproducible)"
   );
 
   const acoes = (evs: NormEvent[]): string[] =>
     evs.filter((e) => e.kind === "score").map((e) => e.action);
   const outro = generateDemoEvents({ ...FIXTURE, fixtureId: 999 }, agora);
-  assert.notDeepEqual(acoes(a), acoes(outro), "fixtureId diferente => partida diferente");
+  assert.notDeepEqual(acoes(a), acoes(outro), "a different fixtureId => a different match");
 });
 
-test("a partida sintética tem apito e fim — e passa no teste de conteúdo real", () => {
+test("the synthetic match has a kickoff and an end — and passes the real-content test", () => {
   const events = generateDemoEvents(FIXTURE, Date.UTC(2026, 6, 16, 12, 0, 0));
   assert.equal(hasRealMatchContent(events), true);
   const scores = events.filter((e) => e.kind === "score");
   assert.ok(scores.some((e) => e.action === "game_finalised"));
-  assert.ok(events.some((e) => e.kind === "odds"), "gera odds para o explicador ter o que ler");
+  assert.ok(events.some((e) => e.kind === "odds"), "it generates odds so the explainer has something to read");
 });

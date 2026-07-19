@@ -225,11 +225,10 @@ const GAP_TETO_PRE_JOGO_MS = 150;
 // Before the match clock runs, replay advances at high speed regardless of the
 // requested speed to compress dense pre-game updates.
 //
-// Measured 18/07 on France x England (18257865): the live capture holds 1248
-// pre-kick-off items because odds ticked for hours before the whistle, five
-// times the recorded England x Argentina. At 600x with the shared 2s cap that
-// was 143s of staring at a scoreboard before the ball moved. At 5000x with the
-// dedicated cap it is 16s, and the match itself still plays at REPLAY_SPEED.
+// A live capture can hold well over a thousand pre-kick-off items, since odds
+// tick for hours before the whistle. At 600x with the shared 2s cap that is
+// minutes of staring at a scoreboard before the ball moves; this dedicated
+// speed and cap cut it to seconds, and the match still plays at REPLAY_SPEED.
 const VELOCIDADE_PRE_JOGO = 5_000;
 
 /** Whether an event indicates match play; clockRunning avoids pre-game metadata. */
@@ -261,8 +260,8 @@ export function replayDurationMs(events: NormEvent[], requestedSpeed: number): n
 }
 
 /**
- * Reagenda os eventos comprimindo a linha do tempo: delay real entre eventos =
- * (Δts do jogo) / speed, with a cap (see maxReplayGapMs) for pre-game gaps and
+ * Reschedules the events by compressing the timeline: real delay between events
+ * = (match Δts) / speed, with a cap (see maxReplayGapMs) so pre-game gaps and
  * intervals do not stall replay. Only one setTimeout remains active at a time.
  *
  * Fields are declared explicitly because Node's erasableSyntaxOnly cannot strip
@@ -326,9 +325,9 @@ export class ReplayRunner {
   }
 
   /**
-   * Consome imediatamente apenas os eventos REAIS que ainda faltam e conclui
-   * uma vez. Usado quando todos abandonam o replay ou o watchdog vence: placar
-   * e vereditos continuam vindo da TxLINE, sem fabricar um apito final.
+   * Immediately consumes only the REAL events still pending, then completes
+   * once. Used when everyone leaves the replay or the watchdog fires: the score
+   * and the verdicts still come from TxLINE, never from a fabricated whistle.
    */
   finishNow(): void {
     if (!this.started || this.stopped || this.done) return;

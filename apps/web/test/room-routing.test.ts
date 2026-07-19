@@ -7,19 +7,19 @@ import {
   roomPolicy,
 } from '../src/server/room-id.ts';
 
-test('grupo isola runners da mesma fixture e mantém treino separado', () => {
+test('a party isolates runners of the same fixture and keeps treino separate', () => {
   assert.notEqual(roomKey(18241006, false, 'ABC123'), roomKey(18241006, false, 'XYZ789'));
   assert.notEqual(roomKey(18241006, false, 'ABC123'), roomKey(18241006, true, 'ABC123'));
 });
 
-test('ids da sala e do grupo falham fechados', () => {
+test('sala and party ids fail closed', () => {
   assert.deepEqual(parseRoomId('treino-18241006'), { fixtureId: 18241006, training: true });
   assert.equal(parsePartyId(' abc123 '), 'ABC123');
   assert.equal(parsePartyId('curto'), null);
   assert.equal(parsePartyId('../segredo'), null);
 });
 
-test('replay repetido e parties diferentes continuam elegíveis a XP; só treino não persiste', () => {
+test('repeated replays and different parties stay XP-eligible; only treino does not persist', () => {
   const rodadaA = parseRoomId('18241006')!;
   const rodadaB = parseRoomId('18241006')!;
 
@@ -28,7 +28,7 @@ test('replay repetido e parties diferentes continuam elegíveis a XP; só treino
   assert.notEqual(
     roomKey(rodadaA.fixtureId, rodadaA.training, 'ABC123'),
     roomKey(rodadaB.fixtureId, rodadaB.training, 'XYZ789'),
-    'cada party ganha seu próprio runner e seus próprios questionIds',
+    'each party gets its own runner and its own questionIds',
   );
 
   assert.deepEqual(roomPolicy(parseRoomId('treino-18241006')!.training), {

@@ -7,7 +7,7 @@ import {
   redisDoLiveHabilitado,
 } from '../src/server/live-broker.ts';
 
-test('broker transmite somente o evento normalizado, sem payload cru TxLINE', () => {
+test('the broker transmits only the normalized event, with no raw TxLINE payload', () => {
   const score: ScoreEvent = {
     kind: 'score',
     fixtureId: 18257865,
@@ -51,7 +51,7 @@ test('broker transmite somente o evento normalizado, sem payload cru TxLINE', ()
   assert.equal('data' in (restored ?? {}), false);
 });
 
-test('broker preserva odds normalizadas e rejeita envelopes incompletos', () => {
+test('the broker preserves normalized odds and rejects incomplete envelopes', () => {
   const odds: OddsEvent = {
     kind: 'odds',
     fixtureId: 18257865,
@@ -66,7 +66,7 @@ test('broker preserva odds normalizadas e rejeita envelopes incompletos', () => 
   assert.equal(eventoDoBroker({ kind: 'odds', fixtureId: 1, ts: 0, marketType: '1X2', prices: [{}] }), null);
 });
 
-test('Redis é opt-in: uma URL presente liga o modo distribuído', () => {
+test('Redis is opt-in: a present URL turns on distributed mode', () => {
   assert.equal(redisDoLiveHabilitado({}), false);
   assert.equal(redisDoLiveHabilitado({ REDIS_URL: '  ' }), false);
   assert.equal(redisDoLiveHabilitado({ REDIS_URL: 'redis://redis.railway.internal:6379' }), true);

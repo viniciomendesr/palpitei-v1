@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Palpitei core — motores puros de domínio (perguntas, mercado, ranking, explicador, normalização). Sem I/O, sem Date.now(), sem singleton: tudo entra por injeção.",
+  "description": "Palpitei core — pure domain engines (questions, market, ranking, explainer, normalization). No I/O, no Date.now(), no singletons: everything comes in by injection.",
   "engines": {
     "node": ">=22.6.0"
   },

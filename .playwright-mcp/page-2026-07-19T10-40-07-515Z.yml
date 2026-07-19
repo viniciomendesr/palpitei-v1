@@ -1,0 +1,35 @@
+- generic [ref=f4e1]:
+  - generic [ref=f4e4]:
+    - main [ref=f4e5]:
+      - generic [ref=f4e6]:
+        - generic [ref=f4e7]:
+          - generic [ref=f4e8]:
+            - generic [ref=f4e9]: P!
+            - generic [ref=f4e11]: PALPITEI
+          - generic [ref=f4e12]:
+            - generic [ref=f4e13]: "5"
+            - generic [ref=f4e16]:
+              - generic [ref=f4e17]: Nv 7
+              - generic [ref=f4e18]: "1.240"
+        - generic [ref=f4e19]:
+          - button "Ao Vivo" [ref=f4e20] [cursor=pointer]
+          - button "Próximos" [ref=f4e21] [cursor=pointer]
+          - button "Replays" [active] [ref=f4e22] [cursor=pointer]
+        - generic [ref=f4e67]:
+          - generic [ref=f4e68] [cursor=pointer]:
+            - generic [ref=f4e69]:
+              - generic [ref=f4e70]: ENCERRADO · 3 JUL
+              - generic [ref=f4e71]: FASE DE 32 · COPA 2026 · DEMO · FATOS FIFA
+            - generic [ref=f4e72]:
+              - generic [ref=f4e73]: Argentina
+              - generic [ref=f4e74]: 3 – 2
+              - generic [ref=f4e75]: Cabo Verde
+            - generic [ref=f4e76]: Rever partida →
+          - button "Você não jogou esta" [disabled] [ref=f4e78] [cursor=pointer]
+        - generic [ref=f4e79]: Partidas que já aconteceram. Palpite de novo e veja como você se sai.
+    - navigation [ref=f4e46]:
+      - button "Início" [ref=f4e47] [cursor=pointer]
+      - button "Ranking" [ref=f4e52] [cursor=pointer]
+      - button "Loja" [ref=f4e56] [cursor=pointer]
+      - button "Perfil" [ref=f4e61] [cursor=pointer]
+  - alert [ref=f4e66]

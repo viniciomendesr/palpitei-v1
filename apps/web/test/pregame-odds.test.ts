@@ -17,16 +17,16 @@ const base = {
   Prices: [1900, 2100],
 };
 
-test('linhaDoMercado lê a string da TxLINE e rejeita linhas com push/meio ganho', () => {
+test('extractMarketLine reads the TxLINE string and rejects lines with push/half-win', () => {
   assert.equal(extractMarketLine('line=2.5'), 2.5);
   assert.equal(extractMarketLine('sport=football; line = 9.5'), 9.5);
   assert.equal(extractMarketLine({ line: 3.5 }), 3.5);
-  assert.equal(extractMarketLine('line=3'), null, 'linha inteira pode empatar');
-  assert.equal(extractMarketLine('line=2.25'), null, 'linha asiática não é binária');
+  assert.equal(extractMarketLine('line=3'), null, 'a whole line can tie');
+  assert.equal(extractMarketLine('line=2.25'), null, 'an asian line is not binary');
   assert.equal(extractMarketLine('wrong=2.5'), null);
 });
 
-test('extrai uma lista de mercados TxLINE e escolhe a linha de gols mais equilibrada', () => {
+test('extracts a list of TxLINE markets and picks the most balanced goals line', () => {
   const markets = extractPregameMarkets([
     {
       ...base,
@@ -76,7 +76,7 @@ test('extrai uma lista de mercados TxLINE e escolhe a linha de gols mais equilib
   assert.equal(matchesMarketLine(2.5, marketById(markets, 'goals')), false);
 });
 
-test('arrays desalinhados, Pct NA, período e linha inválida não viram uma chance inventada', () => {
+test('misaligned arrays, Pct NA, a period and an invalid line never become an invented chance', () => {
   const markets = extractPregameMarkets([
     {
       ...base,
@@ -105,7 +105,7 @@ test('arrays desalinhados, Pct NA, período e linha inválida não viram uma cha
   assert.deepEqual(markets, []);
 });
 
-test('falha da TxLINE fica observável sem registrar corpo ou segredo', async () => {
+test('a TxLINE failure stays observable without logging body or secret', async () => {
   resetPregameOddsForTest();
   const indisponivel = await fetchPregameOdds(
     700003,

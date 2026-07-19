@@ -20,7 +20,7 @@ function salaFake(finished = false, aoVivo = false, runnerAtivo = !finished) {
   return { sala, drenou: () => drenou, encerrou: () => encerrou };
 }
 
-test('sala vazia drena o replay após a carência em vez de permitir reinício', (t) => {
+test('an empty sala drains the replay after the grace period instead of allowing a restart', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake();
   scheduleShutdownIfEmpty(fake.sala);
@@ -32,7 +32,7 @@ test('sala vazia drena o replay após a carência em vez de permitir reinício',
   assert.equal(fake.encerrou(), 0);
 });
 
-test('reconectar durante a carência preserva o replay em andamento', (t) => {
+test('reconnecting during the grace period preserves the replay in progress', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake();
   scheduleShutdownIfEmpty(fake.sala);
@@ -43,7 +43,7 @@ test('reconectar durante a carência preserva o replay em andamento', (t) => {
   assert.equal(fake.drenou(), 0);
 });
 
-test('sala ao vivo vazia continua ligada ao canal em vez de encerrar o jogo', (t) => {
+test('an empty live sala stays attached to the channel instead of ending the match', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake(false, true);
   scheduleShutdownIfEmpty(fake.sala);
@@ -53,7 +53,7 @@ test('sala ao vivo vazia continua ligada ao canal em vez de encerrar o jogo', (t
   assert.equal(fake.encerrou(), 0);
 });
 
-test('apito final não impede dreno quando ainda há odds na timeline', (t) => {
+test('the final whistle does not prevent draining while odds remain on the timeline', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake(true, false, true);
   scheduleShutdownIfEmpty(fake.sala);
@@ -63,7 +63,7 @@ test('apito final não impede dreno quando ainda há odds na timeline', (t) => {
   assert.equal(fake.encerrou(), 0);
 });
 
-test('resultado encerrado permanece disponível antes da limpeza', (t) => {
+test('a finished result stays available before cleanup', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fake = salaFake(true);
   scheduleShutdownIfEmpty(fake.sala);

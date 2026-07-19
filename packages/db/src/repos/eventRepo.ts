@@ -221,10 +221,10 @@ export function createEventRepo(db: Db) {
     /**
      * Every Total key the feed ever reported, merged by key and never replaced.
      *
-     * The key set is partial and grows DURING the match (measured on 18241006:
-     * the first event carrying a Score block has an EMPTY Total), so replacing
-     * the map per event would make a line blink and vanish. Merging is the same
-     * rule the live room applies in memory.
+     * The key set is partial and grows DURING the match — the first event
+     * carrying a Score block can have an EMPTY Total — so replacing the map per
+     * event would make a line blink and vanish. Merging is the same rule the
+     * live room applies in memory.
      */
     async totaisAcumulados(
       fixtureId: number

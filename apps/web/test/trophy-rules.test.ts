@@ -5,30 +5,30 @@ import { canAwardDebutTrophy } from '../src/server/trophy-rules.ts';
 
 const FA = 'did:privy:cmxyz';
 
-test('sala ao vivo, valendo XP, concede o troféu de estreia', () => {
+test('a live sala, counting for XP, grants the debut trophy', () => {
   assert.equal(canAwardDebutTrophy({ roomMode: 'live', training: false, privyDid: FA }), true);
 });
 
-test('replay NÃO concede troféu — "tem eventos" não é "está ao vivo"', () => {
-  // A 18241006 tem 962 eventos gravados e é justamente a armadilha: qualquer
-  // regra do tipo "essa fixture tem eventos" premiaria quem abre a aba Replays.
+test('a replay does NOT grant a trophy — "has events" is not "is live"', () => {
+  // 18241006 has 962 recorded events and is exactly the trap: any rule of the form
+  // "this fixture has events" would reward whoever opens the Replays tab.
   assert.equal(canAwardDebutTrophy({ roomMode: 'replay', training: false, privyDid: FA }), false);
 });
 
-test('sala de partida já encerrada NÃO concede troféu', () => {
-  // A 18257865 esteve ao vivo em 18/07 e hoje é `finished`: avaliar pelo estado
-  // atual responde errado nos dois sentidos, por isso a decisão é no palpite.
+test('a sala for an already finished match does NOT grant a trophy', () => {
+  // 18257865 was live on 18/07 and today is `finished`: judging by the current state
+  // answers wrong in both directions, so the decision is made at the palpite.
   assert.equal(canAwardDebutTrophy({ roomMode: 'finished', training: false, privyDid: FA }), false);
 });
 
-test('treino NÃO concede troféu nem estando ao vivo', () => {
+test('treino does NOT grant a trophy even when live', () => {
   assert.equal(canAwardDebutTrophy({ roomMode: 'live', training: true, privyDid: FA }), false);
 });
 
-test('conta demo NÃO concede troféu', () => {
+test('a demo account does NOT grant a trophy', () => {
   assert.equal(canAwardDebutTrophy({ roomMode: 'live', training: false, privyDid: 'demo:abc' }), false);
 });
 
-test('did ausente NÃO concede troféu — ausente não é autorizado', () => {
+test('an absent did does NOT grant a trophy — absent is not authorized', () => {
   assert.equal(canAwardDebutTrophy({ roomMode: 'live', training: false, privyDid: undefined }), false);
 });

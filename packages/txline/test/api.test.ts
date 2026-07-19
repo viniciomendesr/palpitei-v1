@@ -58,11 +58,11 @@ beforeEach(() => {
 
 test("createTimeBuckets covers the full UTC-hour window", () => {
   const bs = createTimeBuckets(KICKOFF, 1, 4);
-  assert.equal(bs.length, 6, "1h antes + kickoff + 4h depois = 6 horas");
+  assert.equal(bs.length, 6, "1h before + kickoff + 4h after = 6 hours");
   assert.deepEqual(
     bs.map((b) => b.hour),
     [20, 21, 22, 23, 0, 1],
-    "vira o dia em UTC"
+    "it rolls over the day in UTC"
   );
   assert.equal(bs[0]!.day, Math.floor((KICKOFF - 3600_000) / 86400_000));
   // Crossing midnight must advance epochDay or the final match hour is fetched
@@ -70,7 +70,7 @@ test("createTimeBuckets covers the full UTC-hour window", () => {
   assert.equal(bs[5]!.day, bs[0]!.day + 1);
 });
 
-test("a varredura pede os 12 intervalos de 5 min de cada hora (G1)", async () => {
+test("the sweep requests all 12 five-minute intervals of every hour (G1)", async () => {
   responder = () => ({ status: 200, body: [] });
   await fetchScoresUpdates(FIXTURE, KICKOFF);
 
@@ -86,7 +86,7 @@ test("a varredura pede os 12 intervalos de 5 min de cada hora (G1)", async () =>
 // score updates
 // ---------------------------------------------------------------------------
 
-test("fetchScoresUpdates dedupa por Seq, ordena e filtra outras fixtures", async () => {
+test("fetchScoresUpdates dedupes by Seq, sorts, and filters out other fixtures", async () => {
   responder = (url) => {
     if (url.endsWith("/0")) {
       return {
@@ -112,7 +112,7 @@ test("fetchScoresUpdates dedupa por Seq, ordena e filtra outras fixtures", async
   );
 });
 
-test("tolera resposta embrulhada em { updates } e em { rows }", async () => {
+test("it tolerates a response wrapped in { updates } and in { rows }", async () => {
   responder = (url) => {
     if (url.endsWith("/0")) return { status: 200, body: { updates: [{ FixtureId: FIXTURE, Seq: 2 }] } };
     if (url.endsWith("/1")) return { status: 200, body: { rows: [{ FixtureId: FIXTURE, Seq: 3 }] } };
@@ -122,7 +122,7 @@ test("tolera resposta embrulhada em { updates } e em { rows }", async () => {
   assert.deepEqual(lista.map((r) => r.Seq), [2, 3]);
 });
 
-test("404 de balde é normal e não derruba a varredura", async () => {
+test("a 404 on a bucket is normal and does not bring the sweep down", async () => {
   responder = (url) =>
     url.endsWith("/0")
       ? { status: 200, body: [{ FixtureId: FIXTURE, Seq: 2 }] }
@@ -132,7 +132,7 @@ test("404 de balde é normal e não derruba a varredura", async () => {
   assert.equal(lista.length, 1);
 });
 
-test("varredura 100% com erro real FALHA ALTO — não devolve [] silencioso", async () => {
+test("a sweep that fails 100% with a real error FAILS LOUD — it never returns a silent []", async () => {
   // A blanket `catch {}` would turn an expired token into an indistinguishable
   // empty event list.
   responder = () => ({ status: 401, body: { erro: "token morto" } });
@@ -160,7 +160,7 @@ test("findSequenceGaps finds events that did not arrive", () => {
 // odds updates
 // ---------------------------------------------------------------------------
 
-test("fetchOddsUpdates filtra ao mercado 1X2 de jogo inteiro (G2)", async () => {
+test("fetchOddsUpdates filters down to the full-match 1X2 market (G2)", async () => {
   responder = (url) =>
     url.endsWith("/0")
       ? {
@@ -186,7 +186,7 @@ test("fetchOddsUpdates filtra ao mercado 1X2 de jogo inteiro (G2)", async () => 
   assert.deepEqual(lista.map((r) => r.MessageId), ["a"]);
 });
 
-test("MessageId é STRING: a série não pode colapsar num registro só", async () => {
+test("MessageId is a STRING: the series must not collapse into a single record", async () => {
   // Parsing this string as a number produces NaN, which previously collapsed
   // every row to one Map entry and silently discarded the full series.
   const ids = [
@@ -208,11 +208,11 @@ test("MessageId é STRING: a série não pode colapsar num registro só", async 
       : { status: 200, body: [] };
 
   const lista = await fetchOddsUpdates(FIXTURE, KICKOFF);
-  assert.equal(lista.length, 3, "3 mensagens distintas continuam 3");
-  assert.deepEqual(lista.map((r) => r.Ts), [80, 90, 100], "ordenadas por Ts");
+  assert.equal(lista.length, 3, "3 distinct messages stay 3");
+  assert.deepEqual(lista.map((r) => r.Ts), [80, 90, 100], "sorted by Ts");
 });
 
-test("a mesma MessageId repetida em baldes vizinhos vira um evento só", async () => {
+test("the same MessageId repeated across neighbouring buckets becomes a single event", async () => {
   const linha = {
     FixtureId: FIXTURE,
     MessageId: "1837922149:00003:000572-10021-stab",

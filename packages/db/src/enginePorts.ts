@@ -47,7 +47,7 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
   const onError =
     opts.onError ??
     ((erro: Error, contexto: string) => {
-      console.error(`[ports] ${contexto} FALHOU: ${erro.message}`);
+      console.error(`[ports] ${contexto} FAILED: ${erro.message}`);
     });
 
   const emVoo = new Set<Promise<void>>();
@@ -100,7 +100,7 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
     },
 
     saveQuestion(q: Question): void {
-      // `savePrediction` espera esta promise antes de inserir a chave estrangeira.
+      // `savePrediction` awaits this promise before inserting the foreign key.
       const pr = disparar(`saveQuestion(${q.id})`, () => questions.save(q));
       perguntaEmVoo.set(q.id, pr);
     },

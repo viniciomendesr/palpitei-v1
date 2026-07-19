@@ -9,7 +9,7 @@ const scope = {
   partyId: 'FRANCE1',
 };
 
-test('emite um ticket SSE e o consome uma única vez', () => {
+test('it issues an SSE ticket and consumes it exactly once', () => {
   const store = createSseTicketStore({ ttlMs: 30_000 });
   const ticket = store.emitir(scope, 1_000);
   const expected = { purpose: scope.purpose, roomId: scope.roomId, partyId: scope.partyId };
@@ -18,7 +18,7 @@ test('emite um ticket SSE e o consome uma única vez', () => {
   assert.equal(store.consumir(ticket, expected, 1_002), null);
 });
 
-test('ticket SSE não autoriza outra finalidade, sala ou grupo', () => {
+test('an SSE ticket does not authorize another purpose, sala or party', () => {
   const store = createSseTicketStore({ ttlMs: 30_000 });
   const ticket = store.emitir(scope, 1_000);
   const expected = { purpose: scope.purpose, roomId: scope.roomId, partyId: scope.partyId };
@@ -29,7 +29,7 @@ test('ticket SSE não autoriza outra finalidade, sala ou grupo', () => {
   assert.equal(store.consumir(ticket, expected, 1_001), scope.did);
 });
 
-test('ticket SSE vencido é removido antes de poder abrir o stream', () => {
+test('an expired SSE ticket is removed before it can open the stream', () => {
   const store = createSseTicketStore({ ttlMs: 30 });
   const ticket = store.emitir(scope, 1_000);
 
@@ -40,7 +40,7 @@ test('ticket SSE vencido é removido antes de poder abrir o stream', () => {
   assert.equal(store.size(), 0);
 });
 
-test('a limpeza mantém a store de tickets SSE limitada', () => {
+test('cleanup keeps the SSE ticket store bounded', () => {
   let n = 0;
   const store = createSseTicketStore({ maxEntries: 2, createToken: () => `ticket-${++n}` });
   const first = store.emitir(scope, 1_000);

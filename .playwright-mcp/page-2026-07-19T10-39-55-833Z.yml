@@ -1,0 +1,42 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e4]:
+    - main [ref=f4e5]:
+      - generic [ref=f4e6]:
+        - generic [ref=f4e7]:
+          - generic [ref=f4e8]:
+            - generic [ref=f4e9]: P!
+            - generic [ref=f4e11]: PALPITEI
+          - generic [ref=f4e12]:
+            - generic [ref=f4e13]: "5"
+            - generic [ref=f4e16]:
+              - generic [ref=f4e17]: Nv 7
+              - generic [ref=f4e18]: "1.240"
+        - generic [ref=f4e19]:
+          - button "Ao Vivo" [ref=f4e20] [cursor=pointer]
+          - button "Próximos" [ref=f4e21] [cursor=pointer]
+          - button "Replays" [ref=f4e22] [cursor=pointer]
+        - generic [ref=f4e23]:
+          - generic [ref=f4e25] [cursor=pointer]:
+            - generic [ref=f4e26]:
+              - generic [ref=f4e27]: SÁB · 18:00 BRT
+              - generic [ref=f4e28]: DISPUTA DE 3º · COPA 2026 · DEMO · FATOS FIFA
+            - generic [ref=f4e29]:
+              - generic [ref=f4e30]: França
+              - generic [ref=f4e31]: – – –
+              - generic [ref=f4e32]: Inglaterra
+            - generic [ref=f4e33]: Palpitar →
+          - generic [ref=f4e36] [cursor=pointer]:
+            - generic [ref=f4e37]:
+              - generic [ref=f4e38]: DOM · 16:00 BRT
+              - generic [ref=f4e39]: FINAL · COPA 2026 · DEMO · FATOS FIFA
+            - generic [ref=f4e40]:
+              - generic [ref=f4e41]: Espanha
+              - generic [ref=f4e42]: – – –
+              - generic [ref=f4e43]: Argentina
+            - generic [ref=f4e44]: Palpitar →
+    - navigation [ref=f4e46]:
+      - button "Início" [ref=f4e47] [cursor=pointer]
+      - button "Ranking" [ref=f4e52] [cursor=pointer]
+      - button "Loja" [ref=f4e56] [cursor=pointer]
+      - button "Perfil" [ref=f4e61] [cursor=pointer]
+  - alert [ref=f4e66]

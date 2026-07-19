@@ -529,7 +529,7 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
         void createMatchRepo(db)
           .setState(fixtureId, 'finished')
           .catch((e) =>
-            console.warn(`[sala ${fixtureId}] setState finished falhou:`, e?.message ?? e),
+            console.warn(`[sala ${fixtureId}] setState finished failed:`, e?.message ?? e),
           );
       }
     },
@@ -563,7 +563,7 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
         lastOddsTs: sala.lastOddsTs,
         lastOddsMessageId: sala.lastOddsMessageId,
       })
-      .catch((e: unknown) => console.warn(`[sala ${fixtureId}] checkpoint falhou:`, e instanceof Error ? e.message : e));
+      .catch((e: unknown) => console.warn(`[sala ${fixtureId}] checkpoint failed:`, e instanceof Error ? e.message : e));
   };
 
   /** Processes replay and live events through the same path. */
@@ -857,10 +857,10 @@ async function awardDebutTrophy(sala: Room, user: User): Promise<void> {
   if (!canAwardDebutTrophy({ roomMode: sala.mode, training: sala.training, privyDid: user.privyId })) return;
   try {
     const awarded = await createTrophyRepo(sala.db).awardDebut(user.id, String(sala.fixtureId));
-    if (awarded) console.log(`[sala ${sala.fixtureId}] troféu de estreia concedido ao fã ${user.id}`);
+    if (awarded) console.log(`[sala ${sala.fixtureId}] debut trophy granted to fan ${user.id}`);
   } catch (e) {
     console.warn(
-      `[sala ${sala.fixtureId}] troféu de estreia falhou:`,
+      `[sala ${sala.fixtureId}] debut trophy failed:`,
       e instanceof Error ? e.message : e,
     );
   }

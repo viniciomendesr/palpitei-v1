@@ -57,7 +57,7 @@ export async function GET(
     userId = user.id;
     userHandle = user.handle;
   } catch (e) {
-    console.error('[palpitei] autorização do stream falhou:', e instanceof Error ? e.message : e);
+    console.error('[palpitei] stream authorization failed:', e instanceof Error ? e.message : e);
     return Response.json({ error: 'não deu para verificar seu acesso ao lobby' }, { status: 500 });
   } finally {
     await dbUser.close?.();

@@ -11,53 +11,53 @@ import {
   teamNameFontSize,
 } from '../src/server/selo-badge.ts';
 
-/** France x England, 18/07/2026 21:00 UTC — a partida real que gerou os selos. */
+/** France x England, 18/07/2026 21:00 UTC — the real match that generated the selos. */
 const FRANCE_ENGLAND = { p1: 'France', p2: 'England', startTime: Date.UTC(2026, 6, 18, 21, 0, 0) };
 
-test('separa o slug da data que ele carrega', () => {
+test('it separates the slug from the date it carries', () => {
   assert.deepEqual(parseSeloImageName('france-england-2026-07-18.png'), {
     slug: 'france-england-2026-07-18',
     isoDate: '2026-07-18',
   });
 });
 
-test('recusa nome sem .png, sem data e com data impossível', () => {
+test('it refuses a name with no .png, no date, or an impossible date', () => {
   assert.equal(parseSeloImageName('france-england-2026-07-18'), null);
   assert.equal(parseSeloImageName('france-england-2026-07-18.jpg'), null);
   assert.equal(parseSeloImageName('france-england.png'), null);
   assert.equal(parseSeloImageName('collection.png'), null);
-  // Bem formada, mas não é um dia: chegaria ao banco como consulta vazia.
+  // Well-formed, but not a real day: it would reach the database as an empty query.
   assert.equal(parseSeloImageName('france-england-2026-13-40.png'), null);
 });
 
-test('recusa travessia de caminho e caixa alta no slug', () => {
+test('it refuses path traversal and uppercase in the slug', () => {
   assert.equal(parseSeloImageName('../../etc/passwd-2026-07-18.png'), null);
   assert.equal(parseSeloImageName('France-England-2026-07-18.png'), null);
 });
 
-test('o slug aceito é exatamente o que o metadado gera', () => {
+test('the accepted slug is exactly what the metadata generates', () => {
   const gerado = matchSlug(FRANCE_ENGLAND.p1, FRANCE_ENGLAND.p2, FRANCE_ENGLAND.startTime);
   assert.equal(gerado, 'france-england-2026-07-18');
   assert.deepEqual(parseSeloImageName(`${gerado}.png`), { slug: gerado, isoDate: '2026-07-18' });
 });
 
-test('acha a partida do dia regenerando o slug, não por nome parecido', () => {
+test('it finds the day\'s match by regenerating the slug, not by a similar name', () => {
   const outra = { p1: 'Spain', p2: 'Argentina', startTime: Date.UTC(2026, 6, 18, 19, 0, 0) };
   const candidatas = [outra, FRANCE_ENGLAND];
   assert.equal(findMatchForSlug('france-england-2026-07-18', candidatas), FRANCE_ENGLAND);
   assert.equal(findMatchForSlug('spain-argentina-2026-07-18', candidatas), outra);
-  // Times certos, dia errado: não é a mesma partida e não pode responder pela URL.
+  // Right teams, wrong day: it is not the same match and must not answer for the URL.
   assert.equal(findMatchForSlug('france-england-2026-07-19', candidatas), null);
-  // Time só de um lado não basta.
+  // A team on one side alone is not enough.
   assert.equal(findMatchForSlug('france-2026-07-18', candidatas), null);
 });
 
-test('partida sem horário de início não vira selo', () => {
+test('a match with no start time does not become a selo', () => {
   assert.equal(findMatchForSlug('france-england-2026-07-18', [{ p1: 'France', p2: 'England' }]), null);
   assert.equal(seloMatchView({ p1: 'France', p2: 'England' }), null);
 });
 
-test('a view traz times em caixa alta, data pt-BR e o slug de origem', () => {
+test('the view brings uppercase teams, a pt-BR date and the source slug', () => {
   assert.deepEqual(seloMatchView(FRANCE_ENGLAND), {
     home: 'FRANCE',
     away: 'ENGLAND',
@@ -66,15 +66,15 @@ test('a view traz times em caixa alta, data pt-BR e o slug de origem', () => {
   });
 });
 
-test('a data do selo é UTC, o mesmo dia do slug e da âncora', () => {
-  // 23:30 UTC de 18/07 é 20:30 de 18/07 em BRT; um fuso local diria 18 e o slug 18,
-  // mas às 01:00 UTC de 19/07 (22:00 BRT do 18) eles divergiriam. Fixamos UTC.
+test('the selo date is UTC, the same day as the slug and the anchor', () => {
+  // 23:30 UTC on 18/07 is 20:30 on 18/07 in BRT; a local timezone would say 18 and the
+  // slug 18, but at 01:00 UTC on 19/07 (22:00 BRT on the 18th) they would diverge. We pin UTC.
   const tarde = Date.UTC(2026, 6, 19, 1, 0, 0);
   assert.equal(formatMatchDate(tarde), '19/07/2026');
   assert.equal(seloMatchView({ p1: 'France', p2: 'England', startTime: tarde })?.dateLabel, '19/07/2026');
 });
 
-test('nome longo de time desce de tamanho para não ser cortado pelo Satori', () => {
+test('a long team name scales down so Satori does not clip it', () => {
   const base = 100;
   assert.equal(teamNameFontSize({ home: 'FRANCE', away: 'ENGLAND' }, base), base * 0.88);
   assert.equal(teamNameFontSize({ home: 'ARGENTINA', away: 'SPAIN' }, base), base * 0.8);

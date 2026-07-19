@@ -17,7 +17,7 @@ const placar = (ts: number, seq = 0): ScoreEvent =>
 const odds = (ts: number, prices: { name: string; pct: number }[] = []): OddsEvent =>
   ({ kind: 'odds', ts, prices } as unknown as OddsEvent);
 
-test('mescla ordena por ts e intercala odds entre os lances', () => {
+test('the merge orders by ts and interleaves odds between the plays', () => {
   const linha = mergeTimeline([placar(10), placar(30)], [odds(20), odds(40)]);
   assert.deepEqual(
     linha.map((e) => [e.kind, e.ts]),
@@ -30,7 +30,7 @@ test('mescla ordena por ts e intercala odds entre os lances', () => {
   );
 });
 
-test('no EMPATE de ts, o placar vem ANTES da cotação (o lance é o contexto dela)', () => {
+test('on a ts TIE the score comes BEFORE the price (the play is its context)', () => {
   const linha = mergeTimeline([placar(100)], [odds(100)]);
   assert.deepEqual(
     linha.map((e) => e.kind),
@@ -38,7 +38,7 @@ test('no EMPATE de ts, o placar vem ANTES da cotação (o lance é o contexto de
   );
 });
 
-test('a mescla preserva a ordem de seq dos lances mesmo com ts fora de ordem (A3)', () => {
+test('the merge preserves the seq order of plays even with out-of-order ts (A3)', () => {
   // The feed can contain out-of-order timestamps; sequence order remains authoritative.
   const linha = mergeTimeline([placar(50, 1), placar(40, 2)], [odds(45)]);
   const soPlacar = linha.filter((e) => e.kind === 'score') as ScoreEvent[];
@@ -48,7 +48,7 @@ test('a mescla preserva a ordem de seq dos lances mesmo com ts fora de ordem (A3
   );
 });
 
-test('idDaOpcao1x2 traduz os nomes do feed para o id da opção', () => {
+test('optionIdFor1x2 translates feed names into the option id', () => {
   assert.equal(optionIdFor1x2('part1'), 'p1');
   assert.equal(optionIdFor1x2('1'), 'p1');
   assert.equal(optionIdFor1x2('home'), 'p1');
@@ -62,7 +62,7 @@ test('idDaOpcao1x2 traduz os nomes do feed para o id da opção', () => {
   assert.equal(optionIdFor1x2('over'), null);
 });
 
-test('atualizarPct1x2 guarda a última leitura por opção e ignora nomes estranhos', () => {
+test('update1x2Percentages keeps the latest reading per option and ignores foreign names', () => {
   const mapa: Pct1x2 = {};
   update1x2Percentages(mapa, odds(1, [
     { name: 'part1', pct: 41.2 },
@@ -79,7 +79,7 @@ test('atualizarPct1x2 guarda a última leitura por opção e ignora nomes estran
   assert.deepEqual(mapa, { p1: 55.0, draw: 27.5, p2: 31.3 });
 });
 
-test('registrarLeitura põe a mais recente PRIMEIRO e respeita o cap', () => {
+test('recordChanceReading puts the most recent one FIRST and respects the cap', () => {
   const chances: ChanceReading[] = [];
   const leitura = (ts: number): ChanceReading => ({
     id: `odds-${ts}:part1`,

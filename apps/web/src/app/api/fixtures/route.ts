@@ -54,7 +54,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     jogadasDoFa.status === 'fulfilled' ? jogadasDoFa.value : [],
   );
   if (jogadasDoFa.status === 'rejected') {
-    console.error('[palpitei] participações do fã falharam:', jogadasDoFa.reason);
+    console.error('[palpitei] fan participations failed:', jogadasDoFa.reason);
   }
 
   // The snapshot's GameState lags: it still read 1 while real score events were
@@ -65,7 +65,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     aoVivo.status === 'fulfilled' ? aoVivo.value.map((f) => f.fixtureId) : [],
   );
   if (aoVivo.status === 'rejected') {
-    console.error('[palpitei] estado ao vivo do cache falhou:', aoVivo.reason);
+    console.error('[palpitei] cached live state failed:', aoVivo.reason);
   }
 
   if (txline.status === 'fulfilled') {
@@ -86,7 +86,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     }
   } else {
     const e = txline.reason;
-    console.error('[palpitei] /fixtures/snapshot falhou:', e instanceof Error ? e.message : e);
+    console.error('[palpitei] /fixtures/snapshot failed:', e instanceof Error ? e.message : e);
   }
 
   if (cache.status === 'fulfilled') {
@@ -112,7 +112,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     }
   } else {
     const e = cache.reason;
-    console.error('[palpitei] cache do Postgres falhou:', e instanceof Error ? e.message : e);
+    console.error('[palpitei] Postgres cache failed:', e instanceof Error ? e.message : e);
   }
 
   return NextResponse.json({ fixtures });

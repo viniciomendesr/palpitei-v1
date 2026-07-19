@@ -33,6 +33,6 @@ export function erroParaResposta(e: unknown, contexto: string): NextResponse {
   if (ehErroDeDominio(e)) {
     return NextResponse.json({ error: e.message, code: e.code }, { status: e.status });
   }
-  console.error(`[palpitei] ${contexto} falhou:`, e instanceof Error ? e.message : e);
+  console.error(`[palpitei] ${contexto} failed:`, e instanceof Error ? e.message : e);
   return NextResponse.json({ error: 'não deu pra fazer isso agora' }, { status: 500 });
 }

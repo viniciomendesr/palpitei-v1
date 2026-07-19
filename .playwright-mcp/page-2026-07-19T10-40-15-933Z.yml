@@ -1,0 +1,43 @@
+- generic [active] [ref=f4e1]:
+  - main [ref=f4e5]:
+    - generic [ref=f4e80]:
+      - generic [ref=f4e81]:
+        - generic [ref=f4e82]:
+          - button "Voltar ao início" [ref=f4e83] [cursor=pointer]
+          - generic [ref=f4e86]: REPLAY DEMO · 64’
+          - generic [ref=f4e88]: 1.240 XP
+        - generic [ref=f4e91]:
+          - generic [ref=f4e92]: Argentina
+          - generic [ref=f4e98]:
+            - generic [ref=f4e99]: 1 – 1
+            - generic [ref=f4e100]: FASE DE 32 · COPA 2026
+          - generic [ref=f4e101]: Cabo Verde
+      - generic [ref=f4e110]:
+        - button "Lances" [ref=f4e111] [cursor=pointer]
+        - button "Estatísticas" [ref=f4e112] [cursor=pointer]
+        - button "Ranking" [ref=f4e113] [cursor=pointer]
+      - generic [ref=f4e115]:
+        - generic [ref=f4e116]:
+          - generic [ref=f4e117]: 59'
+          - generic [ref=f4e118]: "Gol de Cabo Verde: Deroy Duarte"
+        - generic [ref=f4e119]:
+          - generic [ref=f4e120]: 29'
+          - generic [ref=f4e121]: "Gol da Argentina: Lionel Messi"
+      - generic [ref=f4e123]:
+        - generic [ref=f4e125]:
+          - generic [ref=f4e126]: DESAFIO DO REPLAY · PRÓXIMO GOL
+          - generic [ref=f4e127]: vale 40 XP
+        - generic [ref=f4e130]: 12s
+        - generic [ref=f4e134]: Quem marca o próximo gol?
+        - generic [ref=f4e135]:
+          - button "Argentina 51%" [ref=f4e136] [cursor=pointer]:
+            - generic [ref=f4e137]: Argentina
+            - generic [ref=f4e138]: 51%
+          - button "Cabo Verde 23%" [ref=f4e139] [cursor=pointer]:
+            - generic [ref=f4e140]: Cabo Verde
+            - generic [ref=f4e141]: 23%
+          - button "Ninguém até o fim 26%" [ref=f4e142] [cursor=pointer]:
+            - generic [ref=f4e143]: Ninguém até o fim
+            - generic [ref=f4e144]: 26%
+        - generic [ref=f4e145]: A janela fecha antes do lance que resolve o desafio, justo pra todo mundo.
+  - alert [ref=f4e66]

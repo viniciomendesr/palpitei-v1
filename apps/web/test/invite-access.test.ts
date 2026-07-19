@@ -5,7 +5,7 @@ import { roomEntry } from '../src/lib/room-entry.ts';
 
 const pronto = { hydrated: true, privyReady: true } as const;
 
-test('convite: fã autenticado na Privy entra, mesmo sem sessão local (a regressão)', () => {
+test('invite: a Privy-authenticated fan joins, even with no local session (the regression)', () => {
   // A shared link always opens a fresh tab; the local session lives in sessionStorage
   // (per tab), so it is null here. Privy is the authority — and the join authenticates
   // with its Bearer, not with the local session.
@@ -15,7 +15,7 @@ test('convite: fã autenticado na Privy entra, mesmo sem sessão local (a regres
   );
 });
 
-test('convite: enquanto a Privy não está ready, o botão carrega — nunca oferece login', () => {
+test('invite: while Privy is not ready the button loads — it never offers login', () => {
   // Closes the race: between hydrated=true and privy.ready=true an authenticated fan
   // still looks logged out. A fast tapper must not be routed to login.
   assert.equal(
@@ -24,21 +24,21 @@ test('convite: enquanto a Privy não está ready, o botão carrega — nunca ofe
   );
 });
 
-test('convite: antes da hidratação o botão carrega', () => {
+test('invite: before hydration the button loads', () => {
   assert.equal(
     inviteAction({ ...pronto, hydrated: false, privyAuthenticated: false, authMethod: null }),
     'loading',
   );
 });
 
-test('convite: fã de demo precisa de conta real antes de um lobby que vale ranking', () => {
+test('invite: a demo fan needs a real account before a lobby that counts for ranking', () => {
   assert.equal(
     inviteAction({ ...pronto, privyAuthenticated: false, authMethod: 'demo' }),
     'login',
   );
 });
 
-test('convite: sessão demo com Privy autenticada entra — a Privy é a autoridade', () => {
+test('invite: a demo session with Privy authenticated joins — Privy is the authority', () => {
   // Deliberate. The local cache may say "demo" in one tab while Privy
   // (localStorage/cookie, cross-tab) is authenticated. Routing to login would be
   // exactly the bug this file fixes; and what the server sees on join is the verified
@@ -50,7 +50,7 @@ test('convite: sessão demo com Privy autenticada entra — a Privy é a autorid
   );
 });
 
-test('sala: Privy autenticada + id numérico cai no lobby REAL, não no mock', () => {
+test('sala: Privy authenticated + numeric id lands on the REAL lobby, not the mock', () => {
   // Without this, the join redirect (/sala/:id?party=CODE) sends the fan back to login:
   // a null local session renders SalaMock -> useRequireSession -> router.replace('/').
   assert.equal(
@@ -63,7 +63,7 @@ test('sala: Privy autenticada + id numérico cai no lobby REAL, não no mock', (
   );
 });
 
-test('sala: o demo nunca espera a rede e nunca cai no lobby real', () => {
+test('sala: the demo never waits on the network and never lands on the real lobby', () => {
   // Rule 3: the judge's path must not depend on Privy ever becoming ready.
   assert.equal(
     roomEntry({ hydrated: true, privyReady: false, roomId: 'arg-cab', privyAuthenticated: false, authMethod: 'demo' }),
@@ -75,7 +75,7 @@ test('sala: o demo nunca espera a rede e nunca cai no lobby real', () => {
   );
 });
 
-test('sala: sem hidratação ou sem Privy pronta, ninguém decide — o mock redireciona sozinho', () => {
+test('sala: without hydration or a ready Privy nobody decides — the mock redirects on its own', () => {
   assert.equal(
     roomEntry({ hydrated: false, privyReady: true, roomId: '18257865', privyAuthenticated: false, authMethod: null }),
     'loading',
@@ -86,7 +86,7 @@ test('sala: sem hidratação ou sem Privy pronta, ninguém decide — o mock red
   );
 });
 
-test('sala: sessão real sem Privy autenticada preserva o comportamento antigo', () => {
+test('sala: a real session without Privy authenticated preserves the old behaviour', () => {
   assert.equal(
     roomEntry({ ...pronto, roomId: '18257865', privyAuthenticated: false, authMethod: 'google' }),
     'lobby',

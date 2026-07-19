@@ -1,0 +1,20 @@
+- generic [active] [ref=e1]:
+  - main [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]: P!
+        - generic [ref=e11]:
+          - generic [ref=e12]: PALPITEI
+          - generic [ref=e13]: BETA
+        - generic [ref=e14]: COPA DO MUNDO 2026
+        - paragraph [ref=e20]: Palpite ao vivo, desafie seus amigos e se divirta.
+      - generic [ref=e21]:
+        - button "Entrar com Google Privy Privy" [ref=e22] [cursor=pointer]:
+          - generic [ref=e28]: Entrar com Google
+          - generic [ref=e30]:
+            - img "Privy" [ref=e31]
+            - generic [ref=e34]: Privy
+        - button "Entrar com carteira" [ref=e35] [cursor=pointer]
+        - button "Entrar na versão demo" [ref=e39] [cursor=pointer]
+        - paragraph [ref=e44]: No modo demo você entra na hora, com uma conta de teste pronta, sem carteira e sem configuração.
+  - alert [ref=e45]

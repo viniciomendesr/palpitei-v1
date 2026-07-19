@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Palpitei selo — o Selo TxLINE: metadados, âncora da TxODDS na Solana e o script de cunhagem one-off. Nada aqui roda no runtime da app.",
+  "description": "Palpitei selo — the Selo TxLINE: metadata, the TxODDS anchor on Solana and the one-off minting script. Nothing here runs in the app runtime.",
   "engines": {
     "node": ">=22.6.0"
   },

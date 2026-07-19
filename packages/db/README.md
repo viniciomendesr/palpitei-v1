@@ -1,147 +1,147 @@
 # @palpitei/db
 
-Schema Postgres (Supabase) + camada de repositório.
+Postgres (Supabase) schema + repository layer.
 
-**Supabase é usado só como Postgres.** Sem Supabase Auth, sem RLS de `auth.uid()`,
-sem client Supabase no browser. A identidade é o `privy_did` verificado; só o
-backend fala com o banco, por connection string.
+**Supabase is used only as Postgres.** No Supabase Auth, no `auth.uid()` RLS,
+no Supabase client in the browser. Identity is the verified `privy_did`; only the
+backend talks to the database, over a connection string.
 
 ```bash
-cp .env.example .env      # preencha DATABASE_URL (o .env.example explica onde achar)
-npm run db:migrate        # aplica supabase/migrations em ordem; idempotente
-npm run db:status         # o que já foi aplicado
-npm test -w @palpitei/db  # 30 testes contra Postgres de verdade (PGlite/WASM, sem instalar nada)
+cp .env.example .env      # fill in DATABASE_URL (.env.example explains where to find it)
+npm run db:migrate        # applies supabase/migrations in order; idempotent
+npm run db:status         # what has already been applied
+npm test -w @palpitei/db  # 30 tests against real Postgres (PGlite/WASM, nothing to install)
 ```
 
-## Uso
+## Usage
 
 ```ts
 import { createPalpitei } from '@palpitei/db';
 
-const p = createPalpitei();                       // usa DATABASE_URL
+const p = createPalpitei();                       // uses DATABASE_URL
 const fa = await p.users.findOrCreateByPrivyDid(did, { wallet, walletSource });
-await p.users.setHandle(fa.id, 'craque.10');      // 409 se já for de outra pessoa
+await p.users.setHandle(fa.id, 'craque.10');      // 409 if it already belongs to someone else
 ```
 
-`p` traz: `users`, `matches`, `events`, `odds`, `questions`, `predictions`,
+`p` gives you: `users`, `matches`, `events`, `odds`, `questions`, `predictions`,
 `liveFixtures`, `questionTemplates`, `gameSessions`, `markets`, `gamification`,
-`cache` (timeline da partida), `ports` (EnginePorts) e `db`
-(`query`/`withTx` crus).
+`cache` (match timeline), `ports` (EnginePorts) and `db`
+(raw `query`/`withTx`).
 
-## Se você está ligando isto no core ou na web, leia estes 6 pontos
+## If you are wiring this into core or web, read these 6 points
 
-1. **`ports.flush()` depois de aceitar palpite.** O core chama as portas em
-   fire-and-forget. `engine.place()` devolve `{ok:true}` antes de o INSERT
-   terminar; sem o flush, uma falha de escrita deixa o fã ouvindo "palpite
-   registrado" para um palpite que não existe.
+1. **`ports.flush()` after accepting a palpite.** Core calls the ports in
+   fire-and-forget. `engine.place()` returns `{ok:true}` before the INSERT
+   finishes; without the flush, a write failure leaves the fan hearing "palpite
+   registered" for a palpite that does not exist.
 
    ```ts
    const r = room.placePrediction(userId, questionId, choice);
    if (!r.ok) return res.status(400).json(r);
-   await ports.flush();   // estoura aqui se o banco recusou
+   await ports.flush();   // blows up here if the database refused
    return res.json(r);
    ```
 
-2. **Grave a pergunta no `question_open`.** `predictions` referencia `questions`
-   por FK: palpite em pergunta não gravada estoura na hora em que o fã palpita.
-   Use `ports.saveQuestion(q)` (ou `questions.save(q)`) no handler do emit.
+2. **Save the question on `question_open`.** `predictions` references `questions`
+   by FK: a palpite on an unsaved question blows up the moment the fan palpita.
+   Use `ports.saveQuestion(q)` (or `questions.save(q)`) in the emit handler.
 
-3. **`saveUser` NÃO é implementado, de propósito.** Ele mandaria um total de XP
-   calculado em memória — escrita cega e absoluta, que perde XP quando o mesmo
-   fã está em duas salas. O XP de palpite vai por `savePrediction(p)` com
-   `result` preenchido (CAS idempotente); o saldo, por `saveBet` +
-   `markets.resolve`. Leia o cabeçalho de `src/enginePorts.ts` antes de mexer.
+3. **`saveUser` is NOT implemented, on purpose.** It would send an XP total
+   computed in memory — a blind, absolute write that loses XP when the same
+   fan is in two rooms. Palpite XP goes through `savePrediction(p)` with
+   `result` filled in (idempotent CAS); the balance goes through `saveBet` +
+   `markets.resolve`. Read the header of `src/enginePorts.ts` before touching it.
 
-4. **`db.User.handle` é `string | null`; o `core.User.handle` é `string`.** Não é
-   descuido: o fã nasce sem apelido porque o onboarding é que pergunta (E12 —
-   derivar do e-mail vazaria o endereço dele no ranking). O compilador vai te
-   obrigar a decidir; a decisão certa é barrar quem ainda não escolheu:
+4. **`db.User.handle` is `string | null`; `core.User.handle` is `string`.** This is not
+   an oversight: the fan is born without a handle because onboarding is what asks
+   for it (E12 — deriving it from the e-mail would leak their address in the ranking).
+   The compiler forces you to decide; the right call is to block whoever has not chosen:
 
    ```ts
    if (!fa.handle) return res.status(409).json({ error: 'escolhe seu apelido primeiro' });
    ```
 
-   Idem `wallet` e `walletSource`: os dois são `null` quando a Privy não criou
-   carteira (E2 — `createOnLogin` defaulta a `'off'`), e é assim que a regressão
-   fica visível em vez de virar uma carteira inventada. **`walletSource === null`
-   não é `'simulated'`**: `simulated` é o modo demo (§5.1), e marcar um
-   `did:privy:*` real como demo é justamente dizer que ele NÃO cumpriu
-   "sign up through Solana" — o banco recusa essa combinação
-   (`users_did_namespace_ck`). Quem precisa de carteira testa por `null`:
+   Same for `wallet` and `walletSource`: both are `null` when Privy did not create
+   a wallet (E2 — `createOnLogin` defaults to `'off'`), and that is how the
+   regression stays visible instead of turning into a made-up wallet.
+   **`walletSource === null` is not `'simulated'`**: `simulated` is the demo mode
+   (§5.1), and marking a real `did:privy:*` as demo is precisely saying it did NOT
+   fulfil "sign up through Solana" — the database refuses that combination
+   (`users_did_namespace_ck`). Whoever needs a wallet tests for `null`:
 
    ```ts
    if (!fa.wallet) return res.status(409).json({ error: 'sua conta ainda não tem carteira' });
    ```
 
-   O detector da regressão (tem que dar 0):
+   The regression detector (must return 0):
 
    ```sql
    select count(*) from users where privy_did like 'did:privy:%' and wallet_pubkey is null;
    ```
 
-5. **Estado de partida: `upsert` não decide, `setState` decide.** `matches.upsert`
-   com `state` ausente PRESERVA o estado que já estava lá (não sabe ≠ agendada).
-   Para mover a partida de propósito, use `matches.setState(fixtureId, estado)`.
+5. **Match state: `upsert` does not decide, `setState` decides.** `matches.upsert`
+   with `state` absent PRESERVES the state that was already there (don't know ≠
+   scheduled). To move the match on purpose, use `matches.setState(fixtureId, estado)`.
 
-6. **Mercado: quem resolve é quem paga.** `markets.save()` nunca grava
-   `state='resolved'` (rebaixa para `'closed'`). A resolução é `markets.resolve(market, bets)`,
-   que vira o estado e credita na MESMA transação, sob o CAS. Se você gravar o
-   mercado "resolvido" por fora e só depois chamar `resolve()`, sem essa trava
-   ninguém receberia e nada estouraria.
+6. **Market: whoever resolves is whoever pays.** `markets.save()` never writes
+   `state='resolved'` (it downgrades to `'closed'`). Resolution is `markets.resolve(market, bets)`,
+   which flips the state and credits in the SAME transaction, under the CAS. If you
+   write the market as "resolved" from the outside and only then call `resolve()`,
+   without this lock nobody would be paid and nothing would blow up.
 
-7. **Sessão e template não substituem a instância.** `question_templates` define
-   catálogo versionado; mudanças de conteúdo devem criar uma nova versão.
-   `questions` guarda o prompt, opções, janelas e
-   resultado efetivamente entregues ao fã. Ao abrir uma sessão, fixe as versões
-   no `template_set` e salve `session_id`, `template_id`, `template_version` e
-   `trigger_key` na instância. O índice único por sessão/template/gatilho torna
-   o reprocessamento idempotente.
+7. **Session and template do not replace the instance.** `question_templates`
+   defines a versioned catalogue; content changes must create a new version.
+   `questions` holds the prompt, options, windows and
+   result actually delivered to the fan. When opening a session, pin the versions
+   in the `template_set` and save `session_id`, `template_id`, `template_version`
+   and `trigger_key` on the instance. The unique index per session/template/trigger
+   makes reprocessing idempotent.
 
-8. **Checkpoint não é linha do tempo.** `game_sessions.checkpoint()` guarda
-   snapshot e cursores para retomar uma sala após restart. Eventos e odds em
-   `match_events`/`match_odds` seguem como evidência auditável e fonte para
-   reconciliação. Não descarte a timeline depois do checkpoint.
+8. **A checkpoint is not a timeline.** `game_sessions.checkpoint()` stores a
+   snapshot and cursors to resume a room after a restart. Events and odds in
+   `match_events`/`match_odds` remain as auditable evidence and as the source for
+   reconciliation. Do not discard the timeline after the checkpoint.
 
-## O que o schema garante sozinho
+## What the schema guarantees on its own
 
-Estas não dependem de ninguém lembrar de nada — o banco recusa:
+These do not depend on anyone remembering anything — the database refuses:
 
-| Invariante | Como |
+| Invariant | How |
 |---|---|
-| XP não é pago duas vezes num replay | `settle` só morde `where result is null` (CAS) |
-| Nível nunca diverge do XP | `level` é coluna GERADA: `floor(sqrt(xp/100)) + 1` |
-| Reenvio do stream não duplica evento | `primary key (fixture_id, seq)` |
-| Série de odds não colapsa num registro | `message_id` é **TEXT** (é string no feed) |
-| Evento sem bloco `Score` não vira 0–0 | `check (has_score or score_totals is null)` (A4) |
-| Conta demo não se passa por conta real | `users_did_namespace_ck` (`demo:` vs `did:privy:`) |
-| Dois fãs não pegam o mesmo apelido | unique index em `lower(handle)` |
-| Carteira sem origem (ou origem sem carteira) não entra | `users_wallet_par_ck` |
-| A anon key do Supabase não lê nada | RLS ligada **sem policy** em todas as tabelas |
-| A role errada não serve um banco vazio | `assertDbReady` checa `row_security_active('users')` |
-| Uma sessão ativa não é duplicada | índice parcial em `(fixture_id, party_id, treino)` |
-| Pergunta reentregue não duplica por gatilho | índice parcial em `(session_id, template_id, trigger_key)` |
+| XP is not paid twice on a replay | `settle` only bites `where result is null` (CAS) |
+| Level never diverges from XP | `level` is a GENERATED column: `floor(sqrt(xp/100)) + 1` |
+| A stream resend does not duplicate an event | `primary key (fixture_id, seq)` |
+| An odds series does not collapse into one record | `message_id` is **TEXT** (it is a string in the feed) |
+| An event without a `Score` block does not become 0–0 | `check (has_score or score_totals is null)` (A4) |
+| A demo account cannot pass as a real one | `users_did_namespace_ck` (`demo:` vs `did:privy:`) |
+| Two fans cannot take the same handle | unique index on `lower(handle)` |
+| A wallet without a source (or a source without a wallet) does not get in | `users_wallet_par_ck` |
+| The Supabase anon key reads nothing | RLS enabled **with no policy** on every table |
+| The wrong role cannot serve an empty database | `assertDbReady` checks `row_security_active('users')` |
+| An active session is not duplicated | partial index on `(fixture_id, party_id, treino)` |
+| A redelivered question does not duplicate per trigger | partial index on `(session_id, template_id, trigger_key)` |
 
-Buracos na sequência (evento perdido) são consulta, não descoberta:
-`events.findSeqGaps(fixtureId)`. Partidas sem `start_ts` (o G4, que faz o
-desafio nascer fechado): `matches.semStartTs()`. Fãs da Privy sem carteira
-Solana (o E2): `select count(*) from users where privy_did like 'did:privy:%'
-and wallet_pubkey is null` — tem que dar 0.
+Gaps in the sequence (a lost event) are a query, not a discovery:
+`events.findSeqGaps(fixtureId)`. Matches without `start_ts` (G4, the one that makes
+the challenge be born closed): `matches.semStartTs()`. Privy fans without a Solana
+wallet (E2): `select count(*) from users where privy_did like 'did:privy:%'
+and wallet_pubkey is null` — it has to return 0.
 
-**`assertDbReady(db)` no boot, sempre.** A RLS ligada sem policy fecha o
-PostgREST, mas ela também é uma armadilha: qualquer role que não seja a dona do
-schema passa a ler **zero linhas de tudo, sem erro e sem log**. O check não pode
-ser "voltou linha?" — `select count(*)` devolve uma linha dizendo `n=0` mesmo
-quando a RLS zerou tudo. Por isso ele pergunta `row_security_active('users')`.
+**`assertDbReady(db)` at boot, always.** RLS enabled with no policy shuts
+PostgREST out, but it is also a trap: any role that is not the schema owner starts
+reading **zero rows of everything, with no error and no log**. The check cannot be
+"did a row come back?" — `select count(*)` returns one row saying `n=0` even
+when RLS zeroed everything out. That is why it asks `row_security_active('users')`.
 
-## Cache de partida
+## Match cache
 
-`p.cache` substitui o `.cache/fixtures/*.json` do v0 — **T&C §7**: o dado da
-TxLINE não pode ser redistribuído, e este repositório é público. A timeline mora
-em `match_events`/`match_odds` (não num blob à parte: seria uma segunda verdade).
+`p.cache` replaces v0's `.cache/fixtures/*.json` — **T&C §7**: TxLINE data
+cannot be redistributed, and this repository is public. The timeline lives in
+`match_events`/`match_odds` (not in a separate blob: that would be a second truth).
 
 ```ts
-await p.cache.save(matchCache);   // idempotente; recusa cache sem startTime (G4)
-const c = await p.cache.load(18241006);   // null se não há timeline gravada
+await p.cache.save(matchCache);   // idempotent; refuses a cache without startTime (G4)
+const c = await p.cache.load(18241006);   // null if there is no saved timeline
 ```
 
-Também responde por `salvarCache` / `lerCache` / `listarCache`, os nomes do v0.
+It also answers to `salvarCache` / `lerCache` / `listarCache`, the v0 names.

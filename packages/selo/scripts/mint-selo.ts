@@ -1,15 +1,15 @@
 // One-off backfill that mints the Selo TxLINE for correct in-play predictions.
 //
-// Uso:
-//   npm run selo:mint -w @palpitei/selo -- <fixtureId>              (DRY RUN, o padrão)
-//   npm run selo:mint -w @palpitei/selo -- <fixtureId> --confirm    (transmite de verdade)
+// Usage:
+//   npm run selo:mint -w @palpitei/selo -- <fixtureId>              (DRY RUN, the default)
+//   npm run selo:mint -w @palpitei/selo -- <fixtureId> --confirm    (actually broadcasts)
 //
-// NÃO é mint automático e não roda no servidor. É rodado por um humano, da
-// máquina dele, com a chave dele, depois de conferir o dry run.
+// This is NOT an automatic mint and does not run on the server. A human runs it,
+// from their own machine, with their own key, after reviewing the dry run.
 //
-// A CHAVE NUNCA VEM POR ENV. `MINT_AUTHORITY_KEYPAIR` é o CAMINHO de um file
-// fora do repo; segredo em env vaza por `ps`, dump de crash, log de processo e
-// por `railway variables --kv` rodado com alguém olhando. Só o pubkey é impresso.
+// THE KEY NEVER COMES FROM THE ENVIRONMENT. `MINT_AUTHORITY_KEYPAIR` is the PATH
+// of a key file outside the repo; a secret in env leaks through `ps`, crash
+// dumps, process logs and `railway variables --kv`. Only the pubkey is printed.
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -32,7 +32,7 @@ import {
   type SeloMetadata,
 } from '../src/metadata.ts';
 
-/** France x England: a única partida ao vivo já ingerida e gravada. */
+/** France x England: the only live match that has been ingested and recorded. */
 const DEFAULT_FIXTURE_ID = 18257865;
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -75,7 +75,7 @@ function parseOptions(argv: string[]): Options {
 
   return {
     fixtureId,
-    // --dry-run é o PADRÃO. Só a presença explícita de --confirm transmite.
+    // --dry-run is the DEFAULT. Only an explicit --confirm broadcasts.
     confirm: argv.includes('--confirm'),
     cluster,
     rpc: process.env.SOLANA_RPC_URL?.trim() || DEFAULT_RPC[cluster],
@@ -85,7 +85,7 @@ function parseOptions(argv: string[]): Options {
     pinnedCollection: process.env.SELO_COLLECTION_ADDRESS?.trim() || null,
     allowMissingImage: argv.includes('--allow-missing-image'),
     skipRoot: argv.includes('--no-stat-root'),
-    // NUMÉRICO: statKey='Goals' devolve HTTP 500. 1 e 4 funcionam.
+    // NUMERIC: statKey='Goals' returns HTTP 500. 1 and 4 work.
     statKey: Number(process.env.SELO_STAT_KEY ?? 1),
     grantDebut: argv.includes('--grant-debut') || argv.includes('--trophies-only'),
     trophiesOnly: argv.includes('--trophies-only'),
@@ -112,7 +112,7 @@ function loadMintAuthoritySecret(path: string) {
     if (!Array.isArray(cru)) throw new TypeError('o arquivo não é um array JSON de bytes');
     bytes = Uint8Array.from(cru as number[]);
   } catch (e) {
-    // Nunca inclua o conteúdo do file na mensagem.
+    // Never include the file contents in the message.
     throw new Error(`não deu para ler a chave em ${path}: ${e instanceof Error ? e.message : 'formato inválido'}`);
   }
   if (bytes.length !== 64) {
@@ -127,16 +127,9 @@ const shorten = (address: string): string => `${address.slice(0, 4)}…${address
 /**
  * Checks that an image URL actually serves a PNG.
  *
- * THE ART IS NO LONGER A FILE. The seals are rendered on demand by
- * `apps/web/src/app/selo/`, so `existsSync` on `public/selo/*.png` — what this
- * guard used to do — would now fail forever on images that are perfectly fine.
- * The check moved to the only question that was ever being asked: does the URL
- * the asset will point at, permanently, return an image?
- *
- * This is STRICTLY STRONGER than the old check, not weaker. The file test
- * confirmed a byte on the developer's disk and said nothing about the deployed
- * URL; a PNG present locally and never deployed passed it. This one fetches the
- * URL the metadata publishes.
+ * The art is not a file on disk: the seals are rendered on demand by
+ * `apps/web/src/app/selo/`, so only the deployed URL the metadata publishes can
+ * be checked, never local bytes.
  *
  * It FAILS CLOSED. Any non-200, any content type that is not an image, an empty
  * body, a refused connection, DNS failure or timeout all return false, and false
@@ -152,14 +145,14 @@ async function imageUrlResolves(url: string): Promise<{ ok: boolean; motivo: str
     const response = await fetch(url, { signal: controller.signal, redirect: 'follow' });
     if (!response.ok) return { ok: false, motivo: `HTTP ${response.status}` };
     const type = response.headers.get('content-type') ?? '';
-    if (!type.startsWith('image/')) return { ok: false, motivo: `content-type ${type || '(ausente)'}` };
+    if (!type.startsWith('image/')) return { ok: false, motivo: `content-type ${type || '(missing)'}` };
     const bytes = new Uint8Array(await response.arrayBuffer());
     // PNG magic. A 200 with an HTML error page is exactly the failure this catches.
     const isPng = bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
-    if (!isPng) return { ok: false, motivo: `${bytes.length} bytes que não começam com a assinatura PNG` };
-    return { ok: true, motivo: `${bytes.length} bytes de PNG` };
+    if (!isPng) return { ok: false, motivo: `${bytes.length} bytes that do not start with the PNG signature` };
+    return { ok: true, motivo: `${bytes.length} bytes of PNG` };
   } catch (e) {
-    return { ok: false, motivo: e instanceof Error ? e.message : 'falha de rede' };
+    return { ok: false, motivo: e instanceof Error ? e.message : 'network failure' };
   } finally {
     clearTimeout(timeout);
   }
@@ -173,10 +166,9 @@ async function imageUrlResolves(url: string): Promise<{ ok: boolean; motivo: str
  * returned: they are the licensed data itself, and a mint is permanent.
  *
  * Returns the base58 root only when verification passes. On any failure it
- * returns null and PRINTS WHY, because the previous version printed "a resposta
- * não trouxe eventStatRoot" when the truth was "veio e eu não soube ler" (it is
- * 32 bytes in numeric keys, never a string). A wrong reason costs more than a
- * missing attribute.
+ * returns null and PRINTS WHY: the root arrives as 32 bytes under numeric keys,
+ * never as a string, so "no root in the response" and "could not read the root"
+ * are easy to confuse and a wrong reason costs more than a missing attribute.
  */
 async function readVerifiedEventStatRoot(
   palpitei: ReturnType<typeof createPalpitei>,
@@ -193,7 +185,7 @@ async function readVerifiedEventStatRoot(
     );
     const seq = rows[0]?.seq;
     if (seq == null) {
-      console.warn(`âncora: sem game_finalised gravado para ${options.fixtureId}; root omitido.`);
+      console.warn(`anchor: no game_finalised stored for ${options.fixtureId}; root omitted.`);
       return null;
     }
     await ensureJwt();
@@ -209,7 +201,7 @@ async function readVerifiedEventStatRoot(
     // after midnight UTC would otherwise derive the wrong day's account.
     const proofTs = Number(response?.ts);
     if (!Number.isFinite(proofTs)) {
-      console.warn('âncora: a prova não trouxe ts utilizável; root omitido.');
+      console.warn('anchor: the proof carried no usable ts; root omitted.');
       return null;
     }
     const epochDay = epochDayFrom(proofTs);
@@ -220,7 +212,7 @@ async function readVerifiedEventStatRoot(
     const account = await umi.rpc.getAccount(publicKey(anchorPda));
     const accountData = account.exists ? account.data : null;
     if (account.exists && String(account.owner) !== ANCHOR_PROGRAM_IDS[options.cluster]) {
-      console.warn(`âncora: a conta ${anchorPda} não pertence ao programa de validação; root omitido.`);
+      console.warn(`anchor: account ${anchorPda} is not owned by the validation program; root omitted.`);
       return null;
     }
 
@@ -239,12 +231,12 @@ async function readVerifiedEventStatRoot(
       // the validation program and report this same day. Falling back to the
       // kickoff day here would throw away a better derivation over a failure
       // that has nothing to do with it.
-      console.warn(`âncora: root NÃO verificado, atributo omitido. Motivo: ${verification.reason}`);
+      console.warn(`anchor: root NOT verified, attribute omitted. Reason: ${verification.reason}`);
       return { base58Root: null, anchorPda, epochDay };
     }
     return { base58Root: base58.deserialize(verification.root)[0], anchorPda, epochDay };
   } catch (e) {
-    console.warn(`âncora: verificação falhou (${e instanceof Error ? e.message : 'erro'}); root omitido.`);
+    console.warn(`anchor: verification failed (${e instanceof Error ? e.message : 'error'}); root omitted.`);
     return null;
   }
 }
@@ -262,21 +254,21 @@ async function backfillDebutTrophies(
 ): Promise<void> {
   const fans = await palpitei.trophies.listDebutBackfill(options.fixtureId);
   const pending = fans.filter((f) => !f.alreadyHasDebut);
-  console.log(`\n=== troféu de estreia (fixture ${options.fixtureId}) ===`);
-  console.log(`  fãs que palpitaram: ${fans.length}`);
-  console.log(`  já tinham a estreia: ${fans.length - pending.length}`);
-  console.log(`  a conceder: ${pending.length}`);
+  console.log(`\n=== debut trophy (fixture ${options.fixtureId}) ===`);
+  console.log(`  fans who made a palpite: ${fans.length}`);
+  console.log(`  already had the debut: ${fans.length - pending.length}`);
+  console.log(`  to grant: ${pending.length}`);
   for (const f of pending) console.log(`    ${f.handle ?? f.userId}`);
 
   if (!options.confirm) {
-    console.log(`  DRY RUN: nenhum troféu foi gravado.`);
+    console.log(`  DRY RUN: no trophy was written.`);
     return;
   }
   let granted = 0;
   for (const f of pending) {
     if (await palpitei.trophies.awardDebut(f.userId, String(options.fixtureId))) granted++;
   }
-  console.log(`  granted: ${granted} (nenhum XP foi escrito)`);
+  console.log(`  granted: ${granted} (no XP was written)`);
 }
 
 /**
@@ -300,33 +292,33 @@ async function waitForCollection(
       await new Promise((r) => setTimeout(r, 1_000));
     }
   }
-  throw new Error(`a coleção ${address} não ficou legível a tempo — nada foi cunhado`);
+  throw new Error(`collection ${address} did not become readable in time — nothing was minted`);
 }
 
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
 
-  console.log(`=== Selo TxLINE — ${options.confirm ? 'CUNHAGEM REAL' : 'DRY RUN (nada é transmitido)'} ===`);
+  console.log(`=== Selo TxLINE — ${options.confirm ? 'REAL MINT' : 'DRY RUN (nothing is broadcast)'} ===`);
   console.log(`fixture:  ${options.fixtureId}`);
   console.log(`cluster:  ${options.cluster}`);
   console.log(`rpc:      ${options.rpc}`);
   console.log(`base url: ${options.baseUrl}`);
-  console.log(`metadados em: ${options.outDir}`);
+  console.log(`metadata in: ${options.outDir}`);
 
   const palpitei = createPalpitei();
   try {
     if (options.grantDebut) await backfillDebutTrophies(palpitei, options);
     if (options.trophiesOnly) {
-      console.log(`\n--trophies-only: parando aqui. Nenhuma chave foi lida, nada foi transmitido.`);
+      console.log(`\n--trophies-only: stopping here. No key was read, nothing was broadcast.`);
       return;
     }
 
     // One row per fan already: the query returns each fan's FIRST live palpite.
     const candidates = await palpitei.trophies.listSeloCandidates(options.fixtureId);
-    console.log(`\nestreias ao vivo no Postgres: ${candidates.length} (um Selo por fã)`);
+    console.log(`\nlive debuts in Postgres: ${candidates.length} (one Selo per fan)`);
     if (candidates.length === 0) {
       console.log(
-        'ninguém estreou ao vivo nessa fixture com carteira real. Nada a cunhar.',
+        'nobody debuted live on this fixture with a real wallet. Nothing to mint.',
       );
       return;
     }
@@ -346,16 +338,16 @@ async function main(): Promise<void> {
       String(umi.eddsa.findPda(publicKey(ANCHOR_PROGRAM_IDS[options.cluster]), dailyScoresRootsSeeds(epochDay))[0]);
 
     console.log(
-      `âncora TxLINE (epoch day ${epochDay}${anchor ? ', do ts da prova' : ', do apito: prova indisponível'}): ${anchorPda}`,
+      `TxLINE anchor (epoch day ${epochDay}${anchor ? ', from the proof ts' : ', from kickoff: proof unavailable'}): ${anchorPda}`,
     );
-    console.log(`programa de validação: ${ANCHOR_PROGRAM_IDS[options.cluster]}`);
+    console.log(`validation program: ${ANCHOR_PROGRAM_IDS[options.cluster]}`);
     const eventStatRoot = anchor?.base58Root ?? null;
-    if (eventStatRoot) console.log(`eventStatRoot VERIFICADO (bs58): ${eventStatRoot}`);
+    if (eventStatRoot) console.log(`eventStatRoot VERIFIED (bs58): ${eventStatRoot}`);
 
     mkdirSync(options.outDir, { recursive: true });
 
-    // A coleção também precisa de um JSON no ar; escrever aqui evita cunhar
-    // apontando para uma uri que responde 404 para sempre.
+    // The collection needs a JSON served too; writing it here avoids minting
+    // against a uri that would answer 404 forever.
     const collectionMetadata = {
       name: SELO_COLLECTION_NAME,
       description:
@@ -367,7 +359,7 @@ async function main(): Promise<void> {
     };
     writeFileSync(join(options.outDir, 'collection.json'), `${JSON.stringify(collectionMetadata, null, 2)}\n`, 'utf8');
 
-    // ---- o que seria cunhado, item a item -----------------------------------
+    // ---- what would be minted, item by item ---------------------------------
     type MintItem = {
       candidate: SeloCandidate;
       metadata: SeloMetadata;
@@ -379,7 +371,7 @@ async function main(): Promise<void> {
     const items: MintItem[] = candidates.map((c) => {
       const startTime = c.startTime;
       if (startTime == null) {
-        throw new Error(`a fixture ${options.fixtureId} não tem start_ts no banco; sem data não há slug nem âncora`);
+        throw new Error(`fixture ${options.fixtureId} has no start_ts in the database; without a date there is no slug and no anchor`);
       }
       const slug = matchSlug(c.p1, c.p2, startTime);
       // Keyed by fan, never by question: two fans can debut on the SAME question.
@@ -409,88 +401,88 @@ async function main(): Promise<void> {
 
     for (const item of items) {
       const { candidate: c } = item;
-      console.log(`\n--- ${c.handle ?? '(sem apelido)'} ---`);
-      console.log(`  carteira:   ${shorten(c.walletPubkey)}  (${c.walletSource})`);
-      console.log(`  estreia em: ${new Date(c.placedAt).toISOString()}`);
-      console.log(`  pergunta:   ${c.prompt}`);
+      console.log(`\n--- ${c.handle ?? '(no handle)'} ---`);
+      console.log(`  wallet:     ${shorten(c.walletPubkey)}  (${c.walletSource})`);
+      console.log(`  debut at:   ${new Date(c.placedAt).toISOString()}`);
+      console.log(`  question:   ${c.prompt}`);
       console.log(`  palpite:    ${c.choiceLabel}`);
-      console.log(`  nome:       ${item.metadata.name}`);
+      console.log(`  name:       ${item.metadata.name}`);
       console.log(`  uri:        ${item.uri}`);
-      console.log(`  imagem:     ${item.metadata.image}`);
+      console.log(`  image:      ${item.metadata.image}`);
       if (item.existingMint) {
-        console.log(`  ESTADO:     já existe registro de cunhagem (${item.existingMint}) — será PULADO`);
+        console.log(`  STATE:      a mint record already exists (${item.existingMint}) — will be SKIPPED`);
       }
-      // O documento inteiro, para conferência campo a campo antes de algo permanente.
-      console.log(`  metadado:\n${JSON.stringify(item.metadata, null, 2).replace(/^/gm, '    ')}`);
+      // The whole document, for field-by-field review before anything permanent.
+      console.log(`  metadata:\n${JSON.stringify(item.metadata, null, 2).replace(/^/gm, '    ')}`);
       writeFileSync(item.file, `${JSON.stringify(item.metadata, null, 2)}\n`, 'utf8');
     }
 
     const pendingItems = items.filter((i) => !i.existingMint);
 
-    console.log(`\n=== resumo ===`);
-    console.log(`  a cunhar:  ${pendingItems.length}`);
-    console.log(`  pulados:   ${items.length - pendingItems.length} (já registrados)`);
-    console.log(`  JSON escrito em ${options.outDir} (${items.length} arquivo(s))`);
+    console.log(`\n=== summary ===`);
+    console.log(`  to mint:   ${pendingItems.length}`);
+    console.log(`  skipped:   ${items.length - pendingItems.length} (already recorded)`);
+    console.log(`  JSON written to ${options.outDir} (${items.length} file(s))`);
 
-    // As imagens são RENDERIZADAS por rota, não arquivos no disco, e o selo é por
-    // PARTIDA: os três fãs desta fixture apontam para a mesma arte. Conferimos a
-    // URL única de cada item mais a da coleção, que é cunhada junto.
+    // The art is rendered per route, not stored on disk, and it is keyed by
+    // MATCH: every fan in a fixture points at the same image. Check the distinct
+    // URLs plus the collection's, which is minted alongside them.
     const imageUrls = [...new Set([...pendingItems.map((i) => i.metadata.image), collectionMetadata.image])];
-    console.log(`\n=== imagens (renderizadas por rota, conferidas por HTTP) ===`);
+    console.log(`\n=== images (rendered per route, checked over HTTP) ===`);
     const missingImages: string[] = [];
     for (const url of imageUrls) {
       const check = await imageUrlResolves(url);
-      console.log(`  ${check.ok ? 'OK  ' : 'FALHA'} ${url}  (${check.motivo})`);
+      console.log(`  ${check.ok ? 'OK  ' : 'FAIL'} ${url}  (${check.motivo})`);
       if (!check.ok) missingImages.push(url);
     }
     if (missingImages.length > 0) {
       console.log(
-        `\n  ATENÇÃO: ${missingImages.length} imagem(ns) não responde(m) com PNG.\n` +
-          `  Confira se o deploy do apps/web subiu com as rotas de /selo.\n` +
-          `  Sem a imagem no ar, o asset fica permanentemente sem imagem.`,
+        `\n  WARNING: ${missingImages.length} image(s) do not answer with PNG.\n` +
+          `  Check that the apps/web deploy shipped with the /selo routes.\n` +
+          `  Without the image live, the asset stays permanently image-less.`,
       );
     }
 
     if (!options.confirm) {
-      console.log(`\nDRY RUN: nada foi transmitido, nenhuma chave foi lida.`);
-      console.log(`Confira campo a campo acima. Se estiver certo:`);
-      console.log(`  1. publique os JSON (deploy do apps/web) e confirme que a uri responde 200;`);
-      console.log(`     as imagens são renderizadas por rota — a checagem acima já as conferiu por HTTP;`);
-      console.log(`  2. exporte MINT_AUTHORITY_KEYPAIR com o CAMINHO da chave financiada;`);
-      console.log(`  3. rode de novo com --confirm.`);
+      console.log(`\nDRY RUN: nothing was broadcast, no key was read.`);
+      console.log(`Review the fields above one by one. If they are right:`);
+      console.log(`  1. publish the JSON (deploy apps/web) and confirm the uri answers 200;`);
+      console.log(`     the images are rendered per route — the check above already verified them over HTTP;`);
+      console.log(`  2. export MINT_AUTHORITY_KEYPAIR with the PATH to the funded key;`);
+      console.log(`  3. run again with --confirm.`);
       return;
     }
 
-    // ---- daqui para baixo, só com --confirm ---------------------------------
+    // ---- from here down, only with --confirm --------------------------------
     if (missingImages.length > 0 && !options.allowMissingImage) {
       throw new Error(
-        `recusando cunhar: ${missingImages.length} imagem(ns) não respondem com PNG (${missingImages.join(', ')}). ` +
-          `Faça o deploy do apps/web e confira as rotas de /selo, ou rode com --allow-missing-image ` +
-          `se quiser mesmo um asset sem imagem para sempre.`,
+        `refusing to mint: ${missingImages.length} image(s) do not answer with PNG (${missingImages.join(', ')}). ` +
+          `Deploy apps/web and check the /selo routes, or run with --allow-missing-image ` +
+          `if you really want an asset with no image forever.`,
       );
     }
     if (!options.keypairPath) {
       throw new Error(
-        `MINT_AUTHORITY_KEYPAIR não definida. Ela é o CAMINHO de um file de chave fora do repo, ` +
-          `nunca a chave em si.`,
+        `MINT_AUTHORITY_KEYPAIR is not set. It is the PATH to a key file outside the repo, ` +
+          `never the key itself.`,
       );
     }
 
     const authority = createSignerFromKeypair(umi, umi.eddsa.createKeypairFromSecretKey(loadMintAuthoritySecret(options.keypairPath)));
     umi.use(signerIdentity(authority));
-    // Só o pubkey. Nunca o secretKey, nunca os bytes, nunca o signer inteiro.
-    console.log(`\nautoridade de cunhagem: ${authority.publicKey}`);
+    // The pubkey only. Never the secretKey, never the bytes, never the signer.
+    console.log(`\nmint authority: ${authority.publicKey}`);
 
     const balance = await umi.rpc.getBalance(authority.publicKey);
     console.log(`balance: ${Number(balance.basisPoints) / 1e9} SOL`);
     if (balance.basisPoints === 0n) {
       throw new Error(
-        `a authority está sem balance. Em devnet: solana airdrop 2 ${authority.publicKey} --url devnet`,
+        `the authority has no balance. On devnet: solana airdrop 2 ${authority.publicKey} --url devnet`,
       );
     }
 
-    // A coleção é criada UMA vez. Reaproveita a fixada por env, senão a última
-    // já cunhada no banco, senão cria.
+    // The collection is created ONCE. Reuse the one pinned by env, else the last
+    // one already minted in the database, else create it.
     let collection = options.pinnedCollection;
     if (!collection) {
       const previousMints = await palpitei.trophies.listMints({ cluster: options.cluster });
@@ -500,34 +492,31 @@ async function main(): Promise<void> {
     let collectionSigner = null as ReturnType<typeof generateSigner> | null;
     if (!collection) {
       collectionSigner = generateSigner(umi);
-      console.log(`\ncriando a coleção "${SELO_COLLECTION_NAME}": ${collectionSigner.publicKey}`);
+      console.log(`\ncreating collection "${SELO_COLLECTION_NAME}": ${collectionSigner.publicKey}`);
       await createCollection(umi, {
         collection: collectionSigner,
         name: SELO_COLLECTION_NAME,
         uri: `${options.baseUrl.replace(/\/+$/, '')}/selo/collection.json`,
-        // Soulbound no nível da coleção: `authority: { type: 'None' }` é a peça,
-        // porque ninguém, nem o emissor, consegue descongelar depois.
+        // Soulbound at the collection level: `authority: { type: 'None' }` is the
+        // load-bearing part, because nobody, not even the issuer, can unfreeze.
         plugins: [{ type: 'PermanentFreezeDelegate', frozen: true, authority: { type: 'None' } }],
       }).sendAndConfirm(umi);
       collection = String(collectionSigner.publicKey);
-      console.log(`coleção criada: ${collection}`);
-      // `sendAndConfirm` returning is not the same as the account being readable by
-      // the next transaction. On 19/07 all three assets died with an mpl-core panic
-      // in utils/mod.rs at ~3.7k CU, right after the collection was created in the
-      // same run; hours later the identical instruction simulated clean. Wait until
-      // the collection actually loads before referencing it, or the race repeats.
+      console.log(`collection created: ${collection}`);
+      // A collection created in this same run is not yet readable by the next
+      // transaction; referencing it early makes mpl-core panic. Wait for it.
       await waitForCollection(umi, collection);
     } else {
-      console.log(`\nreusando a coleção existente: ${collection}`);
+      console.log(`\nreusing the existing collection: ${collection}`);
     }
 
     const minted: { handle: string; asset: string; signature: string }[] = [];
 
     for (const item of pendingItems) {
       const { candidate: c } = item;
-      // A RESERVA VEM ANTES DA TRANSMISSÃO. Se o processo morrer no meio, a linha
-      // fica 'pending' e BLOQUEIA nova tentativa: a falha perigosa é cunhar duas
-      // vezes, não deixar de cunhar.
+      // THE CLAIM COMES BEFORE THE BROADCAST. If the process dies mid-flight the
+      // row stays 'pending' and BLOCKS a retry: the dangerous failure is minting
+      // twice, not failing to mint.
       const claim = await palpitei.trophies.claimMint({
         userId: c.userId,
         questionId: c.questionId,
@@ -535,7 +524,7 @@ async function main(): Promise<void> {
         ownerPubkey: c.walletPubkey,
       });
       if (!claim) {
-        console.log(`\n${c.handle ?? c.userId}: claim recusada pelo banco — PULADO`);
+        console.log(`\n${c.handle ?? c.userId}: claim refused by the database — SKIPPED`);
         continue;
       }
 
@@ -547,9 +536,9 @@ async function main(): Promise<void> {
           owner: publicKey(c.walletPubkey),
           name: item.metadata.name,
           uri: item.uri,
-          // Repetido no asset, de propósito: o jurado que abre UM asset no
-          // explorer vê "não transferível" ali, sem ter que inspecionar a
-          // coleção. Intransferível e não queimável, por decisão do dono.
+          // Repeated on the asset on purpose: someone opening a SINGLE asset in
+          // an explorer sees "not transferable" right there, without inspecting
+          // the collection. Non-transferable and non-burnable, by design.
           plugins: [{ type: 'PermanentFreezeDelegate', frozen: true, authority: { type: 'None' } }],
         }).sendAndConfirm(umi);
 
@@ -561,26 +550,26 @@ async function main(): Promise<void> {
           metadataUri: item.uri,
         });
         minted.push({ handle: c.handle ?? c.userId, asset: String(assetSigner.publicKey), signature });
-        console.log(`\n${c.handle ?? c.userId}: cunhado`);
+        console.log(`\n${c.handle ?? c.userId}: minted`);
         console.log(`  asset:      ${assetSigner.publicKey}`);
         console.log(`  signature: ${signature}`);
       } catch (e) {
-        // `err.message` e nada mais: o contexto do erro carrega o signer dentro.
-        console.error(`\n${c.handle ?? c.userId}: FALHOU — ${e instanceof Error ? e.message : 'erro desconhecido'}`);
+        // `err.message` and nothing else: the error context carries the signer.
+        console.error(`\n${c.handle ?? c.userId}: FAILED — ${e instanceof Error ? e.message : 'unknown error'}`);
         console.error(
-          `  a claim ${claim.id} fica 'pending' de propósito e BLOQUEIA nova tentativa. ` +
-            `Confira ${assetSigner.publicKey} no explorer antes de liberar a linha na mão.`,
+          `  claim ${claim.id} stays 'pending' on purpose and BLOCKS a retry. ` +
+            `Check ${assetSigner.publicKey} on the explorer before releasing the row by hand.`,
         );
       }
     }
 
-    console.log(`\n=== cunhado ===`);
-    console.log(`coleção: ${collection}`);
+    console.log(`\n=== minted ===`);
+    console.log(`collection: ${collection}`);
     for (const c of minted) console.log(`  ${c.handle}: ${c.asset}  (tx ${c.signature})`);
-    console.log(`\nGuarde esta saída. Publique a coleção no README e no Brief.`);
+    console.log(`\nKeep this output. Publish the collection in the README and in the Brief.`);
     console.log(
-      `Depois de CONFERIR os metadados no explorer, considere revogar a update authority: ` +
-        `com o asset congelado e não queimável, ela é a única alavanca que ainda existe sobre ele.`,
+      `After CHECKING the metadata on the explorer, consider revoking the update authority: ` +
+        `with the asset frozen and non-burnable, it is the only lever left over it.`,
     );
   } finally {
     await palpitei.close();
@@ -588,6 +577,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  console.error('ERRO:', e instanceof Error ? e.message : e);
+  console.error('ERROR:', e instanceof Error ? e.message : e);
   process.exit(1);
 });
