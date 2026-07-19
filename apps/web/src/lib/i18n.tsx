@@ -15,7 +15,17 @@ import {
   type ReactNode,
 } from 'react';
 
+import type { PerkId } from '@/lib/marketplace';
+
 export type Lang = 'pt' | 'en';
+
+/** Store copy for one perk; `req` only exists where a perk gates on a real achievement. */
+export interface PerkText {
+  title: string;
+  sub: string;
+  desc: string;
+  req?: string;
+}
 
 /** Value used by the document `lang` attribute for screen readers and hyphenation. */
 const HTML_LANG: Record<Lang, string> = { pt: 'pt-BR', en: 'en' };
@@ -471,7 +481,7 @@ const pt = {
   ckPix: 'Pix',
   ckPixSub: 'aprovação na hora',
   ckWallet: 'Carteira Solana',
-  ckWalletSub: '7xKq…9fPz · USDC',
+  ckWalletSub: 'pagar em USDC pela sua carteira',
   ckPay: 'Assinar agora',
   ckFoot: 'Pagamento seguro · cancele quando quiser',
   ckDoneTitle: 'Bem-vindo ao Premium!',
@@ -557,6 +567,144 @@ const pt = {
       probLabel: 'Chances simuladas no demo — não são dados da TxLINE.',
     },
   ] as ChallengeText[],
+
+  // Marketplace. The store is populated for the demo account only; a real fan sees the
+  // "coming soon" state, so this copy never promises inventory that does not exist.
+  navMarket: 'Loja',
+  mkTitle: 'Loja',
+  mkTabStore: 'Loja',
+  mkTabCollection: 'Coleção',
+  mkDevnet: 'mainnet',
+  mkWalletDemo: 'sem carteira',
+  mkWalletSim: 'simulado',
+  mkWalletPending: 'carteira a caminho',
+  mkXpLabel: 'XP',
+  mkTrophyWord: 'Troféus',
+  // The ONLY way to earn a Trophy today: a fan's first palpite in a live match, once per
+  // account. League wins and hard palpites are roadmap, not current, and are not promised.
+  mkGoldDesc: 'do seu primeiro palpite ao vivo',
+  mkTrophyTitle: 'O que são Troféus?',
+  mkTrophyBody:
+    'Troféu é a moeda rara do Palpitei. Hoje só tem um jeito de ganhar: o seu primeiro palpite numa partida ao vivo, uma vez por conta. Diferente do XP, que você acumula jogando, o Troféu é escasso. Por isso é ele que resgata os perks de prestígio, como o Selo TxLINE.',
+  mkTrophyGot: 'Entendi',
+  mkTrophyInfoLabel: 'Saber o que são Troféus',
+  mkCatFeatured: 'Destaques',
+  mkCatGame: 'Jogo',
+  mkCatPartners: 'Parceiros',
+  mkCatIdentity: 'Identidade',
+  mkCatSocial: 'Social',
+  mkFeaturedTag: 'VITRINE · MAIS COBIÇADO',
+  mkOnChain: 'verificável on-chain · mainnet',
+  mkRarCommon: 'comum',
+  mkRarRare: 'raro',
+  mkRarEpic: 'épico',
+  mkRarLegendary: 'lendário',
+  mkCurXp: 'XP',
+  mkCurTrophy: 'Troféu',
+  mkCurTrophies: 'Troféus',
+  mkRedeem: 'Resgatar',
+  mkMint: 'Cunhar Selo TxLINE',
+  mkViewProof: 'Ver prova',
+  mkTrade: 'Trocar por perk',
+  mkInInventory: 'No inventário',
+  mkOwnedTag: 'no inventário',
+  mkNotEnough: 'Você ainda não tem moeda pra esse perk',
+  mkWhat: 'O QUE FAZ',
+  mkPrice: 'PREÇO',
+  mkReq: 'REQUISITO',
+  mkCollTitle: 'Minha coleção',
+  mkCollSub: 'O que você já tem na carteira Solana',
+  mkCollSubDemo: 'O que a conta de demonstração acumulou (simulado, sem carteira real)',
+  mkCollSoonBody:
+    'Sua coleção começa vazia. Jogue pra conquistar e o que for seu aparece aqui pra cunhar como Selo TxLINE.',
+  mkSoonTag: 'EM BREVE',
+  mkSoonTitle: 'Loja chegando',
+  mkSoonBody:
+    'Estamos preparando os primeiros perks, NFTs e recompensas de parceiros. Enquanto isso, jogue: o XP que você acumular continua valendo quando a loja abrir.',
+  mkPocProofHdr: 'A PROVA',
+  mkPocMatch: 'PARTIDA',
+  mkPocMarket: 'MERCADO',
+  mkPocPred: 'PREVISÃO',
+  mkPocTx: 'TRANSAÇÃO',
+  mkPocMinted: 'CUNHADO EM',
+  mkPocSeal: 'SELO TXLINE',
+  mkVerify: 'Ver no explorer',
+  mkPocEligHdr: 'O PALPITE QUE VOCÊ VAI CUNHAR',
+  // Demo has no chain and no wallet: the proof screen says so instead of printing a
+  // signature-shaped string, which would be a provenance label that lies.
+  mkPocTxDemo: 'Nenhuma. Demonstração local, sem transação on-chain.',
+  mkDemoTag: 'DEMO · SIMULADO',
+  mkMintedTitle: 'Selo TxLINE cunhado!',
+  mkMintedSub: 'Simulado no demo. Nada foi enviado pra rede.',
+  mkRedeemedTitle: 'Perk resgatado!',
+  mkRedeemedSub: 'Simulado no demo. Já está na sua coleção.',
+  mkTradeTitle: 'Enviado pra troca',
+  mkTradeSub: 'Escolha um perk pra trocar',
+  mkBack: 'Voltar',
+  mkDemoMatch: 'Argentina × Cabo Verde',
+  mkDemoMarket: 'Próximo gol',
+  mkDemoPrediction: 'Argentina',
+  mkEligibleSub: 'Palpite certo no replay demo',
+
+  /** Store copy per perk; `req` only where the perk gates on a real achievement. */
+  mkPerks: {
+    poc: {
+      title: 'Selo TxLINE',
+      sub: 'Cunhe um acerto seu como recibo verificável on-chain',
+      desc: 'Transforma um palpite que você cravou num NFT-recibo na sua carteira Solana, verificável on-chain e com link pra qualquer um conferir. É a prova pública de que você falou antes de todo mundo, o item mais cobiçado da loja.',
+      req: 'Exige um palpite que você acertou de verdade',
+    },
+    markets: {
+      title: 'Desbloqueio de mercados',
+      sub: 'Libera handicap asiático e +6 mercados por partida',
+      desc: 'Abre mercados avançados nos seus palpites: handicap asiático, dupla chance, ambas marcam e mais. Mais jeitos de ler o jogo e ganhar XP.',
+    },
+    ticket: {
+      title: 'Ingresso Fan Fest',
+      sub: 'Par de entradas pra Fan Fest da Copa',
+      desc: 'Recompensa de parceiro: dois ingressos pra Fan Fest oficial na sua cidade. Resgatado direto pela sua conta, sem sorteio.',
+    },
+    discount: {
+      title: 'Cupom 20% parceiro',
+      sub: 'Desconto na loja oficial de parceiros',
+      desc: 'Cupom de 20% pra usar na loja dos parceiros da Copa. Chega como código na sua conta na hora do resgate.',
+    },
+    product: {
+      title: 'Camisa exclusiva',
+      sub: 'Produto de edição limitada Palpitei',
+      desc: 'Camisa de edição limitada Palpitei × parceiro, só pra quem joga. Estoque contado, sai por ordem de resgate.',
+    },
+    leaguebadge: {
+      title: 'Emblema de liga',
+      sub: 'Escudo on-chain pra sua liga privada',
+      desc: 'Um escudo verificável on-chain que fica na identidade da sua liga e no perfil de todo mundo que entra nela.',
+    },
+    frame: {
+      title: 'Moldura de perfil',
+      sub: 'Moldura animada pro seu avatar',
+      desc: 'Moldura animada em volta do seu avatar, visível no ranking e nas salas ao vivo.',
+    },
+    namecolor: {
+      title: 'Cor de nome',
+      sub: 'Destaque seu apelido no ranking',
+      desc: 'Pinta seu apelido com a cor lima do Palpitei em todo ranking e liga. Detalhe pequeno, presença grande.',
+    },
+    callerflair: {
+      title: 'Selo de palpiteiro verificado',
+      sub: 'Selo verificado do lado do seu apelido',
+      desc: 'Selo on-chain de palpiteiro verificado: só entra pra quem tem Selo TxLINE na carteira. Aparece do lado do seu nome em tudo.',
+    },
+    bigleague: {
+      title: 'Liga expandida',
+      sub: 'Suba o limite da sua liga pra 50 membros',
+      desc: 'Aumenta o teto da sua liga privada pra 50 pessoas. Chame o grupo todo e o do trampo também.',
+    },
+    spotlight: {
+      title: 'Destaque no ranking',
+      sub: 'Sua liga em destaque na home por 1 semana',
+      desc: 'Coloca sua liga em destaque na home de todos os membros por uma semana. Provocação em tela cheia.',
+    },
+  } as Record<PerkId, PerkText>,
 };
 
 /** Translation contract: Portuguese defines it and English satisfies it. */
@@ -982,7 +1130,7 @@ const en: Dict = {
   ckPix: 'Pix',
   ckPixSub: 'instant approval',
   ckWallet: 'Solana wallet',
-  ckWalletSub: '7xKq…9fPz · USDC',
+  ckWalletSub: 'pay in USDC from your wallet',
   ckPay: 'Subscribe now',
   ckFoot: 'Secure payment · cancel anytime',
   ckDoneTitle: 'Welcome to Premium!',
@@ -1066,6 +1214,137 @@ const en: Dict = {
       probLabel: 'Simulated demo chances — not TxLINE data.',
     },
   ],
+
+  navMarket: 'Store',
+  mkTitle: 'Store',
+  mkTabStore: 'Store',
+  mkTabCollection: 'Collection',
+  mkDevnet: 'mainnet',
+  mkWalletDemo: 'no wallet',
+  mkWalletSim: 'simulated',
+  mkWalletPending: 'wallet on the way',
+  mkXpLabel: 'XP',
+  mkTrophyWord: 'Trophies',
+  mkGoldDesc: 'from your first live prediction',
+  mkTrophyTitle: 'What are Trophies?',
+  mkTrophyBody:
+    'Trophies are Palpitei’s rare currency. Today there is exactly one way to earn one: your first prediction in a live match, once per account. Unlike XP, which you stack by playing, trophies are scarce. That is why they redeem the prestige perks, like the TxLINE Seal.',
+  mkTrophyGot: 'Got it',
+  mkTrophyInfoLabel: 'Learn what Trophies are',
+  mkCatFeatured: 'Featured',
+  mkCatGame: 'Game',
+  mkCatPartners: 'Partners',
+  mkCatIdentity: 'Identity',
+  mkCatSocial: 'Social',
+  mkFeaturedTag: 'SHOWCASE · MOST COVETED',
+  mkOnChain: 'verifiable on-chain · mainnet',
+  mkRarCommon: 'common',
+  mkRarRare: 'rare',
+  mkRarEpic: 'epic',
+  mkRarLegendary: 'legendary',
+  mkCurXp: 'XP',
+  mkCurTrophy: 'Trophy',
+  mkCurTrophies: 'Trophies',
+  mkRedeem: 'Redeem',
+  mkMint: 'Mint TxLINE Seal',
+  mkViewProof: 'View proof',
+  mkTrade: 'Trade for a perk',
+  mkInInventory: 'In inventory',
+  mkOwnedTag: 'in inventory',
+  mkNotEnough: 'You don’t have the currency for this perk yet',
+  mkWhat: 'WHAT IT DOES',
+  mkPrice: 'PRICE',
+  mkReq: 'REQUIREMENT',
+  mkCollTitle: 'My collection',
+  mkCollSub: 'What you already hold in your Solana wallet',
+  mkCollSubDemo: 'What the demo account has stacked up (simulated, no real wallet)',
+  mkCollSoonBody:
+    'Your collection starts empty. Play to earn, and what is yours shows up here to mint as a TxLINE Seal.',
+  mkSoonTag: 'COMING SOON',
+  mkSoonTitle: 'Store coming soon',
+  mkSoonBody:
+    'We’re preparing the first perks, NFTs and partner rewards. Meanwhile, play: the XP you stack still counts when the store opens.',
+  mkPocProofHdr: 'THE PROOF',
+  mkPocMatch: 'MATCH',
+  mkPocMarket: 'MARKET',
+  mkPocPred: 'PREDICTION',
+  mkPocTx: 'TRANSACTION',
+  mkPocMinted: 'MINTED ON',
+  mkPocSeal: 'TXLINE SEAL',
+  mkVerify: 'View on explorer',
+  mkPocEligHdr: 'THE PREDICTION YOU’LL MINT',
+  mkPocTxDemo: 'None. Local demonstration, no on-chain transaction.',
+  mkDemoTag: 'DEMO · SIMULATED',
+  mkMintedTitle: 'TxLINE Seal minted!',
+  mkMintedSub: 'Simulated in demo. Nothing was sent to the network.',
+  mkRedeemedTitle: 'Perk redeemed!',
+  mkRedeemedSub: 'Simulated in demo. It is already in your collection.',
+  mkTradeTitle: 'Sent to trade',
+  mkTradeSub: 'Pick a perk to swap for it',
+  mkBack: 'Back',
+  mkDemoMatch: 'Argentina × Cape Verde',
+  mkDemoMarket: 'Next goal',
+  mkDemoPrediction: 'Argentina',
+  mkEligibleSub: 'Correct prediction in the demo replay',
+
+  mkPerks: {
+    poc: {
+      title: 'TxLINE Seal',
+      sub: 'Mint one of your correct predictions as a verifiable on-chain receipt',
+      desc: 'Turns a prediction you nailed into a receipt-NFT in your Solana wallet, verifiable on-chain and with a link anyone can check. Public proof you said it before everyone, the most coveted item in the store.',
+      req: 'Requires a prediction you actually got right',
+    },
+    markets: {
+      title: 'Market unlock',
+      sub: 'Unlocks Asian handicap and +6 markets per match',
+      desc: 'Opens advanced markets on your picks: Asian handicap, double chance, both teams to score and more. More ways to read the game and earn XP.',
+    },
+    ticket: {
+      title: 'Fan Fest ticket',
+      sub: 'Pair of passes to the World Cup Fan Fest',
+      desc: 'Partner reward: two tickets to the official Fan Fest in your city. Redeemed straight to your account, no raffle.',
+    },
+    discount: {
+      title: '20% partner coupon',
+      sub: 'Discount at the official partner store',
+      desc: '20% coupon for the World Cup partner store. Arrives as a code in your account on redeem.',
+    },
+    product: {
+      title: 'Exclusive jersey',
+      sub: 'Limited-edition Palpitei product',
+      desc: 'Limited Palpitei × partner jersey, players only. Counted stock, first to redeem, first served.',
+    },
+    leaguebadge: {
+      title: 'League emblem',
+      sub: 'On-chain crest for your private league',
+      desc: 'A verifiable on-chain crest attached to your league identity and to every member profile.',
+    },
+    frame: {
+      title: 'Profile frame',
+      sub: 'Animated frame for your avatar',
+      desc: 'Animated frame around your avatar, visible on the ranking and in live rooms.',
+    },
+    namecolor: {
+      title: 'Name colour',
+      sub: 'Make your handle pop on the ranking',
+      desc: 'Paints your handle in Palpitei lime across every ranking and league. Small detail, big presence.',
+    },
+    callerflair: {
+      title: 'Verified predictor seal',
+      sub: 'Verified seal next to your handle',
+      desc: 'On-chain verified-predictor seal: only for players holding a TxLINE Seal in the wallet. Shows next to your name everywhere.',
+    },
+    bigleague: {
+      title: 'Bigger league',
+      sub: 'Raise your league cap to 50 members',
+      desc: 'Bumps your private league cap to 50 people. Bring the whole crew, and the work group too.',
+    },
+    spotlight: {
+      title: 'Ranking spotlight',
+      sub: 'Your league featured on home for 1 week',
+      desc: 'Features your league on every member’s home for a week. Full-screen bragging rights.',
+    },
+  },
 };
 
 export const dicts: Record<Lang, Dict> = { pt, en };

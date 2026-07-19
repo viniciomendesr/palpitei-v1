@@ -11,6 +11,7 @@ import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { useI18n, type Lang } from '@/lib/i18n';
 import { useSession, initialsOf } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
+import { shortAddress } from '@/lib/marketplace';
 import { fw } from '@/lib/tokens';
 
 export default function PerfilPage() {
@@ -35,11 +36,16 @@ export default function PerfilPage() {
   const invalid = !isNicknameValid(draft);
   const initials = initialsOf(session.nickname, session.accountType);
 
+  // The wallet label comes from the connected Privy wallet. A hardcoded address is a
+  // provenance label that lies (G6); with no address yet, say so instead of inventing one.
+  const enderecoConectado = privy.wallets[0]?.address;
   const authLabel =
     session.authMethod === 'google'
       ? t.authGoogle
       : session.authMethod === 'wallet'
-        ? '7xKq…9fPz · Solana'
+        ? enderecoConectado
+          ? `${shortAddress(enderecoConectado)} · Solana`
+          : t.profileWalletUnavailable
         : t.walletDemo;
 
   const emDemo = session.authMethod === 'demo';

@@ -342,6 +342,285 @@ export function PixIcon({ size = 19 }: { size?: number }) {
   );
 }
 
+/** Bottom-nav glyph for the marketplace: a storefront awning over a counter. */
+export function StoreIcon({ size = 23 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 4h17l1 5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0l1-5z" />
+      <path d="M5 11.5V20h14v-8.5" />
+    </svg>
+  );
+}
+
+export function Info({ size = 16, color = 'currentColor' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 7.5h.01" />
+    </svg>
+  );
+}
+
+export function Trophy({ size = 20, color = 'var(--gold)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M7 4h10v4a5 5 0 0 1-10 0V4z" />
+      <path d="M17 5h2.5a1.5 1.5 0 0 1 0 3H17M7 5H4.5a1.5 1.5 0 0 0 0 3H7" />
+      <path d="M12 13v3" />
+      <path d="M10 16h4l.4 4H9.6z" />
+    </svg>
+  );
+}
+
+export function Bolt({ size = 18, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">
+      <path d="M13 2L4 14h6l-1 8 9-12h-6z" />
+    </svg>
+  );
+}
+
+/** On-chain verification seal: a shield with a check. */
+export function ShieldCheck({ size = 14, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2.1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3l7 3v5c0 4.5-3 7-7 9-4-2-7-4.5-7-9V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+export function Unlock({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="4" y="10.5" width="16" height="10" rx="2.5" />
+      <path d="M8 10.5V8a4 4 0 0 1 7.5-1.9" />
+    </svg>
+  );
+}
+
+export function Ticket({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.7a2 2 0 0 0 0 3.6v1.7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.7a2 2 0 0 0 0-3.6V8.5z" />
+      <path d="M14 6.5v11" />
+    </svg>
+  );
+}
+
+export function Tag({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 12.5l-7.5 7.5a2 2 0 0 1-2.8 0l-6-6a2 2 0 0 1-.6-1.6l.5-6.3a2 2 0 0 1 1.8-1.8l6.3-.5a2 2 0 0 1 1.6.6l6.7 6.7a2 2 0 0 1 0 1.4z" />
+      <circle cx="8.5" cy="8.5" r="1.4" />
+    </svg>
+  );
+}
+
+export function Shirt({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 3l3 2 3-2 5.5 3-2 4-2-1v11H7.5V9l-2 1-2-4L9 3z" />
+    </svg>
+  );
+}
+
+export function Shield({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3l7.5 3v5.5c0 4.7-3.2 7.5-7.5 9.5-4.3-2-7.5-4.8-7.5-9.5V6z" />
+    </svg>
+  );
+}
+
+export function Frame({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+      <circle cx="12" cy="10" r="2.6" />
+      <path d="M7.5 17.5c1-2.2 2.6-3.2 4.5-3.2s3.5 1 4.5 3.2" />
+    </svg>
+  );
+}
+
+export function Drop({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3.5l5 6.4a6.2 6.2 0 1 1-10 0l5-6.4z" />
+    </svg>
+  );
+}
+
+export function Users({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="9.5" cy="8.5" r="3.2" />
+      <path d="M3.5 19.5c0-3.2 2.7-5 6-5s6 1.8 6 5" />
+      <path d="M16.5 6.2a3.2 3.2 0 0 1 0 6M17.5 14.9c2.1.5 3.5 2 3.5 4.6" />
+    </svg>
+  );
+}
+
+export function Flag({ size = 20, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 21V4" />
+      <path d="M6 5h11l-2 3.5L17 12H6z" />
+    </svg>
+  );
+}
+
+/** Proof-of-Call seal: a stamped ribbon medal. */
+export function Seal({ size = 20, color = 'var(--gold)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="9.5" r="6" />
+      <path d="M9.6 9.4l1.7 1.7 3.2-3.3" />
+      <path d="M8.6 14.8L7 21l5-2.2L17 21l-1.6-6.2" />
+    </svg>
+  );
+}
+
 export function WalletIcon({ size = 19 }: { size?: number }) {
   return (
     <svg width={size} height={(size * 15) / 19} viewBox="0 0 24 20" aria-hidden="true">

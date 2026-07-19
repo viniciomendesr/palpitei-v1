@@ -2,11 +2,11 @@
 
 
 import { usePathname, useRouter } from 'next/navigation';
-import { HomeIcon, RankingIcon, ProfileIcon } from './Icons';
+import { HomeIcon, RankingIcon, ProfileIcon, StoreIcon } from './Icons';
 import { useI18n } from '@/lib/i18n';
 import { fw } from '@/lib/tokens';
 
-export const NAV_ROUTES = ['/home', '/ranking', '/perfil'] as const;
+export const NAV_ROUTES = ['/home', '/ranking', '/marketplace', '/perfil'] as const;
 
 export function shouldShowNav(pathname: string): boolean {
   return (NAV_ROUTES as readonly string[]).includes(pathname);
@@ -20,6 +20,7 @@ export function BottomNav() {
   const items = [
     { href: '/home', label: t.navHome, Icon: HomeIcon },
     { href: '/ranking', label: t.navRanking, Icon: RankingIcon },
+    { href: '/marketplace', label: t.navMarket, Icon: StoreIcon },
     { href: '/perfil', label: t.navPerfil, Icon: ProfileIcon },
   ];
 
@@ -55,7 +56,8 @@ export function BottomNav() {
             }}
           >
             <Icon />
-            <span style={{ fontSize: 10.5, fontWeight: fw.heavy }}>{label}</span>
+            {/* Four items at 390px: without nowrap a long label wraps and shifts the row. */}
+            <span style={{ fontSize: 10.5, fontWeight: fw.heavy, whiteSpace: 'nowrap' }}>{label}</span>
           </button>
         );
       })}
