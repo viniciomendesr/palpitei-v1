@@ -732,6 +732,8 @@ const pt = {
   mkSealRevealedToast: 'Ele já era seu. Agora está aberto.',
   mkSealAsset: 'ENDEREÇO DO ASSET',
   mkSealExplorer: 'Ver no Solscan',
+  mkSealOpen: 'Ver selo',
+  mkSealClose: 'Fechar',
   mkSealDebut: 'Sua estreia ao vivo, certa ou errada',
   mkSealNoneTitle: 'Nenhum Selo por enquanto',
   mkSealNoneBody:
@@ -1401,6 +1403,8 @@ const en: Dict = {
   mkSealRevealedToast: 'It was already yours. Now it is open.',
   mkSealAsset: 'ASSET ADDRESS',
   mkSealExplorer: 'View on Solscan',
+  mkSealOpen: 'View seal',
+  mkSealClose: 'Close',
   mkSealDebut: 'Your live debut, right or wrong',
   mkSealNoneTitle: 'No Seal yet',
   mkSealNoneBody:

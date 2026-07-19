@@ -315,6 +315,7 @@ function SeloDoFa() {
   const [selo, setSelo] = useState<ApiSelo['seal'] | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [revelando, setRevelando] = useState(false);
+  const [folhaAberta, setFolhaAberta] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   // Wait for the Privy island: a fetch fired before the token provider is
@@ -340,6 +341,8 @@ function SeloDoFa() {
     try {
       const r = await api.revealSelo();
       setSelo(r.seal);
+      // The reveal IS the moment; opening the sheet is what makes it one.
+      if (r.seal) setFolhaAberta(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : t.mkSealError);
     } finally {
@@ -383,8 +386,14 @@ function SeloDoFa() {
         title={t.mkSealTitle}
         sub={revelado ? t.mkSealRevealedSub : t.mkSealLockedSub}
         rarity={t.mkRarLegendary}
+        // The details are a screen of their own now, not a panel pinned under the
+        // row forever, so the row keeps an action that reopens them.
         action={
-          revelado ? undefined : (
+          revelado ? (
+            <Button size="sm" variant="secondary" onClick={() => setFolhaAberta(true)}>
+              {t.mkSealOpen}
+            </Button>
+          ) : (
             <Button size="sm" disabled={revelando} onClick={() => void revelar()}>
               {revelando ? t.mkSealRevealing : t.mkSealReveal}
             </Button>
@@ -392,74 +401,127 @@ function SeloDoFa() {
         }
       />
 
-      {revelado && (
+      {folhaAberta && revelado && <SeloSheet selo={selo} onClose={() => setFolhaAberta(false)} />}
+    </div>
+  );
+}
+
+/**
+ * The Seal's details, as an overlay.
+ *
+ * They used to sit in a panel pinned under the row, which meant a fan who had
+ * revealed once could never put it away. A sheet also gives the reveal a moment:
+ * it opens on its own right after the reveal lands.
+ */
+function SeloSheet({ selo, onClose }: { selo: NonNullable<ApiSelo['seal']>; onClose: () => void }) {
+  const { t, lang } = useI18n();
+  const tone = rarityTone('legendary');
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 30,
+        background: 'color-mix(in srgb, var(--bg-app) 76%, transparent)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        animation: 'fadeUp .18s ease both',
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t.mkSealTitle}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 322,
+          background: 'var(--surface-1)',
+          border: `1px solid ${tone.line}`,
+          borderRadius: 'var(--r-3xl)',
+          padding: 22,
+          boxShadow: 'var(--shadow-pop)',
+          animation: 'popIn .3s cubic-bezier(.2,.9,.3,1.2) both',
+        }}
+      >
         <div
           style={{
-            padding: '14px 16px',
-            borderRadius: 'var(--r-2xl)',
-            background: 'var(--surface-1)',
+            width: 54,
+            height: 54,
+            borderRadius: 'var(--r-lg)',
+            background: tone.soft,
             border: `1px solid ${tone.line}`,
-            animation: 'popIn .3s cubic-bezier(.2,.9,.3,1.2) both',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          <div style={{ fontSize: 11.5, fontWeight: fw.heavy, color: 'var(--text-2)' }}>
-            {selo.teamA} × {selo.teamB}
-          </div>
-          <div style={{ fontSize: 12.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.35 }}>
-            {selo.prompt}
-          </div>
-          {selo.choiceLabel && (
-            <div style={{ fontSize: 13, fontWeight: fw.heavy, marginTop: 6 }}>{selo.choiceLabel}</div>
-          )}
-          <div style={{ fontSize: 10.5, fontWeight: fw.heavy, color: 'var(--text-faint)', marginTop: 6 }}>
-            {t.mkSealDebut}
-          </div>
+          <Seal size={28} color={tone.color} />
+        </div>
 
+        <div style={{ fontWeight: fw.black, fontStyle: 'italic', fontSize: 21, letterSpacing: -0.4, marginTop: 16 }}>
+          {t.mkSealTitle}
+        </div>
+
+        <div style={{ fontSize: 11.5, fontWeight: fw.heavy, color: 'var(--text-2)', marginTop: 10 }}>
+          {selo.teamA} × {selo.teamB}
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.35 }}>
+          {selo.prompt}
+        </div>
+        {selo.choiceLabel && (
+          <div style={{ fontSize: 13, fontWeight: fw.heavy, marginTop: 6 }}>{selo.choiceLabel}</div>
+        )}
+        <div style={{ fontSize: 10.5, fontWeight: fw.heavy, color: 'var(--text-faint)', marginTop: 6 }}>
+          {t.mkSealDebut}
+        </div>
+
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-1)' }}>
+          <div style={{ fontSize: 9, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)' }}>
+            {t.mkSealAsset}
+          </div>
           <div
             style={{
-              marginTop: 12,
-              paddingTop: 12,
-              borderTop: '1px solid var(--border-1)',
+              fontSize: 11.5,
+              fontWeight: fw.medium,
+              color: 'var(--text-2)',
+              marginTop: 4,
+              wordBreak: 'break-all',
             }}
           >
-            <div style={{ fontSize: 9, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)' }}>
-              {t.mkSealAsset}
-            </div>
-            <div
-              style={{
-                fontSize: 11.5,
-                fontWeight: fw.medium,
-                color: 'var(--text-2)',
-                marginTop: 4,
-                wordBreak: 'break-all',
-              }}
-            >
-              {selo.assetPubkey}
-            </div>
+            {selo.assetPubkey}
           </div>
-
-          {selo.revealedAt !== null && (
-            <div style={{ fontSize: 10.5, fontWeight: fw.medium, color: 'var(--text-faint)', marginTop: 8 }}>
-              {new Date(selo.revealedAt).toLocaleString(lang === 'en' ? 'en-US' : 'pt-BR')}
-            </div>
-          )}
-
-          {/* A real asset has a real explorer page, so this link is live. */}
-          <a
-            href={linkDoExplorer(selo.assetPubkey, selo.cluster)}
-            target="_blank"
-            rel="noreferrer noopener"
-            style={{ display: 'block', marginTop: 12, textDecoration: 'none' }}
-          >
-            <Button variant="secondary" full>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <ShieldCheck size={14} />
-                {t.mkSealExplorer}
-              </span>
-            </Button>
-          </a>
         </div>
-      )}
+
+        {selo.revealedAt !== null && (
+          <div style={{ fontSize: 10.5, fontWeight: fw.medium, color: 'var(--text-faint)', marginTop: 8 }}>
+            {new Date(selo.revealedAt).toLocaleString(lang === 'en' ? 'en-US' : 'pt-BR')}
+          </div>
+        )}
+
+        {/* A real asset has a real explorer page, so this link is live. */}
+        <a
+          href={linkDoExplorer(selo.assetPubkey, selo.cluster)}
+          target="_blank"
+          rel="noreferrer noopener"
+          style={{ display: 'block', marginTop: 12, textDecoration: 'none' }}
+        >
+          <Button variant="secondary" full>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <ShieldCheck size={14} />
+              {t.mkSealExplorer}
+            </span>
+          </Button>
+        </a>
+
+        <Button full onClick={onClose} style={{ marginTop: 10 }}>
+          {t.mkSealClose}
+        </Button>
+      </div>
     </div>
   );
 }
