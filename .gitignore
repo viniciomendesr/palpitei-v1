@@ -46,3 +46,6 @@ docs/code-commentary.md
 # Supporting material for video/presentation production, unused by the web app.
 apps/web/public/media/
 docs/img/palpitei-backend-16x9*.png
+
+# MCP tool scratch output.
+.playwright-mcp/

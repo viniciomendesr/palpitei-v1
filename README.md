@@ -247,7 +247,30 @@ with a deterministic clock.
 - Railway with a persistent Node.js runtime
 - Node test runner and PGlite for database tests
 
-## Run locally
+## Run it without any credentials
+
+Reviewers do not need a database, a Privy app, or TxLINE access to see the
+product. Everything below works from a clean clone with an empty `.env`:
+
+```bash
+npm ci
+cp .env.example .env   # leave every value empty
+npm run build
+npm start
+```
+
+Open [http://localhost:3000](http://localhost:3000) and choose the demo entry.
+The demo is entirely local — it writes to `sessionStorage` and touches no
+network and no database — and it runs the full loop: fixture list, match replay,
+a timed question, a pick, settlement with XP, the explanation, and the ranking.
+
+Two things to expect on this path. `/api/health` answers `503` because there is
+no database, which is the honest answer rather than a fake green. And use
+`npm start`, not `npm run dev`: without `DATABASE_URL` the dev server fails to
+compile the server bundle and returns 500. The authenticated fixture, live, and
+replay paths need the credentials below.
+
+## Run locally with credentials
 
 Requirements: Node.js 22.6 or newer (the tested version is pinned in `.nvmrc`) and a PostgreSQL connection string.
 
@@ -275,10 +298,17 @@ machine.
 ## Verification
 
 ```bash
+npm run dev:prepare   # build the workspace packages first
 npm run typecheck
 npm test
 npm run build
 ```
+
+`dev:prepare` is required on a clean clone: `typecheck` resolves `@palpitei/db`
+and `@palpitei/ds` from their build output, so running it first fails with
+`Cannot find module` until those packages are built. This is the same order the
+CI workflow uses. `npm test` needs no database — the database suite runs on
+PGlite.
 
 The current suite contains **363 tests** across the pure domain engine, TxLINE
 normalization and ingestion, database behavior, replay timing, room routing,
