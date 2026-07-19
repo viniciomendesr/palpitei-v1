@@ -189,14 +189,37 @@ export function createUserRepo(db: Db) {
       }));
     },
 
-    /** Returns the global XP ranking; room rankings come from the game engine. */
-    async topByXp(limit = 50): Promise<{ userId: string; handle: string; xp: number; level: number }[]> {
+    /**
+     * Returns the global ranking; room rankings come from the game engine.
+     *
+     * Still ordered by XP — a trophy never reorders the table — but a row is no
+     * longer XP alone, hence `topRanking` rather than the old `topByXp`.
+     *
+     * The trophy balance is aggregated in the SAME statement, by a lateral over the
+     * already-limited page: 50 fans cost one query, never one query per fan. The
+     * lateral sits outside the `limit` subquery on purpose, so the ledger is only
+     * touched for the rows that survive the cut.
+     *
+     * `sum(delta)` and never `count(*)`: `trophy_ledger` is a ledger, and a spend is
+     * a negative row. A fan with no rows sums to null, which `coalesce` turns into a
+     * real 0 — they earned none, and that is an answer, not a missing value.
+     */
+    async topRanking(
+      limit = 50
+    ): Promise<{ userId: string; handle: string; xp: number; level: number; trophies: number }[]> {
       const rows = await db.query(
-        `select id, handle, xp, level
-           from users
-          where handle is not null
-          order by xp desc, created_at asc
-          limit $1`,
+        `select r.id, r.handle, r.xp, r.level, coalesce(t.saldo, 0)::int as trophies
+           from (
+             select id, handle, xp, level, created_at
+               from users
+              where handle is not null
+              order by xp desc, created_at asc
+              limit $1
+           ) r
+           left join lateral (
+             select sum(l.delta) as saldo from trophy_ledger l where l.user_id = r.id
+           ) t on true
+          order by r.xp desc, r.created_at asc`,
         [limit]
       );
       return rows.map((r) => ({
@@ -204,6 +227,7 @@ export function createUserRepo(db: Db) {
         handle: String(r.handle),
         xp: Number(r.xp),
         level: Number(r.level),
+        trophies: Number(r.trophies),
       }));
     },
 

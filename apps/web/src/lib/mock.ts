@@ -4,6 +4,9 @@
  */
 
 import type { Dict } from './i18n';
+// Explicit extension: this module is loaded raw by `node --test`, which does not
+// resolve extensionless paths (same reason `selo-art.tsx` spells its imports out).
+import { DEMO_TROPHIES } from './marketplace.ts';
 
 /** Challenge mechanics; the matching copy is in `Dict.ch[i]`. */
 export interface ChallengeSpec {
@@ -200,6 +203,8 @@ export interface GlobalRankRow {
   initials: string;
   sub: string;
   xp: number;
+  /** Trophy balance, same source the demo store spends from. */
+  trophies: number;
   avBg: string;
   avColor: string;
   me?: boolean;
@@ -216,6 +221,10 @@ export function globalRanking(
       initials: me.initials,
       sub: t.meSubYou,
       xp: me.xp,
+      // The store already grants the demo fan this balance (MarketplaceState reads the
+      // same constant). Re-typing the number here would let the ranking and the store
+      // drift apart and contradict each other on the judge's path.
+      trophies: DEMO_TROPHIES,
       avBg: 'var(--lime)',
       avColor: 'var(--on-lime)',
       me: true,

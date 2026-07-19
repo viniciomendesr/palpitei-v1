@@ -1439,6 +1439,58 @@ test('troféu de estreia é UM por conta, para sempre (índice único, não CAS)
   assert.equal(linhas[0].ref, '18257865');
 });
 
+test('o ranking global traz o saldo de troféus de cada fã, numa consulta só', async () => {
+  // Três fãs com XP alto o bastante para ocupar o topo, e saldos diferentes de
+  // propósito: zero, um e vários.
+  const semTrofeu = await p.users.findOrCreateByPrivyDid('did:privy:rank-sem-trofeu');
+  const comUm = await p.users.findOrCreateByPrivyDid('did:privy:rank-com-um');
+  const comVarios = await p.users.findOrCreateByPrivyDid('did:privy:rank-com-varios');
+
+  await p.users.setHandle(semTrofeu.id, 'rank-sem-trofeu');
+  await p.users.setHandle(comUm.id, 'rank-com-um');
+  await p.users.setHandle(comVarios.id, 'rank-com-varios');
+
+  await p.users.addXp(semTrofeu.id, 900_000);
+  await p.users.addXp(comUm.id, 800_000);
+  await p.users.addXp(comVarios.id, 700_000);
+
+  await p.trophies.awardDebut(comUm.id, '18257865');
+
+  // Vários troféus: a estreia é uma só (índice parcial), então as demais linhas
+  // entram direto no ledger. O saldo é a SOMA dos deltas, nunca a contagem de
+  // linhas — a linha negativa é o que prova a diferença: 3 linhas, saldo 2.
+  await p.trophies.awardDebut(comVarios.id, '18257739');
+  await p.db.query(
+    `insert into trophy_ledger (user_id, delta, reason, ref)
+     values ($1, -1, 'perk_redeem', 'ticket'), ($1, 2, 'perk_redeem', 'estorno')`,
+    [comVarios.id],
+  );
+
+  const top = await p.users.topRanking(50);
+  const porApelido = new Map(top.map((r) => [r.handle, r]));
+
+  assert.equal(porApelido.get('rank-sem-trofeu')?.trophies, 0, 'fã sem linha no ledger vale ZERO, não ausente');
+  assert.equal(porApelido.get('rank-com-um')?.trophies, 1);
+  assert.equal(porApelido.get('rank-com-varios')?.trophies, 2, 'saldo é sum(delta), não count(*)');
+
+  // O saldo agregado tem que bater com a leitura por fã do trophyRepo — se as
+  // duas divergirem, o ranking e a loja contam histórias diferentes.
+  for (const [apelido, id] of [
+    ['rank-sem-trofeu', semTrofeu.id],
+    ['rank-com-um', comUm.id],
+    ['rank-com-varios', comVarios.id],
+  ]) {
+    assert.equal(porApelido.get(apelido)?.trophies, await p.trophies.balance(id));
+  }
+
+  // A ordenação continua sendo por XP: troféu não reordena o ranking.
+  const posicoes = ['rank-sem-trofeu', 'rank-com-um', 'rank-com-varios'].map((h) =>
+    top.findIndex((r) => r.handle === h),
+  );
+  assert.ok(posicoes.every((i) => i >= 0), 'os três precisam estar no top 50');
+  assert.deepEqual([...posicoes].sort((a, b) => a - b), posicoes, 'ordem por XP desc, não por troféu');
+});
+
 test('troféu NÃO escreve XP — moeda rara não é pontuação', async () => {
   const u = await p.users.findOrCreateByPrivyDid('did:privy:trofeu-sem-xp');
   const antes = (await p.users.findById(u.id)).xp;

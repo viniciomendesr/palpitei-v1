@@ -172,6 +172,8 @@ export interface ApiRankRow {
   name: string;
   xp: number;
   level: number;
+  /** Trophy balance: `sum(delta)` over the ledger, and 0 means zero earned. */
+  trophies: number;
   me: boolean;
 }
 

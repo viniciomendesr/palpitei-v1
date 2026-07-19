@@ -737,6 +737,10 @@ const pt = {
   mkSealNoneBody:
     'O Selo TxLINE marca o seu primeiro palpite numa partida ao vivo. Jogue uma ao vivo e ele fica esperando aqui.',
   mkSealError: 'Não deu para ler o seu Selo.',
+
+  // Saldo de troféus na linha do ranking. A palavra é a mesma da loja: o fã vê
+  // "Troféus" nos dois lugares porque é a mesma moeda.
+  rankTrophies: 'Troféus',
 };
 
 /** Translation contract: Portuguese defines it and English satisfies it. */
@@ -1402,6 +1406,8 @@ const en: Dict = {
   mkSealNoneBody:
     'The TxLINE Seal marks your first prediction in a live match. Play one live and it will be waiting here.',
   mkSealError: 'Could not read your Seal.',
+
+  rankTrophies: 'Trophies',
 };
 
 export const dicts: Record<Lang, Dict> = { pt, en };

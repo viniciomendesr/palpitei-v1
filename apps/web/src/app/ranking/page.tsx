@@ -9,6 +9,8 @@ import { useRequireSession } from '@/lib/guard';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { fw } from '@/lib/tokens';
 import { globalRanking } from '@/lib/mock';
+import { showsTrophyMark } from '@/lib/ranking';
+import { Trophy } from '@/components/Icons';
 import { api, type ApiRankRow } from '@/lib/api';
 
 type Linha = {
@@ -17,6 +19,7 @@ type Linha = {
   initials: string;
   sub: string;
   xp: number;
+  trophies: number;
   avBg: string;
   avColor: string;
   me?: boolean;
@@ -60,6 +63,7 @@ export default function RankingPage() {
         initials: initialsOf(r.name, 'existing'),
         sub: `${t.lv} ${r.level}`,
         xp: r.xp,
+        trophies: r.trophies,
         avBg: r.me ? 'var(--lime)' : 'var(--surface-2)',
         avColor: r.me ? 'var(--on-lime)' : 'var(--text-1)',
         me: r.me,
@@ -149,7 +153,43 @@ export default function RankingPage() {
               >
                 {r.name}
               </div>
-              <div style={{ fontSize: 11.5, fontWeight: fw.medium, color: 'var(--text-muted)' }}>{r.sub}</div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 11.5,
+                  fontWeight: fw.medium,
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <span>{r.sub}</span>
+                {/*
+                  The trophy rides the secondary line, next to the level, while XP keeps
+                  the loud slot on the right. Same gold the store paints the currency
+                  with, so the fan recognises it across screens, but a third of the size
+                  and a whisper of the weight: it reads as a detail of the fan, not as a
+                  second score competing with XP.
+                */}
+                {showsTrophyMark(r.trophies) && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span
+                      aria-label={`${fmt(r.trophies)} ${t.rankTrophies}`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        color: 'var(--gold)',
+                        fontWeight: fw.heavy,
+                      }}
+                    >
+                      <Trophy size={12} />
+                      {fmt(r.trophies)}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
             <span style={{ fontWeight: fw.black, fontSize: 14, color: 'var(--gold)' }}>{fmt(r.xp)} XP</span>
           </div>

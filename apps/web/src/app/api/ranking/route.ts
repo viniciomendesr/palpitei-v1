@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { createUserRepo } from '@palpitei/db';
+import { createTrophyRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { didVerificado, erroParaResposta } from '@/server/http';
 
@@ -22,19 +22,39 @@ export async function GET(req: Request): Promise<NextResponse> {
   try {
     const repo = createUserRepo(db);
     const eu = await repo.findOrCreateByPrivyDid(did);
-    const top = await repo.topByXp(TOP);
+    const top = await repo.topRanking(TOP);
 
-    type Linha = { pos: number | null; name: string; xp: number; level: number; me: boolean };
+    type Linha = {
+      pos: number | null;
+      name: string;
+      xp: number;
+      level: number;
+      trophies: number;
+      me: boolean;
+    };
     const rows: Linha[] = top.map((r, i) => ({
       pos: i + 1,
       name: r.handle,
       xp: r.xp,
       level: r.level,
+      trophies: r.trophies,
       me: r.userId === eu.id,
     }));
 
     if (!rows.some((r) => r.me)) {
-      rows.push({ pos: null, name: eu.handle ?? '', xp: eu.xp, level: eu.level, me: true });
+      // The appended row is built from `users`, which knows nothing about the ledger.
+      // Reading the balance here costs one extra query for one fan (never per row) and
+      // is what keeps a fan outside the top 50 from being told they hold zero trophies
+      // when they hold some.
+      const trophies = await createTrophyRepo(db).balance(eu.id);
+      rows.push({
+        pos: null,
+        name: eu.handle ?? '',
+        xp: eu.xp,
+        level: eu.level,
+        trophies,
+        me: true,
+      });
     }
 
     return NextResponse.json({ rows });
