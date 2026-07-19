@@ -125,6 +125,47 @@ function loadMintAuthoritySecret(path: string) {
 const shorten = (address: string): string => `${address.slice(0, 4)}…${address.slice(-4)}`;
 
 /**
+ * Checks that an image URL actually serves a PNG.
+ *
+ * THE ART IS NO LONGER A FILE. The seals are rendered on demand by
+ * `apps/web/src/app/selo/`, so `existsSync` on `public/selo/*.png` — what this
+ * guard used to do — would now fail forever on images that are perfectly fine.
+ * The check moved to the only question that was ever being asked: does the URL
+ * the asset will point at, permanently, return an image?
+ *
+ * This is STRICTLY STRONGER than the old check, not weaker. The file test
+ * confirmed a byte on the developer's disk and said nothing about the deployed
+ * URL; a PNG present locally and never deployed passed it. This one fetches the
+ * URL the metadata publishes.
+ *
+ * It FAILS CLOSED. Any non-200, any content type that is not an image, an empty
+ * body, a refused connection, DNS failure or timeout all return false, and false
+ * blocks the mint. A permanently image-less asset is worse than a mint deferred
+ * to the next run.
+ */
+async function imageUrlResolves(url: string): Promise<{ ok: boolean; motivo: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    // GET, not HEAD: the route renders on demand, and a HEAD that some layer
+    // answers from a route table would prove nothing about the render.
+    const response = await fetch(url, { signal: controller.signal, redirect: 'follow' });
+    if (!response.ok) return { ok: false, motivo: `HTTP ${response.status}` };
+    const type = response.headers.get('content-type') ?? '';
+    if (!type.startsWith('image/')) return { ok: false, motivo: `content-type ${type || '(ausente)'}` };
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // PNG magic. A 200 with an HTML error page is exactly the failure this catches.
+    const isPng = bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    if (!isPng) return { ok: false, motivo: `${bytes.length} bytes que não começam com a assinatura PNG` };
+    return { ok: true, motivo: `${bytes.length} bytes de PNG` };
+  } catch (e) {
+    return { ok: false, motivo: e instanceof Error ? e.message : 'falha de rede' };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Reads the `eventStatRoot` for this fixture and VERIFIES it against the anchor.
  *
  * The response also carries `statToProve`, `summary` and the proof paths. Those
@@ -308,7 +349,6 @@ async function main(): Promise<void> {
       metadata: SeloMetadata;
       uri: string;
       file: string;
-      localImage: string;
       existingMint: string | null;
     };
 
@@ -339,7 +379,6 @@ async function main(): Promise<void> {
         metadata,
         uri: `${options.baseUrl.replace(/\/+$/, '')}/selo/${fileName}`,
         file: join(options.outDir, fileName),
-        localImage: join(options.outDir, `${slug}.png`),
         existingMint: c.mintStatus ?? null,
       };
     });
@@ -363,25 +402,36 @@ async function main(): Promise<void> {
     }
 
     const pendingItems = items.filter((i) => !i.existingMint);
-    const missingImages = pendingItems.filter((i) => !existsSync(i.localImage));
 
     console.log(`\n=== resumo ===`);
     console.log(`  a cunhar:  ${pendingItems.length}`);
     console.log(`  pulados:   ${items.length - pendingItems.length} (já registrados)`);
     console.log(`  JSON escrito em ${options.outDir} (${items.length} arquivo(s))`);
 
+    // As imagens são RENDERIZADAS por rota, não arquivos no disco, e o selo é por
+    // PARTIDA: os três fãs desta fixture apontam para a mesma arte. Conferimos a
+    // URL única de cada item mais a da coleção, que é cunhada junto.
+    const imageUrls = [...new Set([...pendingItems.map((i) => i.metadata.image), collectionMetadata.image])];
+    console.log(`\n=== imagens (renderizadas por rota, conferidas por HTTP) ===`);
+    const missingImages: string[] = [];
+    for (const url of imageUrls) {
+      const check = await imageUrlResolves(url);
+      console.log(`  ${check.ok ? 'OK  ' : 'FALHA'} ${url}  (${check.motivo})`);
+      if (!check.ok) missingImages.push(url);
+    }
     if (missingImages.length > 0) {
       console.log(
-        `\n  ATENÇÃO: ${missingImages.length} imagem(ns) não existe(m) em ${options.outDir}:\n` +
-          missingImages.map((i) => `    ${i.localImage}`).join('\n') +
-          `\n  Sem o PNG no ar, o asset fica permanentemente sem imagem.`,
+        `\n  ATENÇÃO: ${missingImages.length} imagem(ns) não responde(m) com PNG.\n` +
+          `  Confira se o deploy do apps/web subiu com as rotas de /selo.\n` +
+          `  Sem a imagem no ar, o asset fica permanentemente sem imagem.`,
       );
     }
 
     if (!options.confirm) {
       console.log(`\nDRY RUN: nada foi transmitido, nenhuma chave foi lida.`);
       console.log(`Confira campo a campo acima. Se estiver certo:`);
-      console.log(`  1. publique os JSON e os PNG (deploy do apps/web) e confirme que a uri responde 200;`);
+      console.log(`  1. publique os JSON (deploy do apps/web) e confirme que a uri responde 200;`);
+      console.log(`     as imagens são renderizadas por rota — a checagem acima já as conferiu por HTTP;`);
       console.log(`  2. exporte MINT_AUTHORITY_KEYPAIR com o CAMINHO da chave financiada;`);
       console.log(`  3. rode de novo com --confirm.`);
       return;
@@ -390,7 +440,8 @@ async function main(): Promise<void> {
     // ---- daqui para baixo, só com --confirm ---------------------------------
     if (missingImages.length > 0 && !options.allowMissingImage) {
       throw new Error(
-        `recusando cunhar com imagem ausente. Publique os PNG ou rode com --allow-missing-image ` +
+        `recusando cunhar: ${missingImages.length} imagem(ns) não respondem com PNG (${missingImages.join(', ')}). ` +
+          `Faça o deploy do apps/web e confira as rotas de /selo, ou rode com --allow-missing-image ` +
           `se quiser mesmo um asset sem imagem para sempre.`,
       );
     }

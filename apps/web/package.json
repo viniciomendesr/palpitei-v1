@@ -16,6 +16,7 @@
   "dependencies": {
     "@palpitei/db": "*",
     "@palpitei/ds": "*",
+    "@palpitei/selo": "*",
     "@palpitei/txline": "*",
     "@privy-io/react-auth": "^3.35.1",
     "@privy-io/server-auth": "^1.32.5",

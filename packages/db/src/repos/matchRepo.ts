@@ -115,6 +115,26 @@ export function createMatchRepo(db: Db) {
       return rows.map(mapFixture);
     },
 
+    /**
+     * Matches whose kickoff falls on one UTC calendar day.
+     *
+     * Narrows a slug lookup to a handful of rows so the caller can regenerate
+     * each candidate's slug and compare exactly. The day is UTC because every
+     * other date on the Selo path is: the slug, the badge's `Match date` and the
+     * TxODDS anchor day are all derived from the same UTC instant, and a local
+     * day here would silently disagree with all three.
+     */
+    async listByUtcDate(isoDate: string): Promise<Fixture[]> {
+      const rows = await db.query(
+        `select ${COLS} from matches
+          where start_ts is not null
+            and to_char(to_timestamp(start_ts / 1000.0) at time zone 'UTC', 'YYYY-MM-DD') = $1
+          order by start_ts, fixture_id`,
+        [isoDate]
+      );
+      return rows.map(mapFixture);
+    },
+
     async setState(fixtureId: number, state: MatchState): Promise<void> {
       await db.query(`update matches set state = $2, updated_at = now() where fixture_id = $1`, [
         fixtureId,

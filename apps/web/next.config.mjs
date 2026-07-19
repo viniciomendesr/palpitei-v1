@@ -39,8 +39,10 @@ const nextConfig = {
   // Allow parallel development and build output when `NEXT_DIST_DIR` is set.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   allowedDevOrigins: localDevHosts(),
-  // Core, DS, and TxLINE are TypeScript sources; DB is consumed from `dist`.
-  transpilePackages: ['@palpitei/core', '@palpitei/ds', '@palpitei/txline'],
+  // Core, DS, Selo, and TxLINE are TypeScript sources; DB is consumed from `dist`.
+  // Selo is here for `matchSlug` alone: the Selo image route must resolve a slug
+  // with the SAME function that wrote it into the metadata, never a copy.
+  transpilePackages: ['@palpitei/core', '@palpitei/ds', '@palpitei/selo', '@palpitei/txline'],
 };
 
 export default nextConfig;
