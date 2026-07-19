@@ -264,10 +264,13 @@ The demo is entirely local — it writes to `sessionStorage` and touches no
 network and no database — and it runs the full loop: fixture list, match replay,
 a timed question, a pick, settlement with XP, the explanation, and the ranking.
 
-Two things to expect on this path. `/api/health` answers `503` because there is
-no database, which is the honest answer rather than a fake green. And use
-`npm start`, not `npm run dev`: without `DATABASE_URL` the dev server fails to
-compile the server bundle and returns 500. The authenticated fixture, live, and
+`npm run dev` works on this path too, if you would rather have hot reload. Live
+ingest and room reconciliation stay off without a database and the server says so
+on startup.
+
+Expect `/api/health` to answer `503`: there is no database, and reporting that
+honestly beats a fake green. The interface is served in English when the browser
+asks for anything other than Portuguese. The authenticated fixture, live, and
 replay paths need the credentials below.
 
 ## Run locally with credentials

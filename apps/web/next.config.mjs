@@ -43,10 +43,6 @@ const nextConfig = {
   // Selo is here for `matchSlug` alone: the Selo image route must resolve a slug
   // with the SAME function that wrote it into the metadata, never a copy.
   transpilePackages: ['@palpitei/core', '@palpitei/ds', '@palpitei/selo', '@palpitei/txline'],
-  // Node-only drivers reached from `instrumentation.ts`. Without this the dev
-  // bundler tries to bundle them and fails on Node builtins (`redis` pulls
-  // `stream`), which returns 500 on every route in a clean clone.
-  serverExternalPackages: ['redis', 'pg'],
 };
 
 export default nextConfig;
