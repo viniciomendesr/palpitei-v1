@@ -1,5 +1,6 @@
 /** Authoritative room: server anchors time to the feed and decides XP. */
 
+import { randomUUID } from 'node:crypto';
 import {
   OddsExplainer,
   QuestionEngine,
@@ -30,6 +31,7 @@ import {
   createOddsRepo,
   createPredictionRepo,
   createQuestionTemplateRepo,
+  createTrophyRepo,
 } from '@palpitei/db';
 import type { Db, EnginePorts } from '@palpitei/db';
 import { createKickoffDeduper, createMatchEventFilter } from './lances';
@@ -44,7 +46,8 @@ import {
 import { createDb } from './db';
 import { resetLobby } from './lobbies';
 import { roomKey, roomPolicy } from './room-id';
-import { roomMode } from './room-mode';
+import { roomMode, type RoomMode } from './room-mode';
+import { canAwardDebutTrophy } from './trophy-rules';
 import {
   WATCHDOG_MARGIN_MS,
   scheduleShutdownIfEmpty,
@@ -85,6 +88,8 @@ type Sub = { userId: string | null; enviar: (msg: RoomMessage) => void };
 
 type Room = {
   fixtureId: number;
+  /** How the room was built. The debut trophy needs a genuinely live room. */
+  mode: RoomMode;
   /** Party code keeps invitations for the same fixture on separate runners. */
   partyId: string;
   /** Training neither persists state nor awards XP. */
@@ -253,7 +258,18 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
   const baseSession = session ?? (mode === 'finished' ? partySession : null);
   const templatesFixados = baseSession ? templatesDoSnapshot(baseSession.templateSet) : templates;
   const recuperado = baseSession ? snapshotDaSessao(baseSession.snapshot) : null;
-  const ports = politica.persists ? createEnginePorts(db) : portsDeTreino();
+  /**
+   * Identity of THIS execution, stamped on every prediction it persists.
+   *
+   * Live reuses the session id, so a room rebuilt from its checkpoint after a
+   * restart keeps writing into the same participation. Replay has no session by
+   * design (`roomMode` reads a session as "this party already played", and a
+   * replay that gets one comes back as a dead `finished` room instead of
+   * replaying), so it gets a fresh id per run — which is exactly what makes a
+   * second replay distinguishable from the first.
+   */
+  const runId = baseSession?.id ?? randomUUID();
+  const ports = politica.persists ? createEnginePorts(db, { runId }) : portsDeTreino();
   // Live rooms use kickoff until the first real event reanchors the clock.
   const cursor: ReplayCursor = {
     matchTs: recuperado?.cursor?.matchTs ?? (linhaDoTempo.length ? linhaDoTempo[0]!.ts : fixture.startTime ?? Date.now()),
@@ -289,6 +305,7 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
 
   const sala: Room = {
     fixtureId,
+    mode,
     partyId,
     training,
     fatos: new Map(),
@@ -698,17 +715,17 @@ export async function openRoom(
   training = false,
   partyId = 'PUBLIC',
 ): Promise<Room | null> {
-  const chave = roomKey(fixtureId, training, partyId);
-  const aberta = salas.get(chave);
+  const key = roomKey(fixtureId, training, partyId);
+  const aberta = salas.get(key);
   if (aberta) return aberta;
 
-  const existente = salasEmCriacao.get(chave);
+  const existente = salasEmCriacao.get(key);
   if (existente) return existente;
 
   const criacao = createRoom(fixtureId, training, partyId).finally(() => {
-    if (salasEmCriacao.get(chave) === criacao) salasEmCriacao.delete(chave);
+    if (salasEmCriacao.get(key) === criacao) salasEmCriacao.delete(key);
   });
-  salasEmCriacao.set(chave, criacao);
+  salasEmCriacao.set(key, criacao);
   return criacao;
 }
 
@@ -822,5 +839,29 @@ export async function placePrediction(
   // Wait for this prediction only; `flushDe` does not surface another user's error.
   await sala.ports.flushDe(r.prediction.id);
   sala.checkpoint();
+  await awardDebutTrophy(sala, user);
   return { ok: true };
+}
+
+/**
+ * Grants the one debut trophy, after the prediction is durable.
+ *
+ * Order matters: the trophy commemorates a prediction that exists, so it is
+ * awarded only once `flushDe` has confirmed the write. A failure here must never
+ * fail the prediction the fan just made, so it is logged and swallowed; the
+ * unique index means a later attempt is still exactly-once.
+ *
+ * No XP is written here. A trophy is not XP.
+ */
+async function awardDebutTrophy(sala: Room, user: User): Promise<void> {
+  if (!canAwardDebutTrophy({ roomMode: sala.mode, training: sala.training, privyDid: user.privyId })) return;
+  try {
+    const awarded = await createTrophyRepo(sala.db).awardDebut(user.id, String(sala.fixtureId));
+    if (awarded) console.log(`[sala ${sala.fixtureId}] troféu de estreia concedido ao fã ${user.id}`);
+  } catch (e) {
+    console.warn(
+      `[sala ${sala.fixtureId}] troféu de estreia falhou:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
 }

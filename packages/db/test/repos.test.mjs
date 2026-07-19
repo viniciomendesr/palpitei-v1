@@ -32,6 +32,8 @@ const MIGRATIONS = [
   resolve(AQUI, '../../../supabase/migrations/0005_pregame_picks.sql'),
   resolve(AQUI, '../../../supabase/migrations/0006_pregame_txline_lines.sql'),
   resolve(AQUI, '../../../supabase/migrations/0007_live_sessions_templates.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0008_trophies_selo.sql'),
+  resolve(AQUI, '../../../supabase/migrations/0009_participacao_e_selo_revelado.sql'),
 ];
 const PORTA = 5599;
 
@@ -1404,4 +1406,400 @@ test('totaisFinais: evento final SEM bloco Score não zera o que já se sabia (A
   assert.deepEqual(t.goals, { p1: 2, p2: 1 }, 'o evento sem Score não pode regredir o placar');
   assert.deepEqual(t.corners, { p1: 5, p2: 4 });
   assert.equal(await p.events.totaisFinais(999999), null, 'partida sem timeline = null');
+});
+
+// -----------------------------------------------------------------------------
+// Troféus e o registro de cunhagem do Selo TxLINE
+// -----------------------------------------------------------------------------
+
+test('troféu de estreia é UM por conta, para sempre (índice único, não CAS)', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:estreia');
+
+  assert.equal(await p.trophies.hasDebut(u.id), false);
+  assert.equal(await p.trophies.balance(u.id), 0);
+
+  assert.equal(await p.trophies.awardDebut(u.id, '18257865'), true, 'a primeira concessão vale');
+
+  // Mesma fixture, outra fixture, dez repetições: o índice parcial recusa todas
+  // em silêncio. (Sequencial de propósito: o PGlite atende uma conexão e derruba
+  // o socket sob concorrência real, então uma corrida aqui testaria o PGlite, não
+  // a regra. O que garante a atomicidade é o índice, não o número de chamadas.)
+  assert.equal(await p.trophies.awardDebut(u.id, '18257865'), false);
+  assert.equal(await p.trophies.awardDebut(u.id, '18257739'), false, 'estreia não é por partida');
+  for (let i = 0; i < 10; i++) {
+    assert.equal(await p.trophies.awardDebut(u.id, '18257865'), false);
+  }
+
+  assert.equal(await p.trophies.hasDebut(u.id), true);
+  assert.equal(await p.trophies.balance(u.id), 1, 'saldo é derivado do ledger, não de um contador');
+
+  const linhas = await p.trophies.listByUser(u.id);
+  assert.equal(linhas.length, 1);
+  assert.equal(linhas[0].reason, 'live_debut');
+  assert.equal(linhas[0].ref, '18257865');
+});
+
+test('troféu NÃO escreve XP — moeda rara não é pontuação', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:trofeu-sem-xp');
+  const antes = (await p.users.findById(u.id)).xp;
+  await p.trophies.awardDebut(u.id, '18257865');
+  const depois = (await p.users.findById(u.id)).xp;
+  assert.equal(depois, antes, 'conceder troféu não pode mexer em users.xp');
+});
+
+test('cunhar o mesmo palpite duas vezes é impossível: a segunda reserva não sai', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:selo', {
+    wallet: 'FanWa11etPubkeyExemp1o111111111111111111111',
+    walletSource: 'privy_embedded',
+  });
+  await p.matches.upsert({ fixtureId: 930001, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
+  await p.questions.save({
+    id: 'q_selo',
+    fixtureId: 930001,
+    type: 'final_result',
+    prompt: 'Como termina a partida?',
+    options: [{ id: 'p1', label: 'França' }, { id: 'p2', label: 'Inglaterra' }],
+    opensAt: 1_700_000_000_000,
+    closesAt: 1_700_000_060_000,
+    state: 'open',
+  });
+  await p.predictions.place({
+    id: 'pred_selo',
+    userId: u.id,
+    questionId: 'q_selo',
+    choice: 'p1',
+    placedAt: 1_700_000_010_000,
+  });
+
+  const alvo = { userId: u.id, questionId: 'q_selo', cluster: 'devnet', ownerPubkey: u.wallet };
+  const primeira = await p.trophies.claimMint(alvo);
+  assert.ok(primeira, 'a primeira reserva vence');
+
+  // Rodar o script de novo, ou dois processos ao mesmo tempo, não pode cunhar
+  // duas vezes: mint é irreversível e público.
+  assert.equal(await p.trophies.claimMint(alvo), null, 'a segunda reserva não sai');
+
+  await p.trophies.confirmMint(primeira.id, {
+    assetPubkey: 'Asset111111111111111111111111111111111111111',
+    collectionPubkey: 'Co11ection11111111111111111111111111111111',
+    signature: 'Sig1111111111111111111111111111111111111111',
+    metadataUri: 'https://exemplo.invalid/selo/q_selo.json',
+  });
+
+  const [mint] = await p.trophies.listMints({ userId: u.id });
+  assert.equal(mint.status, 'minted');
+  assert.equal(mint.cluster, 'devnet');
+  assert.equal(mint.assetPubkey, 'Asset111111111111111111111111111111111111111');
+
+  // Mesmo já cunhado, a reserva continua recusada.
+  assert.equal(await p.trophies.claimMint(alvo), null, 'já cunhado continua bloqueado');
+});
+
+test('reserva pendente BLOQUEIA nova tentativa — falhar de menos é melhor que cunhar duas vezes', async () => {
+  const u = await p.users.findOrCreateByPrivyDid('did:privy:selo-pendente', {
+    wallet: 'FanWa11etPubkeyExemp1o222222222222222222222',
+    walletSource: 'privy_embedded',
+  });
+  await p.questions.save({
+    id: 'q_selo_pendente',
+    fixtureId: 930001,
+    type: 'hilo_corners',
+    prompt: 'Sai escanteio nos próximos 10 minutos?',
+    options: [{ id: 'sim', label: 'Sai' }, { id: 'nao', label: 'Não sai' }],
+    opensAt: 1_700_000_000_000,
+    closesAt: 1_700_000_060_000,
+    state: 'open',
+  });
+  const alvo = { userId: u.id, questionId: 'q_selo_pendente', cluster: 'devnet', ownerPubkey: u.wallet };
+
+  const reserva = await p.trophies.claimMint(alvo);
+  assert.ok(reserva);
+  // Um crash entre transmitir e confirmar deixa a linha em 'pending'.
+  assert.equal(await p.trophies.claimMint(alvo), null, 'pendente bloqueia');
+
+  // Só quando o script SABE que nada foi transmitido a reserva é liberada.
+  await p.trophies.failMint(reserva.id);
+  const segunda = await p.trophies.claimMint(alvo);
+  assert.ok(segunda, 'depois de marcada como falha, a reserva pode ser refeita');
+});
+
+test('o Selo é a ESTREIA: um por fã, o palpite mais antigo, certo ou errado', async () => {
+  await p.matches.upsert({ fixtureId: 930003, p1: 'France', p2: 'England', startTime: 1_700_000_000_000 });
+  const sessao = await p.sessions.findOrCreateActive({
+    fixtureId: 930003,
+    partyId: 'AOVIVO1',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+
+  const fa = await p.users.findOrCreateByPrivyDid('did:privy:estreia-selo', {
+    wallet: 'Wa11etAoVivo111111111111111111111111111111',
+    walletSource: 'privy_embedded',
+  });
+  await p.users.setHandle(fa.id, 'Rafy');
+
+  const base = {
+    fixtureId: 930003,
+    type: 'hilo_corners',
+    options: [{ id: 'yes', label: 'Sai' }, { id: 'no', label: 'Não sai' }],
+    closesAt: 1_700_000_500_000,
+    state: 'open',
+    sessionId: sessao.id,
+  };
+  await p.questions.save({ ...base, id: 'q_estreia', prompt: 'Sai outro escanteio em até 10 minutos?', opensAt: 1_700_000_400_000 });
+  await p.questions.save({ ...base, id: 'q_depois', type: 'next_goal', prompt: 'Quem marca o próximo gol?', opensAt: 1_700_000_450_000, options: [{ id: 'p1', label: 'France' }] });
+
+  // A estreia foi ERRADA e a seguinte foi certa: o Selo tem que pegar a ERRADA.
+  await p.predictions.place({ id: 'pred_estreia', userId: fa.id, questionId: 'q_estreia', choice: 'yes', placedAt: 1_700_000_420_000 });
+  await p.predictions.settle('pred_estreia', 'lost', 0);
+  await new Promise((r) => setTimeout(r, 10)); // created_at é relógio de parede
+  await p.predictions.place({ id: 'pred_depois', userId: fa.id, questionId: 'q_depois', choice: 'p1', placedAt: 1_700_000_470_000 });
+  await p.predictions.settle('pred_depois', 'won', 100);
+
+  const candidatos = await p.trophies.listSeloCandidates(930003);
+  assert.equal(candidatos.length, 1, 'um Selo por fã, não um por palpite');
+  assert.equal(candidatos[0].questionId, 'q_estreia', 'a estreia é a mais ANTIGA, mesmo tendo errado');
+  assert.equal(candidatos[0].choiceLabel, 'Sai');
+  assert.equal(candidatos[0].handle, 'Rafy');
+  // O resultado nem chega ao chamador: o Selo não sabe se o palpite deu certo.
+  assert.equal('result' in candidatos[0], false);
+});
+
+test('replay NÃO vira Selo: palpite sem sessão ao vivo fica fora dos candidatos', async () => {
+  // Medido na 18257865 em 19/07: as três estreias reais carregam session_id e
+  // foram feitas 18/07 entre 21:19 e 21:35 UTC, durante a partida. Os palpites
+  // de replay, feitos depois de 19/07 01:13, não carregam nenhuma.
+  await p.matches.upsert({ fixtureId: 930004, p1: 'Spain', p2: 'Argentina', startTime: 1_700_000_000_000 });
+  const sessao = await p.sessions.findOrCreateActive({
+    fixtureId: 930004,
+    partyId: 'AOVIVO2',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+  const fa = await p.users.findOrCreateByPrivyDid('did:privy:replay-vs-vivo', {
+    wallet: 'Wa11etReplay111111111111111111111111111111',
+    walletSource: 'privy_embedded',
+  });
+  const base = {
+    fixtureId: 930004,
+    type: 'next_goal',
+    prompt: 'Quem marca o próximo gol?',
+    options: [{ id: 'p1', label: 'Spain' }],
+    opensAt: 1_700_000_400_000,
+    closesAt: 1_700_000_500_000,
+    state: 'open',
+  };
+  // Sala de REPLAY primeiro: nenhuma sessão é criada, session_id fica nulo.
+  await p.questions.save({ ...base, id: 'q_replay' });
+  await p.predictions.place({ id: 'pred_replay', userId: fa.id, questionId: 'q_replay', choice: 'p1', placedAt: 1_700_000_420_000 });
+  await new Promise((r) => setTimeout(r, 10));
+  await p.questions.save({ ...base, id: 'q_vivo', sessionId: sessao.id });
+  await p.predictions.place({ id: 'pred_vivo', userId: fa.id, questionId: 'q_vivo', choice: 'p1', placedAt: 1_700_000_430_000 });
+
+  const candidatos = await p.trophies.listSeloCandidates(930004);
+  assert.deepEqual(
+    candidatos.map((c) => c.questionId),
+    ['q_vivo'],
+    'o palpite de replay é mais antigo no relógio de parede e MESMO ASSIM não conta',
+  );
+});
+
+test('conta demo e conta sem carteira ficam fora dos candidatos ao Selo', async () => {
+  await p.matches.upsert({ fixtureId: 930005, p1: 'A', p2: 'B', startTime: 1_700_000_000_000 });
+  const sessao = await p.sessions.findOrCreateActive({
+    fixtureId: 930005,
+    partyId: 'AOVIVO3',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+  await p.questions.save({
+    id: 'q_excluidos',
+    fixtureId: 930005,
+    type: 'next_goal',
+    prompt: 'Quem marca o próximo gol?',
+    options: [{ id: 'p1', label: 'A' }],
+    opensAt: 1_700_000_400_000,
+    closesAt: 1_700_000_500_000,
+    state: 'open',
+    sessionId: sessao.id,
+  });
+
+  const real = await p.users.findOrCreateByPrivyDid('did:privy:excl-real', {
+    wallet: 'Wa11etRea111111111111111111111111111111111',
+    walletSource: 'privy_embedded',
+  });
+  const semCarteira = await p.users.findOrCreateByPrivyDid('did:privy:excl-sem-carteira');
+  const jurado = await p.users.findOrCreateByPrivyDid('demo:excl-jurado', {
+    wallet: 'Wa11etDemo11111111111111111111111111111111',
+    walletSource: 'simulated',
+  });
+
+  for (const [id, fa] of [['pred_excl_real', real], ['pred_excl_sem', semCarteira], ['pred_excl_demo', jurado]]) {
+    await p.predictions.place({ id, userId: fa.id, questionId: 'q_excluidos', choice: 'p1', placedAt: 1_700_000_420_000 });
+  }
+
+  const candidatos = await p.trophies.listSeloCandidates(930005);
+  assert.deepEqual(candidatos.map((c) => c.userId), [real.id]);
+});
+
+// ---------------------------------------------------------------------------
+// participação: qual EXECUÇÃO produziu o palpite
+// ---------------------------------------------------------------------------
+
+/** Grava uma pergunta e o palpite do fã numa execução identificada. */
+async function palpitarEm({ fixtureId, questionId, predictionId, userId, runId, sessionId, placedAt }) {
+  await p.questions.save({
+    id: questionId,
+    fixtureId,
+    type: 'next_goal',
+    prompt: 'Quem marca o próximo gol?',
+    options: [{ id: 'p1', label: 'Casa' }, { id: 'p2', label: 'Fora' }],
+    opensAt: placedAt - 60_000,
+    closesAt: placedAt + 60_000,
+    state: 'open',
+    ...(sessionId ? { sessionId } : {}),
+  });
+  await p.predictions.place(
+    { id: predictionId, userId, questionId, choice: 'p1', placedAt },
+    runId,
+  );
+}
+
+test('dois replays da mesma fixture viram DUAS participações distinguíveis', async () => {
+  const fa = await p.users.findOrCreateByPrivyDid('did:privy:duas-rodadas');
+  await p.matches.upsert({ fixtureId: 940001, p1: 'England', p2: 'Argentina', startTime: 1_700_000_000_000 });
+
+  // Os dois replays reproduzem o MESMO tempo de partida: placed_at não separa.
+  for (const [n, runId] of [[1, 'run-a'], [2, 'run-b']]) {
+    await palpitarEm({
+      fixtureId: 940001,
+      questionId: `q_part_${n}`,
+      predictionId: `pred_part_${n}`,
+      userId: fa.id,
+      runId,
+      placedAt: 1_700_000_030_000,
+    });
+  }
+
+  const runs = await p.participations.listRuns(fa.id, 940001);
+  assert.deepEqual(runs.map((r) => r.runId).sort(), ['run-a', 'run-b']);
+  assert.deepEqual(runs.map((r) => r.live), [false, false], 'replay não tem sessão');
+
+  const primeira = await p.participations.listPicks(fa.id, 940001, 'run-a');
+  assert.deepEqual(primeira.map((pick) => pick.questionId), ['q_part_1']);
+});
+
+test('sessão do ao vivo marca a execução como live; replay da mesma fixture não', async () => {
+  const fa = await p.users.findOrCreateByPrivyDid('did:privy:vivo-e-replay');
+  await p.matches.upsert({ fixtureId: 940002, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
+  const sessao = await p.sessions.findOrCreateActive({
+    fixtureId: 940002,
+    partyId: 'PARTY940002',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+
+  await palpitarEm({
+    fixtureId: 940002,
+    questionId: 'q_part_vivo',
+    predictionId: 'pred_part_vivo',
+    userId: fa.id,
+    runId: sessao.id,
+    sessionId: sessao.id,
+    placedAt: 1_700_000_030_000,
+  });
+  await palpitarEm({
+    fixtureId: 940002,
+    questionId: 'q_replay_depois',
+    predictionId: 'pred_replay_depois',
+    userId: fa.id,
+    runId: 'run-replay',
+    placedAt: 1_700_000_030_000,
+  });
+
+  const runs = await p.participations.listRuns(fa.id, 940002);
+  const porId = new Map(runs.map((r) => [r.runId, r]));
+  assert.equal(porId.get(sessao.id).live, true, 'sessão presente = jogou ao vivo');
+  assert.equal(porId.get('run-replay').live, false, 'replay não cria sessão');
+});
+
+test('a contagem de participantes é por execução, não pela fixture inteira', async () => {
+  await p.matches.upsert({ fixtureId: 940003, p1: 'Spain', p2: 'Argentina', startTime: 1_700_000_000_000 });
+  const a = await p.users.findOrCreateByPrivyDid('did:privy:sala-cheia-a');
+  const b = await p.users.findOrCreateByPrivyDid('did:privy:sala-cheia-b');
+  const c = await p.users.findOrCreateByPrivyDid('did:privy:sala-cheia-c');
+
+  await p.questions.save({
+    id: 'q_juntos',
+    fixtureId: 940003,
+    type: 'next_goal',
+    prompt: 'Quem marca o próximo gol?',
+    options: [{ id: 'p1', label: 'Spain' }, { id: 'p2', label: 'Argentina' }],
+    opensAt: 1_700_000_000_000,
+    closesAt: 1_700_000_060_000,
+    state: 'open',
+  });
+  for (const [id, fa] of [['pred_j_a', a], ['pred_j_b', b]]) {
+    await p.predictions.place({ id, userId: fa.id, questionId: 'q_juntos', choice: 'p1', placedAt: 1_700_000_030_000 }, 'run-cheia');
+  }
+  await palpitarEm({
+    fixtureId: 940003,
+    questionId: 'q_sozinho',
+    predictionId: 'pred_j_c',
+    userId: c.id,
+    runId: 'run-vazia',
+    placedAt: 1_700_000_030_000,
+  });
+
+  assert.equal(await p.participations.countPlayers(940003, 'run-cheia'), 2);
+  assert.equal(await p.participations.countPlayers(940003, 'run-vazia'), 1);
+});
+
+// ---------------------------------------------------------------------------
+// Selo: revelar não é cunhar
+// ---------------------------------------------------------------------------
+
+test('revelar o Selo é de mão única e não muda o carimbo na segunda vez', async () => {
+  const fa = await p.users.findOrCreateByPrivyDid('did:privy:selo-revelar', {
+    wallet: 'Wa11etReve1111111111111111111111111111111',
+    walletSource: 'privy_embedded',
+  });
+  await p.matches.upsert({ fixtureId: 940004, p1: 'França', p2: 'Inglaterra', startTime: 1_700_000_000_000 });
+  await palpitarEm({
+    fixtureId: 940004,
+    questionId: 'q_selo_rev',
+    predictionId: 'pred_selo_rev',
+    userId: fa.id,
+    runId: 'run-selo',
+    placedAt: 1_700_000_030_000,
+  });
+
+  const claim = await p.trophies.claimMint({
+    userId: fa.id,
+    questionId: 'q_selo_rev',
+    cluster: 'devnet',
+    ownerPubkey: 'Wa11etReve1111111111111111111111111111111',
+  });
+  // Enquanto está 'pending' não existe Selo para revelar: falta o endereço.
+  assert.equal(await p.trophies.findMintedSelo(fa.id), null);
+
+  await p.trophies.confirmMint(claim.id, {
+    assetPubkey: 'Asset111111111111111111111111111111111111',
+    collectionPubkey: 'Co11ection11111111111111111111111111111111',
+    signature: 'Sig1111111111111111111111111111111111111111',
+    metadataUri: 'https://exemplo.invalid/selo/1.json',
+  });
+
+  const antes = await p.trophies.findMintedSelo(fa.id);
+  assert.equal(antes.assetPubkey, 'Asset111111111111111111111111111111111111');
+  assert.equal(antes.revealedAt, undefined, 'cunhado não é revelado');
+
+  const primeira = await p.trophies.revealSelo(fa.id, claim.id);
+  assert.ok(primeira > 0);
+  const segunda = await p.trophies.revealSelo(fa.id, claim.id);
+  assert.equal(segunda, primeira, 'a segunda revelação preserva a hora da primeira');
 });

@@ -17,6 +17,7 @@ import type { SessionState } from '@/lib/session';
 import type { Dict } from '@/lib/i18n';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { localizeTeamName } from '@/lib/team-names';
+import { useDemoPlay } from '@/components/demo/DemoPlay';
 
 type Tab = 'live' | 'next' | 'replays';
 
@@ -29,6 +30,7 @@ function useFixtures(session: SessionState | null, t: Dict) {
   const [reais, setReais] = useState<ApiFixture[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const privy = usePrivyAuth();
+  const { playedRooms } = useDemoPlay();
   const ehDemo = !session || session.authMethod === 'demo';
   const podeBuscar = !ehDemo && privy.ready && privy.authenticated;
 
@@ -44,7 +46,19 @@ function useFixtures(session: SessionState | null, t: Dict) {
     };
   }, [podeBuscar]);
 
-  if (ehDemo) return { abas: fixtures(t), carregando: false, erro: null };
+  // Demo never touches the network (rule 3). Its "played" flag comes from the
+  // run the fan really placed in THIS session, held in memory.
+  if (ehDemo) {
+    const base = fixtures(t);
+    return {
+      abas: {
+        ...base,
+        replays: base.replays.map((f) => ({ ...f, played: playedRooms.has(f.id) })),
+      },
+      carregando: false,
+      erro: null,
+    };
+  }
 
   const abas: Record<Tab, FixtureView[]> = { live: [], next: [], replays: [] };
   for (const f of reais ?? []) {
@@ -57,8 +71,9 @@ function useFixtures(session: SessionState | null, t: Dict) {
       teamB: f.teamB,
       scoreA: f.scoreA ?? '–',
       scoreB: f.scoreB ?? '–',
-      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : f.training ? t.ctaTreino : t.ctaReplay,
-      source: f.source === 'txline' ? t.srcTxline : f.training ? t.srcTreino : t.srcReplay,
+      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : t.ctaReplay,
+      source: f.source === 'txline' ? t.srcTxline : t.srcReplay,
+      played: f.played ?? false,
     });
   }
   return { abas, carregando: reais === null && !erro, erro };
@@ -211,18 +226,34 @@ export default function HomePage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
         {abas[tab].map((f) => (
-          <MatchCard
-            key={f.id}
-            live={f.live}
-            status={f.status}
-            group={`${f.group} · ${f.source}`}
-            teamA={localizeTeamName(f.teamA, lang)}
-            teamB={localizeTeamName(f.teamB, lang)}
-            scoreA={f.scoreA}
-            scoreB={f.scoreB}
-            cta={tab === 'next' ? t.ctaPalpitar : f.cta}
-            onClick={tab === 'next' ? () => router.push(`/palpite/${f.id}`) : () => openSala(f.id)}
-          />
+          <div key={f.id}>
+            <MatchCard
+              live={f.live}
+              status={f.status}
+              group={`${f.group} · ${f.source}`}
+              teamA={localizeTeamName(f.teamA, lang)}
+              teamB={localizeTeamName(f.teamB, lang)}
+              scoreA={f.scoreA}
+              scoreB={f.scoreB}
+              cta={tab === 'next' ? t.ctaPalpitar : f.cta}
+              onClick={tab === 'next' ? () => router.push(`/palpite/${f.id}`) : () => openSala(f.id)}
+            />
+            {/* Second action per replay, next to "Rever partida". Disabled and
+                visible when the fan never played: hiding it would leave them
+                guessing whether the feature exists for them at all. */}
+            {tab === 'replays' && (
+              <Button
+                full
+                variant="secondary"
+                size="sm"
+                disabled={!f.played}
+                onClick={() => router.push(`/meus-palpites/${f.id}`)}
+                style={{ marginTop: 8 }}
+              >
+                {f.played ? t.ctaMeusPalpites : t.ctaMeusPalpitesVazio}
+              </Button>
+            )}
+          </div>
         ))}
 
         {!abas[tab].length && (

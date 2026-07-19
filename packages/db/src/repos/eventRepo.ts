@@ -218,6 +218,37 @@ export function createEventRepo(db: Db) {
       };
     },
 
+    /**
+     * Every Total key the feed ever reported, merged by key and never replaced.
+     *
+     * The key set is partial and grows DURING the match (measured on 18241006:
+     * the first event carrying a Score block has an EMPTY Total), so replacing
+     * the map per event would make a line blink and vanish. Merging is the same
+     * rule the live room applies in memory.
+     */
+    async totaisAcumulados(
+      fixtureId: number
+    ): Promise<{ p1: Record<string, number>; p2: Record<string, number> }> {
+      const rows = await db.query(
+        `select score_totals from match_events
+          where fixture_id = $1 and has_score and score_totals is not null
+          order by seq`,
+        [fixtureId]
+      );
+      const totais: { p1: Record<string, number>; p2: Record<string, number> } = { p1: {}, p2: {} };
+      for (const r of rows) {
+        const t = r.score_totals as { p1?: Record<string, number>; p2?: Record<string, number> } | null;
+        for (const lado of ['p1', 'p2'] as const) {
+          const bloco = t?.[lado];
+          if (!bloco) continue;
+          for (const [chave, valor] of Object.entries(bloco)) {
+            if (typeof valor === 'number') totais[lado][chave] = valor;
+          }
+        }
+      }
+      return totais;
+    },
+
     async count(fixtureId: number): Promise<number> {
       const rows = await db.query(`select count(*)::int as n from match_events where fixture_id = $1`, [
         fixtureId,

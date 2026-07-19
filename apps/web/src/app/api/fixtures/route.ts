@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { PrivyClient } from '@privy-io/server-auth';
-import { createMatchRepo } from '@palpitei/db';
+import { createMatchRepo, createParticipationRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { fixturesTxline } from '@/server/fixtures';
 import type { ApiFixture } from '@/lib/api';
@@ -38,12 +38,24 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   const db = createDb();
   const matches = createMatchRepo(db);
-  const [txline, cache, aoVivo] = await Promise.allSettled([
+  const user = await createUserRepo(db).findOrCreateByPrivyDid(did);
+  const [txline, cache, aoVivo, jogadasDoFa] = await Promise.allSettled([
     fixturesTxline(),
     matches.listCached(),
     matches.list({ state: 'live' }),
+    createParticipationRepo(db).listPlayedFixtures(user.id),
   ]);
   const fixtures: ApiFixture[] = [];
+
+  // "Meus palpites" needs a record to open; a fan who never played gets the
+  // button disabled rather than hidden, so a failed read must not silently
+  // enable it. An empty set means "we know of no participation".
+  const jogadas = new Set<number>(
+    jogadasDoFa.status === 'fulfilled' ? jogadasDoFa.value : [],
+  );
+  if (jogadasDoFa.status === 'rejected') {
+    console.error('[palpitei] participações do fã falharam:', jogadasDoFa.reason);
+  }
 
   // The snapshot's GameState lags: it still read 1 while real score events were
   // already arriving, so a running match never reached the "Ao Vivo" tab. Our own
@@ -88,8 +100,15 @@ export async function GET(req: Request): Promise<NextResponse> {
         scoreB: null,
         source: (fx.cacheSource ?? 'txline-cache') as ApiFixture['source'],
       } satisfies Omit<ApiFixture, 'id' | 'status'>;
-      fixtures.push({ ...base, id: String(fx.fixtureId), status: 'REPLAY' });
-      fixtures.push({ ...base, id: `treino-${fx.fixtureId}`, status: 'TREINO', training: true });
+      // One card per recorded match. The `treino-<id>` route still works and is
+      // still what `parseRoomId`/`roomPolicy` gate on, but Home no longer offers
+      // it: a second card per match bought nothing and doubled the Replays tab.
+      fixtures.push({
+        ...base,
+        id: String(fx.fixtureId),
+        status: 'REPLAY',
+        played: jogadas.has(fx.fixtureId),
+      });
     }
   } else {
     const e = cache.reason;

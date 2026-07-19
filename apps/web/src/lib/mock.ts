@@ -101,6 +101,12 @@ export interface FixtureView {
   startTs?: number;
   /** Source label displayed with the fixture. */
   source: string;
+  /**
+   * The fan already took part in this match, so their summary can be opened.
+   * Demo has no persisted participation, so it stays absent and the action is
+   * shown disabled rather than hidden.
+   */
+  played?: boolean;
 }
 
 /** Home tabs; `GET /api/fixtures` replaces this data in production. */

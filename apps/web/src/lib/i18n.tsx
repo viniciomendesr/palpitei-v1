@@ -616,20 +616,20 @@ const pt = {
   mkCollSub: 'O que você já tem na carteira Solana',
   mkCollSubDemo: 'O que a conta de demonstração acumulou (simulado, sem carteira real)',
   mkCollSoonBody:
-    'Sua coleção começa vazia. Jogue pra conquistar e o que for seu aparece aqui pra cunhar como Selo TxLINE.',
+    'Sua coleção começa vazia. Jogue uma partida ao vivo e o Selo TxLINE da sua estreia aparece aqui pra você abrir.',
   mkSoonTag: 'EM BREVE',
   mkSoonTitle: 'Loja chegando',
   mkSoonBody:
     'Estamos preparando os primeiros perks, NFTs e recompensas de parceiros. Enquanto isso, jogue: o XP que você acumular continua valendo quando a loja abrir.',
-  mkPocProofHdr: 'A PROVA',
+  mkPocProofHdr: 'O REGISTRO',
   mkPocMatch: 'PARTIDA',
-  mkPocMarket: 'MERCADO',
-  mkPocPred: 'PREVISÃO',
+  mkPocMarket: 'PERGUNTA',
+  mkPocPred: 'PALPITE',
   mkPocTx: 'TRANSAÇÃO',
   mkPocMinted: 'CUNHADO EM',
   mkPocSeal: 'SELO TXLINE',
   mkVerify: 'Ver no explorer',
-  mkPocEligHdr: 'O PALPITE QUE VOCÊ VAI CUNHAR',
+  mkPocEligHdr: 'A ESTREIA QUE VOCÊ VAI CUNHAR',
   // Demo has no chain and no wallet: the proof screen says so instead of printing a
   // signature-shaped string, which would be a provenance label that lies.
   mkPocTxDemo: 'Nenhuma. Demonstração local, sem transação on-chain.',
@@ -644,15 +644,15 @@ const pt = {
   mkDemoMatch: 'Argentina × Cabo Verde',
   mkDemoMarket: 'Próximo gol',
   mkDemoPrediction: 'Argentina',
-  mkEligibleSub: 'Palpite certo no replay demo',
+  mkEligibleSub: 'Sua estreia no replay demo',
 
   /** Store copy per perk; `req` only where the perk gates on a real achievement. */
   mkPerks: {
     poc: {
       title: 'Selo TxLINE',
-      sub: 'Cunhe um acerto seu como recibo verificável on-chain',
-      desc: 'Transforma um palpite que você cravou num NFT-recibo na sua carteira Solana, verificável on-chain e com link pra qualquer um conferir. É a prova pública de que você falou antes de todo mundo, o item mais cobiçado da loja.',
-      req: 'Exige um palpite que você acertou de verdade',
+      sub: 'Cunhe a sua estreia ao vivo como recibo verificável on-chain',
+      desc: 'Transforma o seu primeiro palpite numa partida ao vivo num NFT-recibo na sua carteira Solana, com link de verificação no explorer. Fica registrado que você estava lá, tenha o palpite dado certo ou não, e qualquer um confere.',
+      req: 'Exige o seu primeiro palpite numa partida ao vivo',
     },
     markets: {
       title: 'Desbloqueio de mercados',
@@ -705,6 +705,38 @@ const pt = {
       desc: 'Coloca sua liga em destaque na home de todos os membros por uma semana. Provocação em tela cheia.',
     },
   } as Record<PerkId, PerkText>,
+
+  // "Meus palpites": o registro do fã numa partida, servido do banco. Só a
+  // PRIMEIRA participação conta, e a tela diz qual foi.
+  ctaMeusPalpites: 'Meus palpites',
+  ctaMeusPalpitesVazio: 'Você não jogou esta',
+  meusPalpitesCarregando: 'Buscando os seus palpites…',
+  meusPalpitesErro: 'Não deu para abrir os seus palpites.',
+  meusPalpitesVoltar: 'Voltar para a home',
+  meusPalpitesAoVivo: 'SEUS PALPITES · AO VIVO',
+  meusPalpitesReplay: 'SEUS PALPITES · NO REPLAY',
+  meusPalpitesDemo: 'SEUS PALPITES · DEMONSTRAÇÃO',
+  meusPalpitesDemoVazio: 'Você ainda não jogou esta partida nesta sessão.',
+
+  // Selo TxLINE na Coleção. É REVELAÇÃO, não cunhagem: o asset já foi cunhado
+  // por um backfill offline e nada é transmitido quando o fã aperta o botão.
+  // Toda cópia aqui fala de reclamar o que já é dele. E o Selo marca a ESTREIA
+  // ao vivo, não um acerto: dois dos três palpites de estreia medidos na
+  // 18257865 estão errados, então prometer acerto mentiria em dois terços.
+  mkSealTitle: 'Selo TxLINE',
+  mkSealLockedSub: 'Seu selo de estreia está esperando você abrir',
+  mkSealReveal: 'Revelar meu Selo',
+  mkSealRevealing: 'Abrindo…',
+  mkSealRevealedSub: 'Registrado na sua carteira Solana',
+  mkSealRevealedTitle: 'Selo revelado!',
+  mkSealRevealedToast: 'Ele já era seu. Agora está aberto.',
+  mkSealAsset: 'ENDEREÇO DO ASSET',
+  mkSealExplorer: 'Ver no Solscan',
+  mkSealDebut: 'Sua estreia ao vivo, certa ou errada',
+  mkSealNoneTitle: 'Nenhum Selo por enquanto',
+  mkSealNoneBody:
+    'O Selo TxLINE marca o seu primeiro palpite numa partida ao vivo. Jogue uma ao vivo e ele fica esperando aqui.',
+  mkSealError: 'Não deu para ler o seu Selo.',
 };
 
 /** Translation contract: Portuguese defines it and English satisfies it. */
@@ -1259,20 +1291,20 @@ const en: Dict = {
   mkCollSub: 'What you already hold in your Solana wallet',
   mkCollSubDemo: 'What the demo account has stacked up (simulated, no real wallet)',
   mkCollSoonBody:
-    'Your collection starts empty. Play to earn, and what is yours shows up here to mint as a TxLINE Seal.',
+    'Your collection starts empty. Play a live match and the TxLINE Seal for your debut shows up here for you to open.',
   mkSoonTag: 'COMING SOON',
   mkSoonTitle: 'Store coming soon',
   mkSoonBody:
     'We’re preparing the first perks, NFTs and partner rewards. Meanwhile, play: the XP you stack still counts when the store opens.',
-  mkPocProofHdr: 'THE PROOF',
+  mkPocProofHdr: 'THE RECORD',
   mkPocMatch: 'MATCH',
-  mkPocMarket: 'MARKET',
+  mkPocMarket: 'QUESTION',
   mkPocPred: 'PREDICTION',
   mkPocTx: 'TRANSACTION',
   mkPocMinted: 'MINTED ON',
   mkPocSeal: 'TXLINE SEAL',
   mkVerify: 'View on explorer',
-  mkPocEligHdr: 'THE PREDICTION YOU’LL MINT',
+  mkPocEligHdr: 'THE DEBUT YOU’LL MINT',
   mkPocTxDemo: 'None. Local demonstration, no on-chain transaction.',
   mkDemoTag: 'DEMO · SIMULATED',
   mkMintedTitle: 'TxLINE Seal minted!',
@@ -1285,14 +1317,14 @@ const en: Dict = {
   mkDemoMatch: 'Argentina × Cape Verde',
   mkDemoMarket: 'Next goal',
   mkDemoPrediction: 'Argentina',
-  mkEligibleSub: 'Correct prediction in the demo replay',
+  mkEligibleSub: 'Your debut in the demo replay',
 
   mkPerks: {
     poc: {
       title: 'TxLINE Seal',
-      sub: 'Mint one of your correct predictions as a verifiable on-chain receipt',
-      desc: 'Turns a prediction you nailed into a receipt-NFT in your Solana wallet, verifiable on-chain and with a link anyone can check. Public proof you said it before everyone, the most coveted item in the store.',
-      req: 'Requires a prediction you actually got right',
+      sub: 'Mint your live debut as a verifiable on-chain receipt',
+      desc: 'Turns your first prediction in a live match into a receipt-NFT in your Solana wallet, with an explorer verify link. It records that you were there, whether the prediction came off or not, and anyone can check it.',
+      req: 'Requires your first prediction in a live match',
     },
     markets: {
       title: 'Market unlock',
@@ -1345,6 +1377,31 @@ const en: Dict = {
       desc: 'Features your league on every member’s home for a week. Full-screen bragging rights.',
     },
   },
+
+  ctaMeusPalpites: 'My predictions',
+  ctaMeusPalpitesVazio: 'You did not play this one',
+  meusPalpitesCarregando: 'Fetching your predictions…',
+  meusPalpitesErro: 'Could not open your predictions.',
+  meusPalpitesVoltar: 'Back to home',
+  meusPalpitesAoVivo: 'YOUR PREDICTIONS · LIVE',
+  meusPalpitesReplay: 'YOUR PREDICTIONS · IN THE REPLAY',
+  meusPalpitesDemo: 'YOUR PREDICTIONS · DEMO',
+  meusPalpitesDemoVazio: 'You have not played this match in this session yet.',
+
+  mkSealTitle: 'TxLINE Seal',
+  mkSealLockedSub: 'Your debut seal is waiting for you to open it',
+  mkSealReveal: 'Reveal my Seal',
+  mkSealRevealing: 'Opening…',
+  mkSealRevealedSub: 'On the record in your Solana wallet',
+  mkSealRevealedTitle: 'Seal revealed!',
+  mkSealRevealedToast: 'It was already yours. Now it is open.',
+  mkSealAsset: 'ASSET ADDRESS',
+  mkSealExplorer: 'View on Solscan',
+  mkSealDebut: 'Your live debut, right or wrong',
+  mkSealNoneTitle: 'No Seal yet',
+  mkSealNoneBody:
+    'The TxLINE Seal marks your first prediction in a live match. Play one live and it will be waiting here.',
+  mkSealError: 'Could not read your Seal.',
 };
 
 export const dicts: Record<Lang, Dict> = { pt, en };

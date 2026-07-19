@@ -53,6 +53,59 @@ export interface ApiFixture {
   source: 'txline' | ReplaySource;
   /** Training rooms do not persist state or award XP. */
   training?: boolean;
+  /** The fan already took part in this fixture, so their summary can be opened. */
+  played?: boolean;
+}
+
+/** One of the fan's own palpites in the participation being shown. */
+export interface ApiParticipationPick {
+  questionId: string;
+  prompt: string;
+  qtype: string;
+  options: { id: string; label: string }[];
+  choice: string;
+  correctOptionId?: string;
+  voidReason?: string;
+  gained: number;
+}
+
+/** The fan's first participation in a fixture, served from persisted data. */
+export interface ApiParticipation {
+  fixtureId: number;
+  teamA: string;
+  teamB: string;
+  /** True when the record is live play; false when it is their first replay. */
+  live: boolean;
+  /** Real wall clock of the first palpite of the run, in epoch ms. */
+  at: number;
+  score: { p1: number; p2: number };
+  /** Feed totals merged by key; a missing key was never reported, not zero. */
+  totals: { p1: Record<string, number>; p2: Record<string, number> };
+  picks: ApiParticipationPick[];
+  players: number;
+}
+
+/**
+ * The fan's TxLINE Seal.
+ *
+ * `seal: null` means the fan has none, which is the empty state. When present,
+ * the asset ALREADY EXISTS on chain: an offline backfill minted it. Revealing it
+ * is application state and never a broadcast, so nothing here is a transaction
+ * the app made.
+ */
+export interface ApiSelo {
+  seal: {
+    /** Metaplex Core asset address; the explorer link is built from it. */
+    assetPubkey: string;
+    cluster: 'devnet' | 'mainnet-beta';
+    /** The debut palpite the Seal commemorates, right or wrong. */
+    prompt: string;
+    choiceLabel: string;
+    teamA: string;
+    teamB: string;
+    /** `null` until the fan reveals it. */
+    revealedAt: number | null;
+  } | null;
 }
 
 export interface LobbyState {
@@ -383,6 +436,16 @@ export const api = {
     request<{ ok: true }>(`/api/leagues/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   fixtures: () => request<{ fixtures: ApiFixture[] }>('/api/fixtures'),
+
+  /** The fan's first participation in a fixture; 404 when they never played it. */
+  participation: (fixtureId: number) =>
+    request<ApiParticipation>(`/api/participacoes/${fixtureId}`),
+
+  /** The fan's TxLINE Seal, already minted off-chain by the backfill. */
+  selo: () => request<ApiSelo>('/api/selo'),
+
+  /** Reveals the Seal the fan already owns. Broadcasts nothing. */
+  revealSelo: () => request<ApiSelo>('/api/selo', { method: 'POST', body: '{}' }),
 
   /** Reads and saves the pre-game prediction state. */
   pregame: {

@@ -26,6 +26,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "cache:match": "npm run cache:match -w @palpitei/txline --",
     "db:status": "node scripts/migrate.mjs --status",
-    "build:db": "npm run build -w @palpitei/db"
+    "build:db": "npm run build -w @palpitei/db",
+    "selo:mint": "npm run selo:mint -w @palpitei/selo --"
   }
 }

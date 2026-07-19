@@ -13,6 +13,14 @@ import { createQuestionRepo } from './repos/questionRepo.js';
 export type EnginePortsOptions = {
   /** Called when an engine-triggered write fails. Defaults to console.error. */
   onError?: (erro: Error, contexto: string) => void;
+  /**
+   * The execution these writes belong to, stamped on every prediction.
+   *
+   * Core has no concept of a run and must not grow one: this is a persistence
+   * concern. Without it two replay runs of the same fixture are indistinguishable
+   * in the schema, because replay rooms create no `game_sessions` row.
+   */
+  runId?: string | null;
 };
 
 export interface EnginePorts {
@@ -78,7 +86,7 @@ export function createEnginePorts(db: Db, opts: EnginePortsOptions = {}): Engine
         async () => {
           if (p.result == null) {
             await perguntaEmVoo.get(p.questionId)?.catch(() => {});
-            return predictions.place(p);
+            return predictions.place(p, opts.runId ?? null);
           }
           return predictions.settle(p.id, p.result, p.awardedXp ?? 0);
         },

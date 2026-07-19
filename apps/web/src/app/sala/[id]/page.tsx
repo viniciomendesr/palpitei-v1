@@ -1,7 +1,7 @@
 'use client';
 
 
-import { use, useCallback, useEffect, useMemo, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SegTabs, Badge } from '@/components/ds';
 import { Screen } from '@/components/Shell';
@@ -15,6 +15,7 @@ import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { roomEntry } from '@/lib/room-entry';
+import { useDemoPlay, type DemoAnswer } from '@/components/demo/DemoPlay';
 import { useRequireSession } from '@/lib/guard';
 import { fw } from '@/lib/tokens';
 import {
@@ -67,6 +68,9 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
   const [minute, setMinute] = useState<number>(MATCH_START.minute);
   const [scoreA, setScoreA] = useState<number>(MATCH_START.scoreA);
   const [scoreB, setScoreB] = useState<number>(MATCH_START.scoreB);
+  const { recordRun } = useDemoPlay();
+  /** Answers so far; a ref because the callback must not wait for a re-render. */
+  const respostasDemo = useRef<DemoAnswer[]>([]);
 
   const spec = CHALLENGES[ci];
   const text = t.ch[ci];
@@ -91,6 +95,17 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
 
       setSalaXp((x) => x + gained);
       setCorrectCount((c) => c + (correct ? 1 : 0));
+
+      // Keep the fan's own answers so "Meus palpites" can show them back. Local
+      // and in-memory: the demo path issues no request (rule 3). Only the index
+      // and the chosen option are kept, never localized text.
+      const respostas = [...respostasDemo.current, { index: ci, choice: optId, gained }];
+      respostasDemo.current = respostas;
+      recordRun(id, {
+        answers: respostas,
+        scoreA: r.scoreA ?? scoreA,
+        scoreB: r.scoreB ?? scoreB,
+      });
       setLastResult({
         correct,
         timeout: optId === null,
@@ -106,7 +121,7 @@ function SalaMock({ params }: { params: Promise<{ id: string }> }) {
 
       setPhase('result');
     },
-    [phase, spec, session, update],
+    [phase, spec, session, update, ci, id, recordRun, scoreA, scoreB],
   );
 
   useEffect(() => {

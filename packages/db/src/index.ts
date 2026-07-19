@@ -46,6 +46,13 @@ export type { LiveFixtureRepo, LiveFixture } from './repos/liveFixtureRepo.js';
 export { createPredictionRepo } from './repos/predictionRepo.js';
 export type { PredictionRepo, SettleResult, PredictionResult } from './repos/predictionRepo.js';
 
+export { createParticipationRepo } from './repos/participationRepo.js';
+export type {
+  ParticipationRepo,
+  ParticipationRun,
+  ParticipationPick,
+} from './repos/participationRepo.js';
+
 export { createPregamePickRepo } from './repos/pregamePickRepo.js';
 export type {
   PregamePickRepo,
@@ -61,6 +68,9 @@ export type { MarketRepo } from './repos/marketRepo.js';
 export { createGamificationRepo } from './repos/gamificationRepo.js';
 export type { GamificationRepo } from './repos/gamificationRepo.js';
 
+export { createTrophyRepo } from './repos/trophyRepo.js';
+export type { TrophyRepo } from './repos/trophyRepo.js';
+
 export { createMatchCacheStore } from './matchCacheStore.js';
 export type { MatchCacheStore, SaveCacheStats } from './matchCacheStore.js';
 
@@ -72,11 +82,13 @@ import { createEnginePorts, type EnginePorts } from './enginePorts.js';
 import { createMatchCacheStore, type MatchCacheStore } from './matchCacheStore.js';
 import { createEventRepo, type EventRepo } from './repos/eventRepo.js';
 import { createGamificationRepo, type GamificationRepo } from './repos/gamificationRepo.js';
+import { createTrophyRepo, type TrophyRepo } from './repos/trophyRepo.js';
 import { createLeagueRepo, type LeagueRepo } from './repos/leagueRepo.js';
 import { createLobbyRepo, type LobbyRepo } from './repos/lobbyRepo.js';
 import { createMarketRepo, type MarketRepo } from './repos/marketRepo.js';
 import { createMatchRepo, type MatchRepo } from './repos/matchRepo.js';
 import { createOddsRepo, type OddsRepo } from './repos/oddsRepo.js';
+import { createParticipationRepo, type ParticipationRepo } from './repos/participationRepo.js';
 import { createPredictionRepo, type PredictionRepo } from './repos/predictionRepo.js';
 import { createPregamePickRepo, type PregamePickRepo } from './repos/pregamePickRepo.js';
 import { createQuestionRepo, type QuestionRepo } from './repos/questionRepo.js';
@@ -96,9 +108,11 @@ export type Palpitei = {
   sessions: GameSessionRepo;
   liveFixtures: LiveFixtureRepo;
   predictions: PredictionRepo;
+  participations: ParticipationRepo;
   pregame: PregamePickRepo;
   markets: MarketRepo;
   gamification: GamificationRepo;
+  trophies: TrophyRepo;
   leagues: LeagueRepo;
   lobbies: LobbyRepo;
   cache: MatchCacheStore;
@@ -127,9 +141,11 @@ export function createPalpitei(opts: CreateDbOptions = {}): Palpitei {
     sessions: createGameSessionRepo(db),
     liveFixtures: createLiveFixtureRepo(db),
     predictions: createPredictionRepo(db),
+    participations: createParticipationRepo(db),
     pregame: createPregamePickRepo(db),
     markets: createMarketRepo(db),
     gamification: createGamificationRepo(db),
+    trophies: createTrophyRepo(db),
     leagues: createLeagueRepo(db),
     lobbies: createLobbyRepo(db),
     cache: createMatchCacheStore(db),

@@ -9,7 +9,7 @@
  * collection, because shipping inventory that does not exist would be a mockup (rule 4).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, SegTabs } from '@/components/ds';
 import { Screen } from '@/components/Shell';
@@ -24,6 +24,7 @@ import {
   softOf,
 } from '@/components/marketplace/PerkVisuals';
 import { useI18n } from '@/lib/i18n';
+import { api, type ApiSelo } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
@@ -232,23 +233,7 @@ export default function MarketplacePage() {
               {isDemo ? t.mkCollSubDemo : t.mkCollSub}
             </p>
 
-            {!isDemo && (
-              <div
-                style={{
-                  padding: '26px 20px',
-                  textAlign: 'center',
-                  background: 'var(--surface-1)',
-                  border: '1.5px dashed var(--border-2)',
-                  borderRadius: 'var(--r-2xl)',
-                  fontSize: 13.5,
-                  fontWeight: fw.medium,
-                  color: 'var(--text-muted)',
-                  lineHeight: 'var(--leading-body)',
-                }}
-              >
-                {t.mkCollSoonBody}
-              </div>
-            )}
+            {!isDemo && <SeloDoFa />}
 
             {isDemo && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -306,6 +291,200 @@ export default function MarketplacePage() {
       </Screen>
 
       {toast && <MarketToast title={toast.title} sub={toast.sub} />}
+    </div>
+  );
+}
+
+/** Solscan is the explorer the seal metadata points at; devnet needs the cluster query. */
+function linkDoExplorer(assetPubkey: string, cluster: 'devnet' | 'mainnet-beta'): string {
+  const base = `https://solscan.io/token/${assetPubkey}`;
+  return cluster === 'devnet' ? `${base}?cluster=devnet` : base;
+}
+
+/**
+ * The real fan's TxLINE Seal: one per account, and a REVEAL rather than a mint.
+ *
+ * The asset already exists — an offline backfill minted it — so no copy here may
+ * suggest the button broadcasts anything. It opens what is already theirs and
+ * then shows the address plus the real explorer link. The demo flow above is
+ * untouched and stays simulated, disabled explorer and all.
+ */
+function SeloDoFa() {
+  const { t, lang } = useI18n();
+  const privy = usePrivyAuth();
+  const [selo, setSelo] = useState<ApiSelo['seal'] | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  const [revelando, setRevelando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  // Wait for the Privy island: a fetch fired before the token provider is
+  // registered goes out with no Bearer and 401s a fan who is logged in.
+  const podeBuscar = privy.ready && privy.authenticated;
+
+  useEffect(() => {
+    if (!podeBuscar) return;
+    let vivo = true;
+    api
+      .selo()
+      .then((r) => vivo && setSelo(r.seal))
+      .catch((e) => vivo && setErro(e instanceof Error ? e.message : t.mkSealError))
+      .finally(() => vivo && setCarregando(false));
+    return () => {
+      vivo = false;
+    };
+  }, [podeBuscar, t.mkSealError]);
+
+  const revelar = async () => {
+    if (revelando) return;
+    setRevelando(true);
+    try {
+      const r = await api.revealSelo();
+      setSelo(r.seal);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : t.mkSealError);
+    } finally {
+      setRevelando(false);
+    }
+  };
+
+  // Nothing is claimed before the read lands: showing the empty state first
+  // would tell a fan who HAS a seal that they have none.
+  if (carregando && !erro) return null;
+
+  if (erro) {
+    return (
+      <div
+        role="alert"
+        style={{
+          padding: '20px 18px',
+          textAlign: 'center',
+          fontSize: 13,
+          fontWeight: fw.medium,
+          color: 'var(--red)',
+          lineHeight: 'var(--leading-body)',
+        }}
+      >
+        {t.mkSealError} {erro}
+      </div>
+    );
+  }
+
+  // No minted seal: the existing empty state, unchanged.
+  if (!selo) return <ColecaoVazia body={t.mkSealNoneBody} title={t.mkSealNoneTitle} />;
+
+  const tone = rarityTone('legendary');
+  const revelado = selo.revealedAt !== null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <CollectionRow
+        icon={<Seal size={22} color={revelado ? tone.color : 'var(--text-fainter)'} />}
+        tone={tone}
+        title={t.mkSealTitle}
+        sub={revelado ? t.mkSealRevealedSub : t.mkSealLockedSub}
+        rarity={t.mkRarLegendary}
+        action={
+          revelado ? undefined : (
+            <Button size="sm" disabled={revelando} onClick={() => void revelar()}>
+              {revelando ? t.mkSealRevealing : t.mkSealReveal}
+            </Button>
+          )
+        }
+      />
+
+      {revelado && (
+        <div
+          style={{
+            padding: '14px 16px',
+            borderRadius: 'var(--r-2xl)',
+            background: 'var(--surface-1)',
+            border: `1px solid ${tone.line}`,
+            animation: 'popIn .3s cubic-bezier(.2,.9,.3,1.2) both',
+          }}
+        >
+          <div style={{ fontSize: 11.5, fontWeight: fw.heavy, color: 'var(--text-2)' }}>
+            {selo.teamA} × {selo.teamB}
+          </div>
+          <div style={{ fontSize: 12.5, fontWeight: fw.medium, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.35 }}>
+            {selo.prompt}
+          </div>
+          {selo.choiceLabel && (
+            <div style={{ fontSize: 13, fontWeight: fw.heavy, marginTop: 6 }}>{selo.choiceLabel}</div>
+          )}
+          <div style={{ fontSize: 10.5, fontWeight: fw.heavy, color: 'var(--text-faint)', marginTop: 6 }}>
+            {t.mkSealDebut}
+          </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: '1px solid var(--border-1)',
+            }}
+          >
+            <div style={{ fontSize: 9, fontWeight: fw.black, letterSpacing: 1, color: 'var(--text-faint)' }}>
+              {t.mkSealAsset}
+            </div>
+            <div
+              style={{
+                fontSize: 11.5,
+                fontWeight: fw.medium,
+                color: 'var(--text-2)',
+                marginTop: 4,
+                wordBreak: 'break-all',
+              }}
+            >
+              {selo.assetPubkey}
+            </div>
+          </div>
+
+          {selo.revealedAt !== null && (
+            <div style={{ fontSize: 10.5, fontWeight: fw.medium, color: 'var(--text-faint)', marginTop: 8 }}>
+              {new Date(selo.revealedAt).toLocaleString(lang === 'en' ? 'en-US' : 'pt-BR')}
+            </div>
+          )}
+
+          {/* A real asset has a real explorer page, so this link is live. */}
+          <a
+            href={linkDoExplorer(selo.assetPubkey, selo.cluster)}
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{ display: 'block', marginTop: 12, textDecoration: 'none' }}
+          >
+            <Button variant="secondary" full>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={14} />
+                {t.mkSealExplorer}
+              </span>
+            </Button>
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ColecaoVazia({ title, body }: { title?: string; body: string }) {
+  return (
+    <div
+      style={{
+        padding: '26px 20px',
+        textAlign: 'center',
+        background: 'var(--surface-1)',
+        border: '1.5px dashed var(--border-2)',
+        borderRadius: 'var(--r-2xl)',
+        fontSize: 13.5,
+        fontWeight: fw.medium,
+        color: 'var(--text-muted)',
+        lineHeight: 'var(--leading-body)',
+      }}
+    >
+      {title && (
+        <div style={{ fontWeight: fw.heavy, fontSize: 15, color: 'var(--text-hi)', marginBottom: 6 }}>
+          {title}
+        </div>
+      )}
+      {body}
     </div>
   );
 }

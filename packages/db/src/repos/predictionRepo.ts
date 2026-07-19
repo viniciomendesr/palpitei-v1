@@ -18,14 +18,21 @@ export type SettleResult = {
 
 export function createPredictionRepo(db: Db) {
   const repo = {
-    /** The database unique constraint enforces one prediction per user and question. */
-    async place(p: Prediction): Promise<void> {
+    /**
+     * The database unique constraint enforces one prediction per user and question.
+     *
+     * `runId` identifies the execution that produced the prediction, which is the
+     * only way a replay run can be told apart from the next one: replay rooms
+     * create no `game_sessions` row, so `questions.session_id` groups live play
+     * and nothing groups replay play. The room supplies it; core never sees it.
+     */
+    async place(p: Prediction, runId: string | null = null): Promise<void> {
       try {
         await db.query(
-          `insert into predictions (id, user_id, question_id, choice, placed_at)
-           values ($1, $2, $3, $4, $5)
+          `insert into predictions (id, user_id, question_id, choice, placed_at, run_id)
+           values ($1, $2, $3, $4, $5, $6)
            on conflict (id) do nothing`,
-          [p.id, p.userId, p.questionId, p.choice, p.placedAt]
+          [p.id, p.userId, p.questionId, p.choice, p.placedAt, runId]
         );
       } catch (e) {
         if (isUniqueViolation(e)) {

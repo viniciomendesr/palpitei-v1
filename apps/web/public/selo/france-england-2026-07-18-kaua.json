@@ -1,0 +1,65 @@
+{
+  "name": "Selo TxLINE · Kauã",
+  "description": "Recibo da estreia deste fã no Palpitei: o primeiro palpite dele numa partida ao vivo, sobre dados de partida ancorados pela TxLINE (TxODDS) na Solana. Marca presença na estreia, não acerto: o palpite pode ter dado certo ou não. Intransferível e sem valor monetário.",
+  "image": "https://palpitei-v1-production.up.railway.app/selo/france-england-2026-07-18.png",
+  "category": "image",
+  "external_url": "https://palpitei-v1-production.up.railway.app",
+  "attributes": [
+    {
+      "trait_type": "Match",
+      "value": "France x England"
+    },
+    {
+      "trait_type": "Match date",
+      "value": "2026-07-18"
+    },
+    {
+      "trait_type": "Match slug",
+      "value": "france-england-2026-07-18"
+    },
+    {
+      "trait_type": "Fan",
+      "value": "Kauã"
+    },
+    {
+      "trait_type": "Milestone",
+      "value": "First live palpite"
+    },
+    {
+      "trait_type": "Question",
+      "value": "Sai outro escanteio em até 10 minutos?"
+    },
+    {
+      "trait_type": "Palpite",
+      "value": "Sim"
+    },
+    {
+      "trait_type": "Placed at",
+      "value": "2026-07-18T21:20Z"
+    },
+    {
+      "trait_type": "Data source",
+      "value": "TxLINE (TxODDS)"
+    },
+    {
+      "trait_type": "TxLINE anchor",
+      "value": "C9vY83pzub2a4d3Qve5NuR4cuXc8Yq68fKRRad4xR4bi"
+    },
+    {
+      "trait_type": "Anchor program",
+      "value": "6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J"
+    },
+    {
+      "trait_type": "Transferable",
+      "value": "No"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://palpitei-v1-production.up.railway.app/selo/france-england-2026-07-18.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

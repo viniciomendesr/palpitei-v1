@@ -225,3 +225,82 @@ export type Lobby = {
   expiresAt: number;
   createdAt: number;
 };
+
+// Trophies are Palpitei's scarce currency. They are not XP and never become XP.
+export type TrophyReason = 'live_debut' | 'perk_redeem';
+
+export type TrophyEntry = {
+  id: string;
+  userId: string;
+  /** Positive grants, negative spends. */
+  delta: number;
+  reason: TrophyReason;
+  /** Audit trail: the debut fixture id, or a perk id on a spend. */
+  ref?: string;
+  createdAt: number;
+};
+
+// The Selo TxLINE mint receipt. Its whole purpose is that a rerun cannot mint twice.
+export type SeloMintCluster = 'devnet' | 'mainnet-beta';
+export type SeloMintStatus = 'pending' | 'minted' | 'failed';
+
+export type SeloMintClaim = {
+  id: string;
+  userId: string;
+  questionId: string;
+};
+
+export type SeloMint = {
+  id: string;
+  userId: string;
+  questionId: string;
+  cluster: SeloMintCluster;
+  status: SeloMintStatus;
+  ownerPubkey: string;
+  assetPubkey?: string;
+  collectionPubkey?: string;
+  signature?: string;
+  metadataUri?: string;
+  createdAt: number;
+  /**
+   * When the fan revealed it in the Collection. Application state only: the
+   * asset was already minted by the offline backfill, so revealing broadcasts
+   * nothing and this column never describes the chain.
+   */
+  revealedAt?: number;
+};
+
+/**
+ * A fan's FIRST live palpite on a fixture, which is what a Selo commemorates.
+ *
+ * There is no `result` field on purpose: the Selo marks presence at a debut,
+ * not a correct call, and carrying the result here would invite a caller to
+ * publish it.
+ */
+export type SeloCandidate = {
+  userId: string;
+  handle?: string;
+  walletPubkey: string;
+  walletSource: string;
+  questionId: string;
+  questionType: string;
+  prompt: string;
+  choice: string;
+  /** The label the fan actually saw, resolved from the question options. */
+  choiceLabel: string;
+  /** Wall clock, epoch ms. NOT `placed_at`, which a replay reproduces exactly. */
+  placedAt: number;
+  p1: string;
+  p2: string;
+  startTime?: number;
+  /** Present when a mint row already exists for this pair. */
+  mintStatus?: SeloMintStatus;
+};
+
+/** A fan whose live debut is being granted by hand for a past fixture. */
+export type DebutBackfillCandidate = {
+  userId: string;
+  handle?: string;
+  /** True when the fan already has their one debut trophy. */
+  alreadyHasDebut: boolean;
+};
