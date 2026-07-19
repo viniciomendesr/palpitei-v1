@@ -34,7 +34,6 @@ import {
   podeAtivarFixtureAoVivo,
 } from './live-regras';
 import { reconcileOrphanedRooms } from './reconciliation';
-import { backfillFinishedTimeline } from './timeline-backfill';
 
 type Contadores = {
   ignoradosDeOutrasFixtures: number;
@@ -219,14 +218,6 @@ function aoReceber(canal: Canal, ev: NormEvent, publicarDistribuido?: (event: No
           // stays active forever and the 15s `sincronizarFixturesDoBanco` poll
           // recreates the channel across every restart and deploy.
           await createLiveFixtureRepo(db).deactivate(canal.fixtureId);
-
-          // Reconcile the timeline against the authoritative REST feed. The
-          // stream usually delivered everything, but "usually" is not a promise
-          // and a missing event is invisible in the replay. Fire and forget: it
-          // must never delay or break settlement, and it logs what it added.
-          const fixtura = await createMatchRepo(db).findById(canal.fixtureId);
-          void backfillFinishedTimeline(db, canal.fixtureId, fixtura?.startTime ?? null);
-
           matchEnded = true;
         }
       },
