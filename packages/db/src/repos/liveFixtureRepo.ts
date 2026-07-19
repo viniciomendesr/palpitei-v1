@@ -39,9 +39,23 @@ export function createLiveFixtureRepo(db: Db) {
       );
     },
 
+    /** Fixtures already retired from the live registry; used to stop local channels. */
+    async listInactive(): Promise<LiveFixture[]> {
+      const rows = await db.query(
+        `select fixture_id, active, priority, extract(epoch from activated_at) * 1000 as activated_ms
+           from live_fixtures where not active order by deactivated_at desc nulls last, fixture_id`,
+      );
+      return rows.map(mapLiveFixture);
+    },
+
+    /**
+     * Retires a fixture at full time. The `and active` guard is what makes this
+     * idempotent: a redelivered `game_finalised` must not move `deactivated_at`.
+     */
     async deactivate(fixtureId: number): Promise<void> {
       await db.query(
-        `update live_fixtures set active = false, deactivated_at = now(), updated_at = now() where fixture_id = $1`,
+        `update live_fixtures set active = false, deactivated_at = now(), updated_at = now()
+          where fixture_id = $1 and active`,
         [fixtureId],
       );
     },

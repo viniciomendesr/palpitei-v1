@@ -20,7 +20,7 @@ import {
 import { redigeChance } from '@/lib/chances';
 import { formataRelogio } from '@/lib/relogio';
 import { calcularResumoDaSala } from '@/lib/resumo';
-import { ehAoVivo } from '@/lib/proveniencia';
+import { isLive } from '@/lib/provenance';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { localizeTeamName } from '@/lib/team-names';
 import type { LobbyState } from '@/lib/api';
@@ -733,7 +733,7 @@ export function SalaReal({
   const teamB = localizeTeamName(state.teamB, lang);
 
   // One discriminator for both provenance labels: duplicating it is how they diverge.
-  const aoVivo = ehAoVivo(state.source);
+  const aoVivo = isLive(state.source);
   const selo = aoVivo ? t.srcTxline : t.srcReplay;
   const abertos = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).length;
   const noOverlay = desafios.filter((d) => d.minhaEscolha === null && !d.fechado).at(-1) ?? null;

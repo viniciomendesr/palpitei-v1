@@ -26,12 +26,14 @@ import { createDb } from './db';
 import { enfileirarPersistenciaAntesDePublicar } from './eventPipeline';
 import { brokerRedisAoVivo } from './live-broker';
 import {
+  channelsToClose,
   classificarParaSala,
   eventoEncerraPartida,
   fixturesAoVivo,
   ingestAoVivoHabilitado,
   podeAtivarFixtureAoVivo,
 } from './live-regras';
+import { reconcileOrphanedRooms } from './reconciliation';
 
 type Contadores = {
   ignoradosDeOutrasFixtures: number;
@@ -149,6 +151,23 @@ function publicarParaSala(canal: Canal, ev: NormEvent): void {
   }
 }
 
+/**
+ * Drops one fixture's channel at full time.
+ *
+ * Only the map entry goes. The TxLINE SSE pair is shared by every fixture, so
+ * `stopLiveIngest` here would silence the other match still being played; and the
+ * global map must survive so `iniciarCanalAoVivo` stays a no-op and
+ * `/api/live/status` keeps reporting the ingest as up.
+ */
+function closeLocalChannel(fixtureId: number): void {
+  const canais = canaisAtivos();
+  if (!canais?.delete(fixtureId)) return;
+  info(
+    `[canal-ao-vivo] fixture ${fixtureId} encerrada — canal local removido ` +
+      `(${canais.size} fixture(s) restante(s); streams TxLINE seguem abertos)`,
+  );
+}
+
 /** The leader persists before publishing; followers only route Redis events. */
 function aoReceber(canal: Canal, ev: NormEvent, publicarDistribuido?: (event: NormEvent) => Promise<void>): void {
   if (ev.fixtureId !== canal.fixtureId) {
@@ -158,6 +177,7 @@ function aoReceber(canal: Canal, ev: NormEvent, publicarDistribuido?: (event: No
 
   // Persistence precedes routing so restarts and room creation can catch up.
   let devePublicar = true;
+  let matchEnded = false;
   if (ev.kind === 'score') {
     enfileirarPersistenciaAntesDePublicar(
       canal,
@@ -193,13 +213,28 @@ function aoReceber(canal: Canal, ev: NormEvent, publicarDistribuido?: (event: No
           } else {
             warn(`[canal-ao-vivo] fim da fixture ${canal.fixtureId} sem totais persistidos — settlement será tentado na leitura`);
           }
+
+          // Retire the fixture from the registry. Without this, `live_fixtures`
+          // stays active forever and the 15s `sincronizarFixturesDoBanco` poll
+          // recreates the channel across every restart and deploy.
+          await createLiveFixtureRepo(db).deactivate(canal.fixtureId);
+          matchEnded = true;
         }
       },
       async () => {
-        if (!devePublicar) return;
-        // The leader routes locally and ignores its own Redis publication.
-        publicarParaSala(canal, ev);
-        if (publicarDistribuido) await publicarDistribuido(ev);
+        if (devePublicar) {
+          // The leader routes locally and ignores its own Redis publication.
+          publicarParaSala(canal, ev);
+          if (publicarDistribuido) await publicarDistribuido(ev);
+        }
+        if (!matchEnded) return;
+        // Everything below runs even on suppressed redelivery, so a retried
+        // `game_finalised` still converges the channel.
+        closeLocalChannel(canal.fixtureId);
+        // After publishing on purpose: a room still in memory finalizes itself
+        // from `game_end` (writing its last checkpoint first), and this sweep
+        // then finds only the parties a restart really orphaned.
+        await reconcileOrphanedRooms(canal.fixtureId);
       },
       (erro) => registrarFalhaDePersistencia(canal, `score seq ${ev.seq}`, erro),
     );
@@ -258,8 +293,15 @@ function adicionarCanal(canais: Map<number, Canal>, fixtureId: number): void {
 /** Synchronizes dynamic fixture selection without opening another TxLINE SSE pair. */
 async function sincronizarFixturesDoBanco(canais: Map<number, Canal>): Promise<void> {
   try {
-    const fixtures = await createLiveFixtureRepo(createDb()).listActive();
-    for (const fixture of fixtures) adicionarCanal(canais, fixture.fixtureId);
+    const repo = createLiveFixtureRepo(createDb());
+    const [active, inactive] = await Promise.all([repo.listActive(), repo.listInactive()]);
+    for (const fixture of active) adicionarCanal(canais, fixture.fixtureId);
+    // Convergence for whoever did not run the terminal event: follower replicas
+    // route Redis events without ever entering `aoReceber`, and a process that
+    // booted after full time would otherwise recreate the channel from `listActive`.
+    for (const fixtureId of channelsToClose([...canais.keys()], inactive.map((f) => f.fixtureId))) {
+      closeLocalChannel(fixtureId);
+    }
   } catch (e) {
     warn(`[canal-ao-vivo] não consegui sincronizar live_fixtures: ${e instanceof Error ? e.message : String(e)}`);
   }

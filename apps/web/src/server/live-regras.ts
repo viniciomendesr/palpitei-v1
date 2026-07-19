@@ -58,6 +58,19 @@ export function eventoEncerraPartida(ev: NormEvent): boolean {
   return ev.kind === 'score' && (ev.action === 'game_finalised' || (ev.statusId === 100 && ev.period === 100));
 }
 
+/**
+ * Decides which local channels must stop.
+ *
+ * Only a fixture explicitly deactivated in `live_fixtures` qualifies. "Not in
+ * `listActive`" is deliberately NOT the criterion: `iniciarCanalAoVivo` seeds
+ * `LIVE_FIXTURE_IDS` without writing a row, and that broader rule would kill the
+ * legacy runbook's channel 15s after boot. Absent is not deactivated.
+ */
+export function channelsToClose(current: number[], deactivated: number[]): number[] {
+  const stopped = new Set(deactivated);
+  return current.filter((fixtureId) => stopped.has(fixtureId));
+}
+
 export type ClasseDoEvento = 'rotear' | 'outra_fixture' | 'fora_do_mercado';
 
 /** Classifies a stream event for room delivery. Persistence follows separate rules. */

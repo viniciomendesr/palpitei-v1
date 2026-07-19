@@ -9,9 +9,9 @@
 
 import type { AuthMethod } from './session';
 
-export type ConviteAcao = 'loading' | 'join' | 'login';
+export type InviteAction = 'loading' | 'join' | 'login';
 
-export interface ConviteContexto {
+export interface InviteContext {
   /** False until the first effect reads `sessionStorage`. */
   hydrated: boolean;
   privyReady: boolean;
@@ -20,11 +20,11 @@ export interface ConviteContexto {
   authMethod: AuthMethod | null;
 }
 
-export function acaoDoConvite({
+export function inviteAction({
   hydrated,
   privyReady,
   privyAuthenticated,
-}: ConviteContexto): ConviteAcao {
+}: InviteContext): InviteAction {
   // Without both, an authenticated fan still looks logged out: the button loads
   // instead of lying "log in to join" and bouncing someone who already has an account.
   if (!hydrated || !privyReady) return 'loading';

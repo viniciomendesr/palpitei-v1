@@ -14,7 +14,7 @@ import { SalaComLobby } from '@/components/sala/SalaLobby';
 import { useI18n } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
-import { entradaDaSala } from '@/lib/sala-entrada';
+import { roomEntry } from '@/lib/room-entry';
 import { useRequireSession } from '@/lib/guard';
 import { fw } from '@/lib/tokens';
 import {
@@ -37,15 +37,15 @@ export default function SalaPage({ params }: { params: Promise<{ id: string }> }
   const { session, hydrated } = useSession();
   const privy = usePrivyAuth();
   // "No local session" is not demo: it is per-tab, and an invite opens a fresh tab.
-  const entrada = entradaDaSala({
+  const entry = roomEntry({
     roomId: id,
     hydrated,
     privyReady: privy.ready,
     privyAuthenticated: privy.authenticated,
     authMethod: session?.authMethod ?? null,
   });
-  if (entrada === 'loading') return null;
-  if (entrada === 'lobby') return <SalaComLobby roomId={id} />;
+  if (entry === 'loading') return null;
+  if (entry === 'lobby') return <SalaComLobby roomId={id} />;
   return <SalaMock params={params} />;
 }
 

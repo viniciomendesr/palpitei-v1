@@ -8,8 +8,8 @@
  * source counts, and anything unknown, empty or absent degrades to replay.
  */
 
-export const FONTE_AO_VIVO = 'txline-live';
+export const LIVE_SOURCE = 'txline-live';
 
-export function ehAoVivo(source: string | null | undefined): boolean {
-  return source === FONTE_AO_VIVO;
+export function isLive(source: string | null | undefined): boolean {
+  return source === LIVE_SOURCE;
 }

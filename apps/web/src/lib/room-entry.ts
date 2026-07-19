@@ -9,9 +9,9 @@
 
 import type { AuthMethod } from './session';
 
-export type SalaEntrada = 'loading' | 'lobby' | 'mock';
+export type RoomEntry = 'loading' | 'lobby' | 'mock';
 
-export interface SalaContexto {
+export interface RoomEntryContext {
   roomId: string;
   hydrated: boolean;
   privyReady: boolean;
@@ -20,15 +20,15 @@ export interface SalaContexto {
 }
 
 /** Real room ids: a TxLINE fixture, with the optional training prefix. */
-const ID_DE_SALA_REAL = /^(treino-)?\d+$/;
+const REAL_ROOM_ID = /^(treino-)?\d+$/;
 
-export function entradaDaSala({
+export function roomEntry({
   roomId,
   hydrated,
   privyReady,
   privyAuthenticated,
   authMethod,
-}: SalaContexto): SalaEntrada {
+}: RoomEntryContext): RoomEntry {
   if (!hydrated) return 'loading';
 
   // Rule 3: the judge's path must not depend on the network. Demo decides BEFORE
@@ -40,5 +40,5 @@ export function entradaDaSala({
   if (!privyReady) return 'loading';
 
   const contaReal = privyAuthenticated || authMethod === 'google' || authMethod === 'wallet';
-  return contaReal && ID_DE_SALA_REAL.test(roomId) ? 'lobby' : 'mock';
+  return contaReal && REAL_ROOM_ID.test(roomId) ? 'lobby' : 'mock';
 }

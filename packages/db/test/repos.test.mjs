@@ -748,6 +748,125 @@ test('registro de fixtures live permite ativar e desativar sem editar env', asyn
   assert.equal((await p.liveFixtures.listActive()).some((f) => f.fixtureId === fixture), false);
 });
 
+test('desativar carimba deactivated_at e a segunda chamada não mexe na linha', async () => {
+  const fixture = 991_010;
+  await p.matches.upsert({ fixtureId: fixture, p1: 'França', p2: 'Inglaterra', startTime: 2_000_000 });
+  await p.liveFixtures.activate(fixture);
+
+  await p.liveFixtures.deactivate(fixture);
+  const [primeira] = await p.db.query(
+    'select active, deactivated_at, updated_at from live_fixtures where fixture_id = $1',
+    [fixture],
+  );
+  assert.equal(primeira.active, false);
+  assert.ok(primeira.deactivated_at, 'o fim da partida precisa carimbar deactivated_at');
+  assert.equal(
+    (await p.liveFixtures.listActive()).some((f) => f.fixtureId === fixture),
+    false,
+    'listActive não pode devolver fixture desativada — é ela que recria o canal',
+  );
+  assert.ok(
+    (await p.liveFixtures.listInactive()).some((f) => f.fixtureId === fixture),
+    'quem já foi desativada precisa ser listável para o canal local parar',
+  );
+
+  // Real idempotency: a redelivered game_finalised must not rewrite the stamp.
+  await p.liveFixtures.deactivate(fixture);
+  const [segunda] = await p.db.query(
+    'select active, deactivated_at, updated_at from live_fixtures where fixture_id = $1',
+    [fixture],
+  );
+  assert.equal(segunda.active, false);
+  assert.equal(String(segunda.deactivated_at), String(primeira.deactivated_at));
+  assert.equal(String(segunda.updated_at), String(primeira.updated_at));
+});
+
+test('reativar uma fixture desativada limpa o carimbo (o registro é reutilizável)', async () => {
+  const fixture = 991_012;
+  await p.matches.upsert({ fixtureId: fixture, p1: 'Espanha', p2: 'Argentina', startTime: 2_000_000 });
+  await p.liveFixtures.activate(fixture);
+  await p.liveFixtures.deactivate(fixture);
+  await p.liveFixtures.activate(fixture);
+  const [linha] = await p.db.query(
+    'select active, deactivated_at from live_fixtures where fixture_id = $1',
+    [fixture],
+  );
+  assert.equal(linha.active, true);
+  assert.equal(linha.deactivated_at, null);
+  assert.equal((await p.liveFixtures.listInactive()).some((f) => f.fixtureId === fixture), false);
+});
+
+test('sessão órfã de partida encerrada é finalizada, e varrer de novo não muda nada', async () => {
+  const fixture = 991_011;
+  await p.matches.upsert({ fixtureId: fixture, p1: 'França', p2: 'Inglaterra', startTime: 2_000_000 });
+  const sessao = await p.sessions.findOrCreateActive({
+    fixtureId: fixture,
+    partyId: '7C4HP6',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+
+  // Match still running: the sweep must not close any room.
+  const cedoDemais = await p.sessions.finishOrphansOfFinishedMatches();
+  assert.equal(
+    cedoDemais.some((o) => o.fixtureId === fixture),
+    false,
+    'partida em andamento não pode ter a sala fechada pela varredura',
+  );
+
+  await p.matches.setState(fixture, 'finished');
+  const varridas = (await p.sessions.finishOrphansOfFinishedMatches()).filter(
+    (o) => o.fixtureId === fixture,
+  );
+  assert.deepEqual(varridas.map((o) => o.partyId), ['7C4HP6']);
+  assert.deepEqual(varridas.map((o) => o.treino), [false]);
+  const [linha] = await p.db.query('select status, finished_at from game_sessions where id = $1', [
+    sessao.id,
+  ]);
+  assert.equal(linha.status, 'finished');
+  assert.ok(linha.finished_at, 'game_sessions_finished_ck exige finished_at');
+
+  // Idempotent: a rerun (another boot, another redelivery) returns and changes nothing.
+  const segunda = (await p.sessions.finishOrphansOfFinishedMatches()).filter(
+    (o) => o.fixtureId === fixture,
+  );
+  assert.deepEqual(segunda, []);
+  const [depois] = await p.db.query('select status, finished_at from game_sessions where id = $1', [
+    sessao.id,
+  ]);
+  assert.equal(String(depois.finished_at), String(linha.finished_at));
+});
+
+test('varredura por fixture não encosta na sala de outra partida', async () => {
+  const encerrada = 991_013;
+  const rolando = 991_014;
+  for (const [id, p1, p2] of [[encerrada, 'França', 'Inglaterra'], [rolando, 'Espanha', 'Argentina']]) {
+    await p.matches.upsert({ fixtureId: id, p1, p2, startTime: 2_000_000 });
+  }
+  await p.sessions.findOrCreateActive({
+    fixtureId: encerrada,
+    partyId: '58GBHK',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+  const viva = await p.sessions.findOrCreateActive({
+    fixtureId: rolando,
+    partyId: 'ZZ9999',
+    treino: false,
+    engineVersion: 'questions-v2',
+    templateSet: {},
+  });
+  await p.matches.setState(encerrada, 'finished');
+  await p.matches.setState(rolando, 'finished');
+
+  const so = await p.sessions.finishOrphansOfFinishedMatches(encerrada);
+  assert.deepEqual(so.map((o) => o.partyId), ['58GBHK']);
+  const [outra] = await p.db.query('select status from game_sessions where id = $1', [viva.id]);
+  assert.equal(outra.status, 'active', 'a sala da outra fixture segue de pé');
+});
+
 // ---------------------------------------------------------------------------
 // boot: RLS without a policy is hazardous for the wrong role
 // ---------------------------------------------------------------------------

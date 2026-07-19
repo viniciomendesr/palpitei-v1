@@ -74,6 +74,49 @@ export function createGameSessionRepo(db: Db) {
       );
     },
 
+    /** Latest run of one party on one fixture, in any status. */
+    async findLatestByParty(fixtureId: number, partyId: string, treino: boolean): Promise<GameSession | null> {
+      const rows = await db.query(
+        `select id, fixture_id, party_id, treino, status, engine_version, template_set, snapshot,
+                last_score_seq, last_odds_ts, last_odds_message_id
+           from game_sessions
+          where fixture_id = $1 and party_id = $2 and treino = $3
+          order by started_at desc limit 1`,
+        [fixtureId, partyId, treino],
+      );
+      return rows[0] ? mapSession(rows[0]) : null;
+    },
+
+    /**
+     * Closes sessions stranded by a restart: the match is over but the in-memory
+     * room that would have called `finish` no longer exists.
+     *
+     * The join on `matches.state = 'finished'` is the safety rail — this can never
+     * close a running match's room, so a boot-time sweep with no fixture is safe.
+     * `status = 'active'` makes it a CAS: rerunning it returns nothing and writes
+     * nothing. It settles no XP; predictions and pre-game picks keep their own CAS.
+     */
+    async finishOrphansOfFinishedMatches(
+      fixtureId: number | null = null,
+    ): Promise<{ fixtureId: number; partyId: string; treino: boolean }[]> {
+      const rows = await db.query(
+        `update game_sessions gs
+            set status = 'finished', finished_at = now(), updated_at = now()
+           from matches m
+          where m.fixture_id = gs.fixture_id
+            and m.state = 'finished'
+            and gs.status = 'active'
+            and ($1::bigint is null or gs.fixture_id = $1)
+        returning gs.fixture_id, gs.party_id, gs.treino`,
+        [fixtureId],
+      );
+      return rows.map((row) => ({
+        fixtureId: Number(row.fixture_id),
+        partyId: String(row.party_id),
+        treino: Boolean(row.treino),
+      }));
+    },
+
     async finish(sessionId: string): Promise<void> {
       await db.query(
         `update game_sessions

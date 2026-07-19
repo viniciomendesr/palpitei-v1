@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canAccessStartedLobby } from '../src/server/lobby-acesso.ts';
+import { canAccessStartedLobby, inMemoryLobbyAllowsRoom } from '../src/server/lobby-acesso.ts';
 
 const agora = 1_800_000_000_000;
 const sala = { fixtureId: 18257865, training: false };
@@ -25,18 +25,29 @@ test('acesso da sala rejeita convite vencido ou lobby de outra partida/modo/fase
 });
 
 test('depois do apito o fã ainda entra para ver o resultado — reiniciar exige party nova', () => {
-  // finalizarSala grava 'finished'; exigir 'started' fazia o próprio apito revogar
-  // o acesso, e quem tinha perdido a conexão nunca via resultado nem ranking.
+  // finalizarSala writes 'finished'; requiring 'started' made the whistle itself revoke
+  // access, so a fan who had dropped never saw the result or the ranking.
   assert.equal(
     canAccessStartedLobby({ ...membroAtivo, phase: 'finished' }, sala, agora),
     true,
     'partida encerrada continua legível para quem participou',
   );
-  // Ler o resultado não é rejogar: waiting segue barrado e a expiração vale igual.
+  // Reading a result is not replaying: waiting stays barred and expiry still applies.
   assert.equal(canAccessStartedLobby({ ...membroAtivo, phase: 'waiting' }, sala, agora), false);
   assert.equal(
     canAccessStartedLobby({ ...membroAtivo, phase: 'finished', expiresAt: agora }, sala, agora),
     false,
     'convite vencido não reabre pelo fim de jogo',
   );
+});
+
+test('o portão em memória tem que aceitar as MESMAS fases que o portão do Postgres', () => {
+  // The in-memory lobby is rehydrated from Postgres (openLobby copies the phase). After
+  // reconciliation the persisted phase becomes 'finished'; if this gate required 'started',
+  // canAccessStartedLobby would allow entry and the route would answer 409 right after —
+  // the fan would bounce off their own room forever without seeing the result.
+  assert.equal(inMemoryLobbyAllowsRoom('started'), true);
+  assert.equal(inMemoryLobbyAllowsRoom('finished'), true);
+  assert.equal(inMemoryLobbyAllowsRoom('waiting'), false, 'quem não começou não tem sala');
+  assert.equal(inMemoryLobbyAllowsRoom(undefined), false, 'lobby ausente não libera nada');
 });

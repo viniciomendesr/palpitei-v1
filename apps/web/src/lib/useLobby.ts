@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, api, type LobbyState } from '@/lib/api';
 import { esperaDeReconexao } from '@/lib/reconexao';
-import { acaoDeReentrada } from '@/lib/sala-reentrada';
+import { rejoinAction } from '@/lib/room-rejoin';
 
 /** Shown when the fan cannot be put back into the room; silence is the bug being fixed. */
 export const ERRO_REENTRADA = 'Não deu para voltar para esta sala. Volte para o início e entre de novo.';
@@ -53,20 +53,20 @@ export function useLobby(
 
     const falhou = async (status: number | null, mensagem: string) => {
       if (!alive) return;
-      const acao = acaoDeReentrada({
+      const acao = rejoinAction({
         status,
-        temParty: Boolean(partyId),
+        hasParty: Boolean(partyId),
         privyAuthenticated,
         tentativas: tentativasRejoin.current,
       });
 
-      if (acao === 'reconectar') {
+      if (acao === 'reconnect') {
         setError(mensagem);
         reconectar();
         return;
       }
 
-      if (acao === 'desistir') {
+      if (acao === 'giveUp') {
         // No retry scheduled on purpose: the fan reads a message instead of a frozen screen.
         setError(ERRO_REENTRADA);
         return;

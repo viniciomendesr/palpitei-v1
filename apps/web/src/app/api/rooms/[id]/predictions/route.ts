@@ -4,7 +4,7 @@ import { PrivyClient } from '@privy-io/server-auth';
 import { createLobbyRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { getLobby } from '@/server/lobbies';
-import { canAccessStartedLobby } from '@/server/lobby-acesso';
+import { canAccessStartedLobby, inMemoryLobbyAllowsRoom } from '@/server/lobby-acesso';
 import { openRoom, roomKey, placePrediction, parsePartyId, parseRoomId } from '@/server/rooms';
 import { toCoreUser } from '@/server/identidade';
 
@@ -63,7 +63,9 @@ export async function POST(
     }
 
     const lobby = getLobby(roomKey(roomId.fixtureId, roomId.training, partyId));
-    if (!lobby || lobby.phase !== 'started') {
+    // A finished lobby still opens the room; the engine rejects any question
+    // that is not `open`, so reading the result cannot become a late prediction.
+    if (!inMemoryLobbyAllowsRoom(lobby?.phase)) {
       return NextResponse.json({ error: 'a partida ainda não começou no lobby' }, { status: 409 });
     }
     const sala = await openRoom(roomId.fixtureId, roomId.training, partyId);

@@ -44,6 +44,7 @@ import {
 import { createDb } from './db';
 import { resetLobby } from './lobbies';
 import { roomKey, roomPolicy } from './room-id';
+import { roomMode } from './room-mode';
 import {
   WATCHDOG_MARGIN_MS,
   scheduleShutdownIfEmpty,
@@ -189,6 +190,8 @@ function portsDeTreino(): EnginePorts {
 
 async function createRoom(fixtureId: number, training: boolean, partyId: string): Promise<Room | null> {
   const db = createDb();
+  // Policy centralizes the distinction between training and XP-bearing rooms.
+  const politica = roomPolicy(training);
 
   // The active persisted channel, not raw environment configuration, selects live ingest or replay.
   const aoVivo = await garantirCanalAoVivo(fixtureId);
@@ -204,9 +207,23 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     await db.close?.();
     return null;
   }
+  // The party's own run decides whether a finished match is a replay or a result screen.
+  const partySession = politica.persists
+    ? await createGameSessionRepo(db).findLatestByParty(fixtureId, partyId, training)
+    : null;
+  const mode = roomMode({
+    // `state` and `cacheSource` come from the repo row, not the core Fixture type.
+    matchState: (fixture as { state?: string }).state,
+    liveChannel: aoVivo,
+    hasPartySession: Boolean(partySession),
+  });
+  /** Live and finished rooms share provenance and clock; only replay is rewound. */
+  const liveLike = mode !== 'replay';
+
   const eventos = await createEventRepo(db).listReplayByFixture(fixtureId);
-  // Replay requires a timeline; live rooms may begin before any event arrives.
-  if (!eventos.length && !aoVivo) {
+  // Replay requires a timeline; live rooms may begin before any event arrives,
+  // and a finished room reads its state from the session snapshot.
+  if (!eventos.length && mode === 'replay') {
     await db.close?.();
     return null;
   }
@@ -217,15 +234,13 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
   const linhaDoTempo = mergeTimeline(eventos, odds);
 
   const ehLance = createMatchEventFilter();
-  // Policy centralizes the distinction between training and XP-bearing rooms.
-  const politica = roomPolicy(training);
   // Sessions pin template versions so catalog changes cannot alter announced questions, XP, or settlement.
-  const templatesAtivos = politica.persists && aoVivo ? await createQuestionTemplateRepo(db).listActive() : [];
+  const templatesAtivos = politica.persists && mode === 'live' ? await createQuestionTemplateRepo(db).listActive() : [];
   const templates = templatesPorTipo(templatesAtivos);
   const templateSet = Object.fromEntries(
     Object.entries(templates).map(([type, ref]) => [type, ref]),
   );
-  const session = politica.persists && aoVivo
+  const session = politica.persists && mode === 'live'
     ? await createGameSessionRepo(db).findOrCreateActive({
       fixtureId,
       partyId,
@@ -234,8 +249,10 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
       templateSet,
     })
     : null;
-  const templatesFixados = session ? templatesDoSnapshot(session.templateSet) : templates;
-  const recuperado = session ? snapshotDaSessao(session.snapshot) : null;
+  // A finished room reopens the party's last run — it never opens a new one.
+  const baseSession = session ?? (mode === 'finished' ? partySession : null);
+  const templatesFixados = baseSession ? templatesDoSnapshot(baseSession.templateSet) : templates;
+  const recuperado = baseSession ? snapshotDaSessao(baseSession.snapshot) : null;
   const ports = politica.persists ? createEnginePorts(db) : portsDeTreino();
   // Live rooms use kickoff until the first real event reanchors the clock.
   const cursor: ReplayCursor = {
@@ -243,7 +260,7 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     realAt: recuperado?.cursor?.realAt ?? Date.now(),
   };
   // Live fixtures always run at speed 1, independent of replay configuration.
-  const clock = cursorClock(cursor, aoVivo ? 1 : REPLAY_SPEED);
+  const clock = cursorClock(cursor, liveLike ? 1 : REPLAY_SPEED);
   // Replay bounds interpolation to its last clock; live does not.
   const clockMaxSeconds = eventos.reduce<number | null>(
     (max, event) => typeof event.clockSeconds === 'number' ? Math.max(max ?? 0, event.clockSeconds) : max,
@@ -255,14 +272,14 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     teamA: fixture.p1,
     teamB: fixture.p2,
     // Live provenance must not inherit a possible post-match cache label.
-    source: aoVivo
+    source: liveLike
       ? 'txline-live'
       : (fixture as { cacheSource?: string }).cacheSource ?? 'txline-cache',
     score: { p1: 0, p2: 0 },
     minute: null,
     clockSeconds: null,
-    replaySpeed: aoVivo ? 1 : REPLAY_SPEED,
-    clockMaxSeconds: aoVivo ? null : clockMaxSeconds,
+    replaySpeed: liveLike ? 1 : REPLAY_SPEED,
+    clockMaxSeconds: liveLike ? null : clockMaxSeconds,
     finished: false,
     questions: [],
     feed: [],
@@ -290,10 +307,10 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     runner: null,
     close: () => {},
     checkpoint: () => {},
-    sessionId: session?.id ?? null,
-    lastScoreSeq: session?.lastScoreSeq ?? null,
-    lastOddsTs: session?.lastOddsTs ?? null,
-    lastOddsMessageId: session?.lastOddsMessageId ?? null,
+    sessionId: baseSession?.id ?? null,
+    lastScoreSeq: baseSession?.lastScoreSeq ?? null,
+    lastOddsTs: baseSession?.lastOddsTs ?? null,
+    lastOddsMessageId: baseSession?.lastOddsMessageId ?? null,
   };
 
   if (recuperado?.fatos) sala.fatos = new Map(recuperado.fatos);
@@ -458,11 +475,11 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     fixture,
     clock,
     ports,
-    ...(session ? {
-      sessionId: session.id,
+    ...(baseSession ? {
+      sessionId: baseSession.id,
       templates: templatesFixados,
       questionId: (type: Question['type'], triggerKey: string) =>
-        `q_${session.id.replace(/-/g, '')}_${type}_${triggerKey.replace(/[^a-zA-Z0-9_:-]/g, '_')}`,
+        `q_${baseSession.id.replace(/-/g, '')}_${type}_${triggerKey.replace(/[^a-zA-Z0-9_:-]/g, '_')}`,
     } : {}),
     // Only training does not award XP; persistence keeps questions idempotent.
     pagaXp: () => politica.paysXp,
@@ -608,7 +625,7 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     sala.checkpoint();
   };
 
-  if (!aoVivo) {
+  if (mode === 'replay') {
     sala.runner = new ReplayRunner(linhaDoTempo, REPLAY_SPEED, processarEvento, () => {
       finalizarSala();
     });
@@ -627,7 +644,7 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     void ports.flush().catch(() => {}).finally(() => void db.close?.());
   };
 
-  if (aoVivo) {
+  if (mode === 'live') {
     // Reapply the snapshot through the same handler and dedupe kickoff before catch-up.
     const ehKickoffDuplicado = createKickoffDeduper();
     const aoEvento = (ev: NormEvent): void => {
@@ -635,7 +652,7 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
       processarEvento(ev);
     };
     const jaNoCheckpoint = (ev: NormEvent): boolean => {
-      if (!session) return false;
+      if (!baseSession) return false;
       if (ev.kind === 'score') return sala.lastScoreSeq !== null && ev.seq <= sala.lastScoreSeq;
       if (sala.lastOddsTs === null) return false;
       return ev.ts < sala.lastOddsTs || (ev.ts === sala.lastOddsTs && ev.messageId === sala.lastOddsMessageId);
@@ -657,13 +674,19 @@ async function createRoom(fixtureId: number, training: boolean, partyId: string)
     bufferDoCatchUp.length = 0;
     // After catch-up, channel events go directly to the handler.
     entregar = aoEvento;
-  } else {
+  } else if (mode === 'replay') {
     const runner = sala.runner!;
     runner.start();
     sala.watchdog = setTimeout(
       () => runner.finishNow(),
       Math.max(30_000, runner.estimatedDurationMs + WATCHDOG_MARGIN_MS),
     );
+  } else {
+    // Lazy reconciliation: the match is over and this party already ran. Restore
+    // the snapshot and close the books — no runner, no channel, no new session.
+    // `finalizarSala` is the same idempotent path the whistle takes, so it also
+    // finishes a lobby and a session that a restart left open.
+    finalizarSala();
   }
   salas.set(roomKey(fixtureId, training, partyId), sala);
   return sala;

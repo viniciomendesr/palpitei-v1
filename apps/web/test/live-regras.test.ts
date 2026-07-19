@@ -6,6 +6,7 @@ import {
   classificarParaSala,
   eventoEncerraPartida,
   fixtureAoVivo,
+  channelsToClose,
   fixturesAoVivo,
   ingestAoVivoHabilitado,
   podeAtivarFixtureAoVivo,
@@ -149,4 +150,23 @@ test('odds de outro mercado (over/under etc.) não roteia', () => {
 
 test('odds de outra fixture é outra_fixture antes de ser mercado', () => {
   assert.equal(classificarParaSala(odds({ fixtureId: 18257739 }), 18257865), 'outra_fixture');
+});
+
+// ─── Who LEAVES the local channel map ───
+// The TxLINE SSE pair is shared by every fixture, so ending one match may only
+// drop that fixture's channel — never the streams, never the other fixtures.
+
+test('só encerra canal de fixture explicitamente desativada no banco', () => {
+  assert.deepEqual(channelsToClose([18257865, 18257739], [18257865]), [18257865]);
+});
+
+test('fixture SEM linha em live_fixtures não é encerrada — foi semeada pela env', () => {
+  // iniciarCanalAoVivo semeia LIVE_FIXTURE_IDS sem gravar em live_fixtures.
+  // Closing "everything absent from listActive" would kill the legacy runbook channel.
+  assert.deepEqual(channelsToClose([18257865, 18257739], []), []);
+});
+
+test('desativada que nem tem canal local não vira encerramento fantasma', () => {
+  assert.deepEqual(channelsToClose([18257739], [18257865]), []);
+  assert.deepEqual(channelsToClose([], [18257865, 18257739]), []);
 });

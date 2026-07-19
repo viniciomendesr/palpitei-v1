@@ -12,44 +12,44 @@
  * in `desistir`, which is what puts an error in front of the fan.
  */
 
-export type ReentradaAcao = 'reconectar' | 'rejoin' | 'desistir';
+export type RejoinAction = 'reconnect' | 'rejoin' | 'giveUp';
 
-export interface ReentradaContexto {
+export interface RejoinContext {
   /** HTTP status of the refusal; `null` when the failure carried none (EventSource). */
   status: number | null;
   /** A rejoin needs a room to rejoin into. */
-  temParty: boolean;
+  hasParty: boolean;
   privyAuthenticated: boolean;
   /** Rejoins already attempted for this connection. */
   tentativas: number;
 }
 
 /** One attempt. A second would only repeat a server verdict that did not change. */
-export const MAX_TENTATIVAS_REJOIN = 1;
+export const MAX_REJOIN_ATTEMPTS = 1;
 
 /** Statuses that mean "you are not in this lobby", not "the network hiccuped". */
-function ehVeredito(status: number | null): boolean {
+function isAccessVerdict(status: number | null): boolean {
   return status === 403 || status === 404;
 }
 
-export function acaoDeReentrada({
+export function rejoinAction({
   status,
-  temParty,
+  hasParty,
   privyAuthenticated,
   tentativas,
-}: ReentradaContexto): ReentradaAcao {
+}: RejoinContext): RejoinAction {
   // Only an access verdict justifies a rejoin. A dropped connection, a 500 or a 401
   // are transient by nature, and the existing capped backoff already handles them —
   // turning them into a rejoin would spend the single attempt on a network blip.
-  if (!ehVeredito(status)) return 'reconectar';
+  if (!isAccessVerdict(status)) return 'reconnect';
 
   // Privy fails late, not loud (CONTEXT §11): the island may still be booting, and the
   // join would fail with 401 anyway. Keep reconnecting instead of burning an attempt.
-  if (!privyAuthenticated) return 'reconectar';
+  if (!privyAuthenticated) return 'reconnect';
 
   // No invite code means there is no room to rejoin: retrying is guaranteed silence.
-  if (!temParty) return 'desistir';
+  if (!hasParty) return 'giveUp';
 
-  if (tentativas >= MAX_TENTATIVAS_REJOIN) return 'desistir';
+  if (tentativas >= MAX_REJOIN_ATTEMPTS) return 'giveUp';
   return 'rejoin';
 }

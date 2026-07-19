@@ -2,7 +2,7 @@
 import { createLobbyRepo, createUserRepo } from '@palpitei/db';
 import { createDb } from '@/server/db';
 import { getLobby } from '@/server/lobbies';
-import { canAccessStartedLobby } from '@/server/lobby-acesso';
+import { canAccessStartedLobby, inMemoryLobbyAllowsRoom } from '@/server/lobby-acesso';
 import { PULSO, iniciarPulso } from '@/server/pulso';
 import { consumirTicketSse } from '@/server/sse-ticket';
 import {
@@ -64,7 +64,7 @@ export async function GET(
   }
 
   const lobby = getLobby(roomKey(roomId.fixtureId, roomId.training, partyId));
-  if (!lobby || lobby.phase !== 'started') {
+  if (!inMemoryLobbyAllowsRoom(lobby?.phase)) {
     return Response.json({ error: 'a partida ainda não começou no lobby' }, { status: 409 });
   }
   const sala = await openRoom(roomId.fixtureId, roomId.training, partyId);

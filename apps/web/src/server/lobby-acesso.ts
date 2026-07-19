@@ -28,3 +28,15 @@ export function canAccessStartedLobby(
       lobby.expiresAt > now,
   );
 }
+
+/**
+ * Same phase rule for the process-local lobby that gates the room routes.
+ *
+ * It has to accept exactly what `canAccessStartedLobby` accepts. The in-memory
+ * lobby is rehydrated from Postgres by `openLobby`, so once a room is reconciled
+ * to `finished` a `started`-only gate would answer 409 right after the Postgres
+ * gate answered "you may enter" — the fan bounces off their own room forever.
+ */
+export function inMemoryLobbyAllowsRoom(phase: Lobby['phase'] | undefined | null): boolean {
+  return phase === 'started' || phase === 'finished';
+}
