@@ -8,13 +8,15 @@ import { Screen } from '@/components/Shell';
 import { Logo, Wordmark } from '@/components/Brand';
 import { ChevronRight, Crown } from '@/components/Icons';
 import { useI18n, fill } from '@/lib/i18n';
+import { formatKickoff } from '@/lib/kickoff';
+import { groupLegs } from '@/lib/legs';
 import { useSession, initialsOf } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
 import { fw } from '@/lib/tokens';
 import { fixtures, type FixtureView } from '@/lib/mock';
 import { api, type ApiFixture, type ApiLeagues } from '@/lib/api';
 import type { SessionState } from '@/lib/session';
-import type { Dict } from '@/lib/i18n';
+import type { Dict, Lang } from '@/lib/i18n';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { localizeTeamName } from '@/lib/team-names';
 import { useDemoPlay } from '@/components/demo/DemoPlay';
@@ -26,7 +28,7 @@ function abaDa(f: ApiFixture): Tab {
   return f.source === 'txline' ? 'next' : 'replays';
 }
 
-function useFixtures(session: SessionState | null, t: Dict) {
+function useFixtures(session: SessionState | null, t: Dict, lang: Lang) {
   const [reais, setReais] = useState<ApiFixture[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const privy = usePrivyAuth();
@@ -61,21 +63,41 @@ function useFixtures(session: SessionState | null, t: Dict) {
   }
 
   const abas: Record<Tab, FixtureView[]> = { live: [], next: [], replays: [] };
+  const agora = Date.now();
   for (const f of reais ?? []) {
     abas[abaDa(f)].push({
       id: f.id,
       live: f.live,
-      status: f.status,
+      // Two legs of the same pair days apart are one card repeated without the
+      // date (measured 2026-07-20: Australia x Brazil twice, New Zealand x India
+      // twice). A running match keeps "AO VIVO"; a fixture with no kickoff in the
+      // feed keeps the server's status rather than showing an invented date.
+      status:
+        abaDa(f) === 'next' && f.startTime != null
+          ? formatKickoff(f.startTime, agora, lang, 'label')
+          : f.status,
       group: f.group,
       teamA: f.teamA,
       teamB: f.teamB,
       scoreA: f.scoreA ?? '–',
       scoreB: f.scoreB ?? '–',
+      startTs: f.startTime ?? undefined,
       cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : t.ctaReplay,
       source: f.source === 'txline' ? t.srcTxline : t.srcReplay,
       played: f.played ?? false,
     });
   }
+  // Two legs of the same pairing days apart read as a duplicated row. Collapse them
+  // into one card and append the other dates to the status, so the fan still sees
+  // that a second match exists — grouping is presentation, never a filter.
+  abas.next = groupLegs(abas.next).map(({ lead, rest }) => {
+    if (!rest.length) return lead;
+    const outras = rest
+      .filter((leg) => leg.startTs !== undefined)
+      .map((leg) => formatKickoff(leg.startTs!, agora, lang, 'label'));
+    return outras.length ? { ...lead, status: `${lead.status} · +${outras.join(' · +')}` } : lead;
+  });
+
   return { abas, carregando: reais === null && !erro, erro };
 }
 
@@ -152,7 +174,7 @@ export default function HomePage() {
     if (ehDemo) setTab('next');
   }, [ehDemo]);
 
-  const { abas, carregando, erro } = useFixtures(session, t);
+  const { abas, carregando, erro } = useFixtures(session, t, lang);
   const liga = useLeagues(session, t);
 
   if (!ready || !session) return null;
@@ -237,22 +259,17 @@ export default function HomePage() {
               scoreB={f.scoreB}
               cta={tab === 'next' ? t.ctaPalpitar : f.cta}
               onClick={tab === 'next' ? () => router.push(`/palpite/${f.id}`) : () => openSala(f.id)}
+              {...(tab === 'replays'
+                ? {
+                    // Shares the CTA row instead of sitting under the card. Rendered
+                    // disabled rather than hidden when the fan never played: hiding it
+                    // would leave them guessing whether the feature exists for them.
+                    secondaryCta: f.played ? t.ctaMeusPalpites : t.ctaMeusPalpitesVazio,
+                    secondaryDisabled: !f.played,
+                    onSecondary: () => router.push(`/meus-palpites/${f.id}`),
+                  }
+                : {})}
             />
-            {/* Second action per replay, next to "Rever partida". Disabled and
-                visible when the fan never played: hiding it would leave them
-                guessing whether the feature exists for them at all. */}
-            {tab === 'replays' && (
-              <Button
-                full
-                variant="secondary"
-                size="sm"
-                disabled={!f.played}
-                onClick={() => router.push(`/meus-palpites/${f.id}`)}
-                style={{ marginTop: 8 }}
-              >
-                {f.played ? t.ctaMeusPalpites : t.ctaMeusPalpitesVazio}
-              </Button>
-            )}
           </div>
         ))}
 

@@ -11,6 +11,7 @@ import { useSession } from '@/lib/session';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { fw } from '@/lib/tokens';
 import { consumePendingReturnTo, returnToFromSearch, setPendingReturnTo } from '@/lib/return-to';
+import { tourSeen } from '@/lib/tour-seen';
 
 const EASE = 'cubic-bezier(.2,.7,.3,1)';
 
@@ -23,6 +24,19 @@ export default function LoginPage() {
   const [erro, setErro] = useState<string | null>(null);
   const entrando = useRef(false);
   const [tentativa, setTentativa] = useState(0);
+  // null until the effect reads localStorage — the check cannot run during SSR, and
+  // every redirect below has to wait for its answer.
+  const [tourPending, setTourPending] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    // Every kind of access sees the tour once, a cached login included: it explains
+    // the product, and gating it on "no session yet" made it unreachable for anyone
+    // whose browser already held a Privy token. `tourSeen` alone decides.
+    const pending = !tourSeen();
+    setTourPending(pending);
+    if (pending) router.replace('/tour');
+  }, [hydrated, router]);
 
   useEffect(() => {
     const destination = returnToFromSearch(window.location.search);
@@ -37,6 +51,11 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!hydrated) return;
+    // The tour owns the first visit. Without this the authenticated fan is sent to
+    // /home the moment they land and never reaches /tour — which is exactly what made
+    // it unreachable with a cached login. `tourPending` is null until the gate is read,
+    // and null must wait too, or this redirect wins the race.
+    if (tourPending !== false) return;
     if (!privy.authenticated || !privy.did) return;
 
     if (session && session.authMethod !== 'demo') {
@@ -72,6 +91,7 @@ export default function LoginPage() {
     })();
   }, [
     hydrated,
+    tourPending,
     session,
     privy.authenticated,
     privy.did,

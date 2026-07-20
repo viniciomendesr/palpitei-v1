@@ -8,6 +8,7 @@ import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { useI18n } from './i18n';
 import { api, ApiError, type PregameMarket, type PregamePick } from './api';
 import { fixtures } from './mock';
+import { formatKickoff } from './kickoff';
 import { timeVisual } from './teamVisual';
 
 export type Resultado = 'home' | 'draw' | 'away' | null;
@@ -69,20 +70,6 @@ const SEM_MERCADOS: PregameMarket[] = [];
 
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
-}
-
-/** Formats the kickoff time for the current locale. */
-function textoDoApito(startTs: number, agora: number, lang: 'pt' | 'en'): string {
-  const d = new Date(startTs);
-  const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  const dia = new Date(startTs).setHours(0, 0, 0, 0);
-  const hoje = new Date(agora).setHours(0, 0, 0, 0);
-  const diff = Math.round((dia - hoje) / 86_400_000);
-  const hojeW = lang === 'en' ? 'Today' : 'Hoje';
-  const amanhaW = lang === 'en' ? 'Tomorrow' : 'Amanhã';
-  if (diff <= 0) return `${hojeW}, ${hhmm}`;
-  if (diff === 1) return `${amanhaW}, ${hhmm}`;
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}, ${hhmm}`;
 }
 
 /** Formats remaining time to kickoff, or null after kickoff. */
@@ -198,7 +185,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
       colA: va.color,
       colB: vb.color,
       group: fx.group,
-      kickoffText: startTs != null ? textoDoApito(startTs, agora, lang) : fx.status,
+      kickoffText: startTs != null ? formatKickoff(startTs, agora, lang) : fx.status,
       closesText: locked || startTs == null ? null : textoDoFechamento(startTs, agora, lang),
       // Demo mode does not fabricate friends' predictions.
       friends: null,
@@ -245,7 +232,7 @@ export function usePalpitePreJogo(fixtureId: string): UsePalpitePreJogo {
           colA: va.color,
           colB: vb.color,
           group: r.match.competition ?? '',
-          kickoffText: startTs != null ? textoDoApito(startTs, agora, lang) : '',
+          kickoffText: startTs != null ? formatKickoff(startTs, agora, lang) : '',
           closesText: r.locked || startTs == null ? null : textoDoFechamento(startTs, agora, lang),
           friends: null, // Do not fabricate social data until a real source exists.
           markets: r.markets,

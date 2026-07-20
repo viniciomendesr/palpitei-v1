@@ -57,3 +57,15 @@ test('replay chances are plausible, normalized and explicitly local to the demo'
     assert.equal(Object.values(challenge.pct).reduce<number>((sum, pct) => sum + (pct ?? 0), 0), 100);
   }
 });
+
+test('o card ao vivo do tour usa o placar factual dos 64 minutos, não um mock', () => {
+  // The pre-login tour draws a live match card. Its scoreline is not decoration:
+  // it is the same public FIFA fact the guided replay starts from, imported from
+  // MATCH_START rather than retyped, so the two can never drift apart. The design
+  // mock-up showed 2–1 here; at minute 64 the real match was 1–1 (Messi 29',
+  // Deroy Duarte 59'), and a public screen must not invent a scoreline (CONTEXT §13).
+  assert.deepEqual(
+    { scoreA: MATCH_START.scoreA, scoreB: MATCH_START.scoreB },
+    { scoreA: 1, scoreB: 1 },
+  );
+});

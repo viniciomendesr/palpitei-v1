@@ -374,6 +374,42 @@ const pt = {
   liveSub: 'Feed em tempo real da partida',
   howTitle: 'Como funciona o Palpitei',
   howSub: 'Regras, XP e ligas',
+
+  // Pre-login tour. The copy says "cada partida" rather than naming the World Cup:
+  // the devnet dataset rotates and has already served friendlies, so a competition
+  // name here would age into a lie the next time it turns over.
+  tourBadge: 'COMO FUNCIONA',
+  tourSkip: 'Pular',
+  tourNext: 'Próximo',
+  tourStart: 'Começar',
+  tourStepLabel: 'Passo',
+  tourLangLabel: 'Idioma',
+  // Scene labels. The scorelines are public FIFA facts (CONTEXT §13), not mock-ups:
+  // Argentina × Cabo Verde was 1–1 at 64' (Messi 29', Deroy Duarte 59') and England
+  // lost 1–2 to Argentina in the semifinal — the same match we have recorded as a replay.
+  tourLiveStage: 'FASE DE 32 · COPA 2026',
+  tourLiveCta: 'Entrar na sala',
+  tourNextGoal: 'Próximo gol?',
+  tourReplayTag: 'ENCERRADA',
+  tourReplayStage: 'SEMIFINAL · COPA 2026',
+  tourXpCaption: 'XP · ganho jogando',
+  tourTrophyCaption: 'Troféus · raros',
+  tourLevelLabel: 'Nível 7',
+  tourLevelNext: '760 XP pro Nv 8',
+  tour: [
+    {
+      title: 'Dê palpites ao vivo',
+      body: 'Cada partida vira uma sala ao vivo. Palpite em tempo real enquanto a bola rola e ganhe XP a cada acerto.',
+    },
+    {
+      title: 'Dê replay em partidas antigas',
+      body: 'Reveja jogos que já acabaram e palpite neles no seu ritmo, de 1× a 8×. Perfeito pra treinar o olho e caçar XP fora do horário da bola.',
+    },
+    {
+      title: 'Junte XP e Troféis',
+      body: 'XP você acumula jogando. Troféu é raro — só cai vencendo uma liga ou acertando um call difícil. Gaste tudo na Loja.',
+    },
+  ],
   signout: 'Sair da conta',
   editNameHdr: 'EDITAR APELIDO',
   namePlaceholder: 'seu apelido',
@@ -571,7 +607,7 @@ const pt = {
 
   // Marketplace. The store is populated for the demo account only; a real fan sees the
   // "coming soon" state, so this copy never promises inventory that does not exist.
-  navMarket: 'Loja',
+  navMarket: 'Marketplace',
   mkTitle: 'Loja',
   mkTabStore: 'Loja',
   mkTabCollection: 'Coleção',
@@ -1067,6 +1103,36 @@ const en: Dict = {
   liveSub: 'Real-time match feed',
   howTitle: 'How Palpitei works',
   howSub: 'Rules, XP and leagues',
+
+  tourBadge: 'HOW IT WORKS',
+  tourSkip: 'Skip',
+  tourNext: 'Next',
+  tourStart: 'Start',
+  tourStepLabel: 'Step',
+  tourLangLabel: 'Language',
+  tourLiveStage: 'ROUND OF 32 · WORLD CUP 2026',
+  tourLiveCta: 'Enter the room',
+  tourNextGoal: 'Next goal?',
+  tourReplayTag: 'FINISHED',
+  tourReplayStage: 'SEMIFINAL · WORLD CUP 2026',
+  tourXpCaption: 'XP · earned playing',
+  tourTrophyCaption: 'Trophies · rare',
+  tourLevelLabel: 'Level 7',
+  tourLevelNext: '760 XP to Lv 8',
+  tour: [
+    {
+      title: 'Call plays live',
+      body: 'Every match becomes a live room. Call it in real time as the ball rolls and earn XP for every hit.',
+    },
+    {
+      title: 'Replay old matches',
+      body: 'Revisit games that already ended and predict them at your own pace, from 1× to 8×. Great for training your eye and grabbing XP off-hours.',
+    },
+    {
+      title: 'Stack XP and Trophies',
+      body: 'XP builds up as you play. Trophies are rare — earned only by winning a league or nailing a hard call. Spend it all in the Shop.',
+    },
+  ],
   signout: 'Sign out',
   editNameHdr: 'EDIT NICKNAME',
   namePlaceholder: 'your nickname',
@@ -1254,7 +1320,7 @@ const en: Dict = {
     },
   ],
 
-  navMarket: 'Store',
+  navMarket: 'Marketplace',
   mkTitle: 'Store',
   mkTabStore: 'Store',
   mkTabCollection: 'Collection',

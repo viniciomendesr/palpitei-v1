@@ -81,6 +81,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         teamB: fx.p2,
         scoreA: null,
         scoreB: null,
+        startTime: fx.startTime ?? null,
         source: 'txline',
       });
     }
@@ -98,6 +99,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         teamB: fx.p2,
         scoreA: null,
         scoreB: null,
+        startTime: fx.startTime ?? null,
         source: (fx.cacheSource ?? 'txline-cache') as ApiFixture['source'],
       } satisfies Omit<ApiFixture, 'id' | 'status'>;
       // One card per recorded match. The `treino-<id>` route still works and is

@@ -628,3 +628,59 @@ export function WalletIcon({ size = 19 }: { size?: number }) {
     </svg>
   );
 }
+
+export function ArrowRight({ size = 18, color = 'currentColor' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+export function Broadcast({ size = 26, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="2.3" fill={color} stroke="none" />
+      <path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M6.1 6.1a8.3 8.3 0 0 0 0 11.8M17.9 6.1a8.3 8.3 0 0 1 0 11.8" />
+    </svg>
+  );
+}
+
+export function Replay({ size = 25, color = 'var(--lime)' }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.2 9.2A9 9 0 1 1 3 13" />
+      <path d="M3 4.4V9.2h4.8" />
+      <path d="M10.4 9.2v5.6l4.6-2.8-4.6-2.8z" fill={color} stroke="none" />
+    </svg>
+  );
+}

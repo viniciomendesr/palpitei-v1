@@ -51,6 +51,8 @@ export interface ApiFixture {
   teamB: string;
   scoreA: number | null;
   scoreB: number | null;
+  /** Kickoff instant (epoch ms), or null when the source did not carry one. */
+  startTime: number | null;
   /** Data provenance displayed to the user. */
   source: 'txline' | ReplaySource;
   /** Training rooms do not persist state or award XP. */
