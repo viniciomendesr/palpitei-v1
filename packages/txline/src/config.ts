@@ -35,7 +35,8 @@ export const config = {
     return trim(process.env.TXLINE_API_TOKEN);
   },
 
-  /** 72 = World Cup. Empty fetches all fixtures and filters by World Cup. */
+  /** 72 = World Cup. Empty, or a competition the snapshot no longer carries,
+   *  falls back to every fixture the feed offers. */
   get competitionId(): string {
     return process.env.TXLINE_COMPETITION_ID?.trim() ?? "72";
   },

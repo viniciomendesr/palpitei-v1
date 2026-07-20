@@ -22,11 +22,6 @@ function rows(data: unknown): any[] {
   return [];
 }
 
-function looksWorldCup(fx: unknown): boolean {
-  return JSON.stringify(fx).toLowerCase().includes("world cup") ||
-    JSON.stringify(fx).toLowerCase().includes("worldcup");
-}
-
 function toFixture(fx: any): Fixture | null {
   const fixtureId = num(fx?.FixtureId ?? fx?.fixtureId);
   if (fixtureId === undefined) return null;
@@ -44,7 +39,15 @@ function toFixture(fx: any): Fixture | null {
   };
 }
 
-/** Fixture snapshot with an all-fixtures fallback filtered by name. */
+/**
+ * Fixture snapshot, falling back to every competition the feed offers.
+ *
+ * The devnet dataset rotates. Competition 72 (World Cup) filled the snapshot
+ * through the live windows and then emptied out — measured 2026-07-20, when it
+ * returned zero and the six surviving fixtures were all competition 430. The
+ * fallback therefore takes the snapshot as-is: filtering it by competition name
+ * is what turns a rotation into an empty match list.
+ */
 export async function fetchFixtures(): Promise<Fixture[]> {
   const path = config.competitionId
     ? `/fixtures/snapshot?competitionId=${config.competitionId}`
@@ -55,13 +58,9 @@ export async function fetchFixtures(): Promise<Fixture[]> {
   let list: any[] = Array.isArray(data) ? data : data?.fixtures ?? [];
 
   if (config.competitionId && list.length === 0) {
-    warn(`competitionId=${config.competitionId} retornou 0 — buscando tudo e filtrando por "World Cup"…`);
+    warn(`competitionId=${config.competitionId} retornou 0 — caindo para o snapshot inteiro…`);
     const todos = await txlineGet<any>(`/fixtures/snapshot`);
-    const all: any[] = Array.isArray(todos) ? todos : todos?.fixtures ?? [];
-    list = all.filter(looksWorldCup);
-  } else if (!config.competitionId) {
-    // An empty competition ID opts into the documented all-fixtures fallback.
-    list = list.filter(looksWorldCup);
+    list = Array.isArray(todos) ? todos : todos?.fixtures ?? [];
   }
 
   return list

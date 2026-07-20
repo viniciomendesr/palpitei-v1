@@ -8,7 +8,13 @@ process.env.TXLINE_LOG_SILENT = "true";
 process.env.TXLINE_SWEEP_HOURS_BEFORE = "0";
 process.env.TXLINE_SWEEP_HOURS_AFTER = "0";
 
-import { createTimeBuckets, findSequenceGaps, fetchOddsUpdates, fetchScoresUpdates } from "../src/api.ts";
+import {
+  createTimeBuckets,
+  fetchFixtures,
+  findSequenceGaps,
+  fetchOddsUpdates,
+  fetchScoresUpdates,
+} from "../src/api.ts";
 import { resetCredentials } from "../src/auth.ts";
 import { TxlineSweepError } from "../src/errors.ts";
 
@@ -224,4 +230,57 @@ test("the same MessageId repeated across neighbouring buckets becomes a single e
 
   const lista = await fetchOddsUpdates(FIXTURE, KICKOFF);
   assert.equal(lista.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// fixtures
+// ---------------------------------------------------------------------------
+
+// The devnet dataset rotates: the competition that used to fill the snapshot
+// eventually disappears from it. On 2026-07-20 competition 72 returned zero and
+// the six remaining fixtures were all competition 430, so a name filter left the
+// app with an empty match list.
+const FORA_DA_COPA = {
+  FixtureId: 18272873,
+  Participant1: "Azerbaijan",
+  Participant2: "Tajikistan",
+  Competition: "Friendlies",
+  CompetitionId: 430,
+  StartTime: Date.UTC(2026, 8, 23, 15, 0, 0),
+  GameState: 0,
+};
+
+test("o nome da competição vem do feed e não é presumido (G6)", async () => {
+  process.env.TXLINE_COMPETITION_ID = "";
+  responder = () => ({ status: 200, body: [FORA_DA_COPA] });
+
+  const [fx] = await fetchFixtures();
+  // The snapshot carries the real name. Dropping it makes the room label fall
+  // back to an invented competition — provenance that lies is the G6.
+  assert.equal(fx!.competition, "Friendlies");
+  assert.equal(fx!.competitionId, 430);
+});
+
+test("a competição configurada vazia cai para o snapshot inteiro sem filtrar por nome", async () => {
+  process.env.TXLINE_COMPETITION_ID = "72";
+  responder = (url) =>
+    url.includes("competitionId=") ? { status: 200, body: [] } : { status: 200, body: [FORA_DA_COPA] };
+
+  const fixtures = await fetchFixtures();
+  assert.equal(fixtures.length, 1, "a fixture fora da Copa não pode ser descartada");
+  assert.equal(fixtures[0]!.fixtureId, 18272873);
+  assert.equal(fixtures[0]!.p1, "Azerbaijan");
+});
+
+test("a competição configurada, quando devolve linhas, é a que vale", async () => {
+  process.env.TXLINE_COMPETITION_ID = "430";
+  responder = (url) =>
+    url.includes("competitionId=430") ? { status: 200, body: [FORA_DA_COPA] } : { status: 200, body: [] };
+
+  const fixtures = await fetchFixtures();
+  assert.equal(fixtures.length, 1);
+  assert.ok(
+    rotasPedidas.every((u) => !u.includes("snapshot?") || u.includes("competitionId=")),
+    "não deve buscar o snapshot inteiro quando a competição já respondeu",
+  );
 });
