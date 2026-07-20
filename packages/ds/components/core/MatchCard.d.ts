@@ -2,6 +2,8 @@ export interface MatchCardProps {
   status: string; group: string;
   teamA: string; teamB: string; scoreA?: React.ReactNode; scoreB?: React.ReactNode;
   cta?: string; onClick?: () => void; live?: boolean;
+  /** Outline action sharing the CTA row, e.g. "Meus palpites" on a replay. */
+  secondaryCta?: string; onSecondary?: () => void; secondaryDisabled?: boolean;
 }
 /**
  * Match fixture card: live/finished/upcoming state, teams, score and optional CTA.
