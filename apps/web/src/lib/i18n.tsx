@@ -200,6 +200,8 @@ const pt = {
   ligaSub: '8 amigos · você lidera',
   // Do not claim unavailable aggregate prediction statistics in the demo.
   replaysNote: 'Partidas que já aconteceram. Palpite de novo e veja como você se sai.',
+  statusNaoGravada: 'NÃO GRAVADA',
+  naoGravadaNote: 'Ninguém acompanhou esta partida ao vivo, então ela não ficou gravada para reassistir.',
   statusLive64: 'AO VIVO · 64’',
   statusLive31: 'AO VIVO · 31’',
   statusToday18: 'HOJE · 18:00',
@@ -934,6 +936,8 @@ const en: Dict = {
   leaguesFree: '1 of 1 free',
   ligaSub: '8 friends · you lead',
   replaysNote: 'Matches already played. Pick again and see how you do.',
+  statusNaoGravada: 'NOT RECORDED',
+  naoGravadaNote: 'No one followed this match live, so it was never recorded to replay.',
   statusLive64: 'LIVE · 64’',
   statusLive31: 'LIVE · 31’',
   statusToday18: 'TODAY · 18:00',

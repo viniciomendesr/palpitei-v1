@@ -110,6 +110,11 @@ export interface FixtureView {
    * shown disabled rather than hidden.
    */
   played?: boolean;
+  /**
+   * A replay of a match nobody watched live: it happened, but its timeline was
+   * never recorded, so the card carries a notice and cannot be re-watched.
+   */
+  naoGravada?: boolean;
 }
 
 /** Home tabs; `GET /api/fixtures` replaces this data in production. */

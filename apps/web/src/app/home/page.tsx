@@ -9,6 +9,7 @@ import { Logo, Wordmark } from '@/components/Brand';
 import { ChevronRight, Crown } from '@/components/Icons';
 import { useI18n, fill } from '@/lib/i18n';
 import { formatKickoff } from '@/lib/kickoff';
+import { bucketFixtures, type Tab } from '@/lib/fixture-tabs';
 import { groupLegs } from '@/lib/legs';
 import { useSession, initialsOf } from '@/lib/session';
 import { useRequireSession } from '@/lib/guard';
@@ -20,13 +21,6 @@ import type { Dict, Lang } from '@/lib/i18n';
 import { usePrivyAuth } from '@/components/privy/PrivyIsland';
 import { localizeTeamName } from '@/lib/team-names';
 import { useDemoPlay } from '@/components/demo/DemoPlay';
-
-type Tab = 'live' | 'next' | 'replays';
-
-function abaDa(f: ApiFixture): Tab {
-  if (f.live) return 'live';
-  return f.source === 'txline' ? 'next' : 'replays';
-}
 
 function useFixtures(session: SessionState | null, t: Dict, lang: Lang) {
   const [reais, setReais] = useState<ApiFixture[] | null>(null);
@@ -64,28 +58,40 @@ function useFixtures(session: SessionState | null, t: Dict, lang: Lang) {
 
   const abas: Record<Tab, FixtureView[]> = { live: [], next: [], replays: [] };
   const agora = Date.now();
-  for (const f of reais ?? []) {
-    abas[abaDa(f)].push({
-      id: f.id,
-      live: f.live,
-      // Two legs of the same pair days apart are one card repeated without the
-      // date (measured 2026-07-20: Australia x Brazil twice, New Zealand x India
-      // twice). A running match keeps "AO VIVO"; a fixture with no kickoff in the
-      // feed keeps the server's status rather than showing an invented date.
-      status:
-        abaDa(f) === 'next' && f.startTime != null
-          ? formatKickoff(f.startTime, agora, lang, 'label')
-          : f.status,
-      group: f.group,
-      teamA: f.teamA,
-      teamB: f.teamB,
-      scoreA: f.scoreA ?? '–',
-      scoreB: f.scoreB ?? '–',
-      startTs: f.startTime ?? undefined,
-      cta: f.live ? t.ctaEnter : f.source === 'txline' ? t.ctaRemind : t.ctaReplay,
-      source: f.source === 'txline' ? t.srcTxline : t.srcReplay,
-      played: f.played ?? false,
-    });
+  // Tabs are decided by kickoff time, not by source: a snapshot fixture whose
+  // kickoff already passed is history, and a past match nobody watched live never
+  // got recorded — it lands in Replays flagged `naoGravada`.
+  const buckets = bucketFixtures(reais ?? [], agora);
+  for (const tab of ['live', 'next', 'replays'] as Tab[]) {
+    for (const f of buckets[tab]) {
+      abas[tab].push({
+        id: f.id,
+        live: f.live,
+        // Two legs of the same pair days apart are one card repeated (measured
+        // 2026-07-20: Australia x Brazil twice, New Zealand x India twice), so the
+        // upcoming card shows the date to tell them apart. A match with no kickoff
+        // in the feed keeps the server's status rather than showing an invented
+        // date; a non-recorded replay says so instead of a date.
+        status:
+          tab === 'next' && f.startTime != null
+            ? formatKickoff(f.startTime, agora, lang, 'label')
+            : f.naoGravada
+              ? t.statusNaoGravada
+              : f.status,
+        group: f.group,
+        teamA: f.teamA,
+        teamB: f.teamB,
+        scoreA: f.scoreA ?? '–',
+        scoreB: f.scoreB ?? '–',
+        startTs: f.startTime ?? undefined,
+        // Only recorded replays offer "rever"; a non-recorded one has no timeline
+        // to open, so it carries no CTA at all.
+        cta: f.live ? t.ctaEnter : f.naoGravada ? '' : f.source === 'txline' ? t.ctaRemind : t.ctaReplay,
+        source: f.source === 'txline' ? t.srcTxline : t.srcReplay,
+        played: f.played ?? false,
+        naoGravada: f.naoGravada,
+      });
+    }
   }
   // Two legs of the same pairing days apart read as a duplicated row. Collapse them
   // into one card and append the other dates to the status, so the fan still sees
@@ -94,7 +100,9 @@ function useFixtures(session: SessionState | null, t: Dict, lang: Lang) {
     if (!rest.length) return lead;
     const outras = rest
       .filter((leg) => leg.startTs !== undefined)
-      .map((leg) => formatKickoff(leg.startTs!, agora, lang, 'label'));
+      // The lead already carries the year; a second leg of the same pair drops it
+      // so the card's status row does not repeat "/2026" and overflow.
+      .map((leg) => formatKickoff(leg.startTs!, agora, lang, 'label', false));
     return outras.length ? { ...lead, status: `${lead.status} · +${outras.join(' · +')}` } : lead;
   });
 
@@ -257,9 +265,16 @@ export default function HomePage() {
               teamB={localizeTeamName(f.teamB, lang)}
               scoreA={f.scoreA}
               scoreB={f.scoreB}
-              cta={tab === 'next' ? t.ctaPalpitar : f.cta}
-              onClick={tab === 'next' ? () => router.push(`/palpite/${f.id}`) : () => openSala(f.id)}
-              {...(tab === 'replays'
+              // A non-recorded replay has nothing to open: no CTA and no click.
+              cta={f.naoGravada ? undefined : tab === 'next' ? t.ctaPalpitar : f.cta}
+              onClick={
+                f.naoGravada
+                  ? undefined
+                  : tab === 'next'
+                    ? () => router.push(`/palpite/${f.id}`)
+                    : () => openSala(f.id)
+              }
+              {...(tab === 'replays' && !f.naoGravada
                 ? {
                     // Shares the CTA row instead of sitting under the card. Rendered
                     // disabled rather than hidden when the fan never played: hiding it
@@ -270,6 +285,19 @@ export default function HomePage() {
                   }
                 : {})}
             />
+            {f.naoGravada && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: fw.medium,
+                  lineHeight: 'var(--leading-body)',
+                  color: 'var(--text-muted)',
+                  padding: '8px 4px 0',
+                }}
+              >
+                {t.naoGravadaNote}
+              </div>
+            )}
           </div>
         ))}
 

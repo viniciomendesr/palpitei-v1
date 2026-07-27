@@ -14,7 +14,12 @@ import type { Lang } from './preferred-lang';
  * own copy rather than let this module invent one.
  */
 
-/** `sentence` reads inside prose ("Hoje, 16:00"); `label` is the card's uppercase day. */
+/**
+ * `sentence` reads inside prose ("Hoje", "05/10/2026"); `label` is the same day
+ * uppercased for a card. Neither carries the time: the fan asked upcoming matches
+ * to show the date only, and the pre-game screen already pairs it with the
+ * countdown to the pick's close.
+ */
 export type KickoffStyle = 'sentence' | 'label';
 
 const WORDS = {
@@ -27,22 +32,28 @@ function pad(n: number): string {
 }
 
 /**
- * Calendar date without the weekday.
+ * Calendar date with the year, without the weekday.
+ *
+ * The year is shown by default: without it, a September fixture read on the same
+ * calendar year still looked like an old match to the fan. `withYear` drops it
+ * only where a leading date on the same card already carries it (a second leg of
+ * the same pair), so the row does not repeat "/2026" twice and overflow.
+ * "Hoje"/"Amanhã" never carry a year — they hold no date to disambiguate.
  *
  * English gets the month by name because `05/10` is read as 10 May by an
  * en-US reader and 5 October by a pt-BR one — the same six fixtures would
  * carry two different meanings off one string.
  */
-function calendarDay(d: Date, lang: Lang, showYear: boolean): string {
+function calendarDay(d: Date, lang: Lang, withYear: boolean): string {
   if (lang === 'en') {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
-      ...(showYear ? { year: 'numeric' } : {}),
+      ...(withYear ? { year: 'numeric' } : {}),
     }).format(d);
   }
   const dm = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
-  return showYear ? `${dm}/${d.getFullYear()}` : dm;
+  return withYear ? `${dm}/${d.getFullYear()}` : dm;
 }
 
 /** Formats the kickoff instant for the current locale and time zone. */
@@ -51,9 +62,9 @@ export function formatKickoff(
   now: number,
   lang: Lang,
   style: KickoffStyle = 'sentence',
+  withYear = true,
 ): string {
   const d = new Date(startTs);
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
   const startOfDay = new Date(startTs).setHours(0, 0, 0, 0);
   const today = new Date(now).setHours(0, 0, 0, 0);
@@ -66,11 +77,10 @@ export function formatKickoff(
   // public screen, and the caller can no longer tell the two apart.
   if (dayDiff === 0) day = words.today;
   else if (dayDiff === 1) day = words.tomorrow;
-  else day = calendarDay(d, lang, d.getFullYear() !== new Date(now).getFullYear());
+  else day = calendarDay(d, lang, withYear);
 
-  // The card label carries the day alone. What it has to answer is "which of these
-  // two legs is this one", and the kickoff time does not help with that — it only
-  // competes with the team names for a narrow row. The prose style keeps the time,
-  // because the pre-match screen pairs it with how long the window stays open.
-  return style === 'label' ? day.toUpperCase() : `${day}, ${time}`;
+  // Neither style carries the time. The card answers "which of these two legs is
+  // this one", and the date alone does that; the pre-game screen shows the same
+  // date and lets the countdown carry the urgency. `label` only upper-cases it.
+  return style === 'label' ? day.toUpperCase() : day;
 }
